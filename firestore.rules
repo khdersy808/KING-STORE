@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Rules for products
+    match /products/{document} {
+      allow read: if true;
+      allow write: if true; // In production this would be admin-only
+    }
+    
+    // Rules for orders
+    match /orders/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Rules for notifications
+    match /notifications/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Rules for users
+    match /users/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

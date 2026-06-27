@@ -1,0 +1,50 @@
+{
+  "collections": {
+    "products": {
+      "fields": {
+        "id": "string",
+        "name": "string",
+        "price": "number",
+        "description": "string",
+        "image": "string",
+        "type": "string",
+        "stock": "number",
+        "reviews": "array"
+      }
+    },
+    "orders": {
+      "fields": {
+        "id": "string",
+        "customerName": "string",
+        "customerEmail": "string",
+        "customerPhone": "string",
+        "paymentGatewayId": "string",
+        "totalAmount": "number",
+        "status": "string",
+        "createdAt": "string",
+        "items": "array"
+      }
+    },
+    "notifications": {
+      "fields": {
+        "id": "string",
+        "userId": "string",
+        "title": "string",
+        "message": "string",
+        "date": "string",
+        "isRead": "boolean",
+        "type": "string",
+        "orderId": "string"
+      }
+    },
+    "users": {
+      "fields": {
+        "id": "string",
+        "name": "string",
+        "email": "string",
+        "role": "string",
+        "password": "string"
+      }
+    }
+  }
+}
