@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import ProductDetailsModal from './components/ProductDetailsModal';
 import AuthModal from './components/AuthModal';
-import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot } from './lib/firebase';
+import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 
 export default function App() {
   // --- LocalStorage Persistence Engine ---
@@ -104,6 +104,47 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
   }, [notifications]);
+
+  // Synchronize authentication state with Firebase in real-time
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        // Only set current user if email is verified or it's the default admin
+        const adminEmail = 'khdersy808@gmail.com';
+        const isVerified = fbUser.emailVerified || fbUser.email?.toLowerCase() === adminEmail;
+        
+        if (isVerified && fbUser.email) {
+          try {
+            const { getDoc } = await import('./lib/firebase');
+            const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
+            const userDoc = await getDoc(userDocRef);
+            
+            let role = 'customer';
+            let nameVal = fbUser.displayName || fbUser.email.split('@')[0];
+            
+            if (userDoc.exists()) {
+              role = userDoc.data().role || 'customer';
+              nameVal = userDoc.data().name || nameVal;
+            }
+            
+            setCurrentUser({
+              id: fbUser.uid,
+              name: nameVal,
+              email: fbUser.email.toLowerCase(),
+              password: '',
+              role: role as 'admin' | 'customer'
+            });
+          } catch (err) {
+            console.error("Error fetching user data from Firestore during auth sync:", err);
+          }
+        }
+      } else {
+        // If logged out from Firebase, clear client-side state
+        setCurrentUser(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' = 'info') => {
     const id = `toast_${Date.now()}_${Math.random()}`;
@@ -221,7 +262,6 @@ export default function App() {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
-  const [activeGuideTab, setActiveGuideTab] = useState<'pwa' | 'apk'>('pwa');
 
 
   // --- Admin Invitation Detection Engine ---
@@ -355,7 +395,12 @@ export default function App() {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
   };
 
-  const handleLogoutUser = () => {
+  const handleLogoutUser = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Firebase Auth signout error:", e);
+    }
     setCurrentUser(null);
     setIsAdminMode(false);
   };
@@ -874,118 +919,46 @@ export default function App() {
               </button>
             </div>
 
-            {/* Tabs Selector */}
-            <div className="flex border-b border-slate-800 bg-slate-950/55 p-1">
-              <button
-                onClick={() => setActiveGuideTab('pwa')}
-                className={`flex-1 py-3 text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer border-b-2 ${
-                  activeGuideTab === 'pwa'
-                    ? 'text-amber-400 border-amber-500 bg-slate-900/40'
-                    : 'text-zinc-400 border-transparent hover:text-zinc-200'
-                }`}
-              >
-                <Sparkles className="h-4 w-4" />
-                <span>1. التثبيت الفوري والسريع (PWA) 📲</span>
-              </button>
-              <button
-                onClick={() => setActiveGuideTab('apk')}
-                className={`flex-1 py-3 text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer border-b-2 ${
-                  activeGuideTab === 'apk'
-                    ? 'text-amber-400 border-amber-500 bg-slate-900/40'
-                    : 'text-zinc-400 border-transparent hover:text-zinc-200'
-                }`}
-              >
-                <Settings className="h-4 w-4" />
-                <span>2. بناء ملف APK الأصلي 🛠️</span>
-              </button>
-            </div>
-
             {/* Modal Body */}
             <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
-              {activeGuideTab === 'pwa' ? (
-                <div className="space-y-4 text-right">
-                  <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl">
-                    <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed font-semibold">
-                      تطبيقات الويب التقدمية (PWA) هي الجيل الجديد من التطبيقات المثبتة! لا تحتاج لتحميل ملفات APK خارجية أو مواجهة تحذيرات الأمان من Google Play.
-                    </p>
-                    <ul className="list-disc list-inside mt-2 text-[11px] sm:text-xs text-amber-400 font-bold space-y-1">
-                      <li>تزامن فوري ومباشر 100% مع قاعدة بيانات Firebase!</li>
-                      <li>تحديثات تلقائية بالكامل فور تعديل المتجر.</li>
-                      <li>خفيف جداً وموفر لمساحة تخزين الهاتف وبطاريته.</li>
-                    </ul>
-                  </div>
+              <div className="space-y-4 text-right">
+                <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl">
+                  <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed font-semibold">
+                    تطبيقات الويب التقدمية (PWA) هي الجيل الجديد من التطبيقات المثبتة! لا تحتاج لتحميل ملفات APK خارجية أو مواجهة تحذيرات الأمان من Google Play.
+                  </p>
+                  <ul className="list-disc list-inside mt-2 text-[11px] sm:text-xs text-amber-400 font-bold space-y-1">
+                    <li>تزامن فوري ومباشر 100% مع قاعدة بيانات Firebase!</li>
+                    <li>تحديثات تلقائية بالكامل فور تعديل المتجر.</li>
+                    <li>خفيف جداً وموفر لمساحة تخزين الهاتف وبطاريته.</li>
+                  </ul>
+                </div>
 
-                  <div className="space-y-3">
-                    <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">1</span>
-                      <span>خطوات التثبيت على أجهزة أندرويد (Android):</span>
-                    </h5>
-                    <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                      <p>1. افتح رابط المتجر في متصفح <span className="text-white font-bold">Google Chrome</span> على هاتفك.</p>
-                      <p>2. اضغط على زر القائمة (الثلاث نقاط) في الزاوية العلوية للمتصفح.</p>
-                      <p>3. اضغط على خيار <span className="text-amber-400 font-bold">"إضافة إلى الشاشة الرئيسية" (Add to Home Screen)</span> أو <span className="text-amber-400 font-bold">"تثبيت التطبيق" (Install App)</span>.</p>
-                      <p>4. وافق على التثبيت، وسيظهر شعار <span className="text-white font-bold">KING STORE</span> كأيقونة تطبيق رسمي على شاشة هاتفك فوراً!</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">2</span>
-                      <span>خطوات التثبيت على أجهزة آيفون (iOS/Safari):</span>
-                    </h5>
-                    <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                      <p>1. افتح رابط المتجر في متصفح <span className="text-white font-bold">Safari</span> الرسمي على هاتف الآيفون.</p>
-                      <p>2. اضغط على زر <span className="text-white font-bold">مشاركة (Share)</span> الموجود في شريط الأدوات بالأسفل.</p>
-                      <p>3. مرر لأسفل القائمة قليلاً واضغط على خيار <span className="text-amber-400 font-bold">"إضافة إلى الشاشة الرئيسية" (Add to Home Screen)</span>.</p>
-                      <p>4. اضغط على زر <span className="text-amber-400 font-bold">"إضافة" (Add)</span> في الزاوية العلوية، واستمتع بتطبيق متكامل وسريع.</p>
-                    </div>
+                <div className="space-y-3">
+                  <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">1</span>
+                    <span>خطوات التثبيت على أجهزة أندرويد (Android):</span>
+                  </h5>
+                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
+                    <p>1. افتح رابط المتجر في متصفح <span className="text-white font-bold">Google Chrome</span> على هاتفك.</p>
+                    <p>2. اضغط على زر القائمة (الثلاث نقاط) في الزاوية العلوية للمتصفح.</p>
+                    <p>3. اضغط على خيار <span className="text-amber-400 font-bold">"إضافة إلى الشاشة الرئيسية" (Add to Home Screen)</span> أو <span className="text-amber-400 font-bold">"تثبيت التطبيق" (Install App)</span>.</p>
+                    <p>4. وافق على التثبيت، وسيظهر شعار <span className="text-white font-bold">KING STORE</span> كأيقونة تطبيق رسمي على شاشة هاتفك فوراً!</p>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-4 text-right">
-                  <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-2xl text-xs text-zinc-300 leading-relaxed space-y-2">
-                    <p>
-                      نظراً لأن بيئة التطوير السحابية المؤقتة المفتوحة حالياً في متصفحك لا تحتوي على حزمة تجميع تطبيقات جافا والـ Android SDK الكاملة، يمكنك تجميع وبناء ملف الـ <span className="text-white font-bold">APK الأصلي والكامل</span> بنفسك في دقيقتين فقط باستخدام جهاز الكمبيوتر الخاص بك!
-                    </p>
-                    <p className="text-amber-400 font-bold">
-                      لقد قمنا مسبقاً إعداد وتكوين نظام Capacitor و Cordova بالكامل داخل كود مشروعك لدعم Firebase بنسبة 100%!
-                    </p>
-                  </div>
 
-                  <div className="space-y-3">
-                    <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">🛠️</span>
-                      <span>دليل المطور لبناء ملف APK مخصص:</span>
-                    </h5>
-                    <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 text-xs text-zinc-300 space-y-3">
-                      <div>
-                        <span className="text-amber-400 font-bold block mb-1">الخطوة 1: تحميل كود المشروع الكامل</span>
-                        <p>اضغط على قائمة الإعدادات (أعلى اليمين في AI Studio) واختر <span className="text-white font-bold">تصدير المشروع كـ ملف ZIP</span> أو استيراده إلى حساب GitHub الخاص بك.</p>
-                      </div>
-                      
-                      <div>
-                        <span className="text-amber-400 font-bold block mb-1">الخطوة 2: تثبيت الملحقات وتجميع الكود</span>
-                        <p>افتح مجلد المشروع في جهاز الكمبيوتر الخاص بك عبر سطر الأوامر (Terminal) واكتب الأوامر التالية:</p>
-                        <pre className="bg-slate-950 p-2.5 rounded-lg text-[10px] sm:text-xs font-mono text-zinc-400 mt-1 text-left" dir="ltr">
-                          npm install{"\n"}
-                          npm run build{"\n"}
-                          npx cap sync
-                        </pre>
-                      </div>
-
-                      <div>
-                        <span className="text-amber-400 font-bold block mb-1">الخطوة 3: تصدير الـ APK عبر Android Studio</span>
-                        <p>1. قم بتشغيل برنامج <span className="text-white font-bold">Android Studio</span> ثم اختر "Open Project" وحدد مجلد <code className="text-amber-400 font-mono font-bold">/android</code> الموجود داخل مشروعك.</p>
-                        <p>2. انتظر اكتمال مزامنة ملفات Gradle، ثم اضغط من الشريط العلوي على:</p>
-                        <code className="block bg-slate-950/90 text-[10px] sm:text-xs font-mono text-zinc-400 p-2 rounded text-center mt-1">
-                          Build &gt; Build Bundle(s) / APK(s) &gt; Build APK(s)
-                        </code>
-                        <p className="mt-1.5">3. فور اكتمال البناء، سيظهر لك إشعار به رابط مباشر للملف <span className="text-emerald-400 font-bold">app-debug.apk</span> الجاهز للتثبيت على أي هاتف ونشره للمستخدمين الجدد!</p>
-                      </div>
-                    </div>
+                <div className="space-y-3">
+                  <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">2</span>
+                    <span>خطوات التثبيت على أجهزة آيفون (iOS/Safari):</span>
+                  </h5>
+                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
+                    <p>1. افتح رابط المتجر في متصفح <span className="text-white font-bold">Safari</span> الرسمي على هاتف الآيفون.</p>
+                    <p>2. اضغط على زر <span className="text-white font-bold">مشاركة (Share)</span> الموجود في شريط الأدوات بالأسفل.</p>
+                    <p>3. مرر لأسفل القائمة قليلاً واضغط على خيار <span className="text-amber-400 font-bold">"إضافة إلى الشاشة الرئيسية" (Add to Home Screen)</span>.</p>
+                    <p>4. اضغط على زر <span className="text-amber-400 font-bold">"إضافة" (Add)</span> في الزاوية العلوية، واستمتع بتطبيق متكامل وسريع.</p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Modal Footer */}
