@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles } from 'lucide-react';
+import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu } from 'lucide-react';
 import { User, AppNotification } from '../types';
 
 interface NavbarProps {
@@ -17,6 +17,7 @@ interface NavbarProps {
   currentUser: User | null;
   onOpenAuth: () => void;
   onLogout: () => void;
+  onOpenSettings: () => void;
   notifications: AppNotification[];
   onMarkAllAsRead: () => void;
   onMarkAsRead: (id: string) => void;
@@ -33,12 +34,14 @@ export default function Navbar({
   currentUser,
   onOpenAuth,
   onLogout,
+  onOpenSettings,
   notifications = [],
   onMarkAllAsRead,
   onMarkAsRead,
   onDeleteNotification,
 }: NavbarProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Filter notifications belonging to the current user (either user email or 'admin')
   const userNotifications = notifications.filter((n) => {
@@ -47,12 +50,13 @@ export default function Navbar({
   });
 
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl h-18 items-center justify-between px-4 sm:px-6">
         
         {/* Right side: App Branding / Logo */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-lg shadow-amber-500/10 animate-pulse">
             <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
           </div>
@@ -88,7 +92,7 @@ export default function Navbar({
         )}
 
         {/* Left side: Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           
           {/* Search bar toggle for mobile */}
           {!isAdminMode && (
@@ -98,10 +102,10 @@ export default function Navbar({
                 placeholder="بحث..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-32 sm:w-48 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-3 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                className="w-20 xs:w-28 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
               />
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <Search className="h-3.5 w-3.5 text-zinc-500" />
+                <Search className="h-3 w-3 text-zinc-500" />
               </div>
             </div>
           )}
@@ -111,7 +115,7 @@ export default function Navbar({
             <div className="relative">
               <button
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className={`relative flex h-10 w-10 items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
                   isNotificationsOpen
                     ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold'
                     : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
@@ -119,9 +123,9 @@ export default function Navbar({
                 title="الإشعارات الملكية"
                 id="notif-toggle-btn"
               >
-                <Bell className="h-5 w-5" />
+                <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-zinc-950">
+                  <span className="absolute -top-1 -left-1 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-red-600 text-[8px] sm:text-[10px] font-bold text-white ring-1 sm:ring-2 ring-zinc-950">
                     {unreadCount}
                   </span>
                 )}
@@ -242,77 +246,196 @@ export default function Navbar({
           {!isAdminMode && (
             <button
               onClick={onOpenCart}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
+              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
               title="سلة المشتريات"
               id="cart-toggle-btn"
             >
-              <ShoppingBag className="h-5 w-5" />
+              <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5" />
               {cartCount > 0 && (
-                <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-[11px] font-bold text-slate-950 ring-2 ring-zinc-950 animate-bounce">
+                <span className="absolute -top-1 -left-1 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-[8px] sm:text-[11px] font-bold text-slate-950 ring-1 sm:ring-2 ring-zinc-950 animate-bounce">
                   {cartCount}
                 </span>
               )}
             </button>
           )}
 
-          {/* User Profile / Auth State */}
+          {/* User Profile / Auth State (DESKTOP VERSION) */}
           {currentUser ? (
-            <div className="flex items-center gap-3">
-              <div className="hidden lg:flex flex-col items-end text-right">
+            <div className="hidden md:flex items-center gap-2 lg:gap-3">
+              <div className="hidden lg:flex flex-col items-end text-right shrink-0">
                 <span className="text-xs font-bold text-zinc-100">{currentUser.name}</span>
                 <span className="text-[9px] text-amber-500 font-bold uppercase tracking-wider">
                   {currentUser.role === 'admin' ? 'مدير النظام' : 'عضو ملكي'}
                 </span>
               </div>
+
+              <button
+                onClick={onOpenSettings}
+                className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 hover:text-amber-400 text-zinc-400 transition-all cursor-pointer animate-pulse"
+                title="إعدادات الحساب (الضبط)"
+                id="navbar-settings-btn"
+              >
+                <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </button>
               
               <button
                 onClick={onLogout}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#121212] border border-zinc-800 hover:border-red-500/40 hover:text-red-400 text-zinc-400 transition-all cursor-pointer"
+                className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-red-500/40 hover:text-red-400 text-zinc-400 transition-all cursor-pointer"
                 title="تسجيل الخروج"
                 id="navbar-logout-btn"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </button>
             </div>
           ) : (
             <button
               onClick={onOpenAuth}
-              className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-3.5 py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-2 sm:px-3.5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold transition-all shadow-md cursor-pointer"
               id="navbar-login-btn"
             >
-              <UserIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">تسجيل الدخول</span>
-              <span className="sm:hidden">دخول</span>
+              <UserIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline sm:inline">تسجيل الدخول</span>
+              <span className="xs:hidden">دخول</span>
             </button>
           )}
 
-          {/* Mode toggle switch - ONLY VISIBLE IF LOGGED IN AND USER ROLE IS ADMIN */}
+          {/* Mode toggle switch - ONLY VISIBLE ON DESKTOP IF LOGGED IN AND USER ROLE IS ADMIN */}
           {currentUser && currentUser.role === 'admin' && (
             <button
               onClick={() => setIsAdminMode(!isAdminMode)}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer ${
+              className={`hidden md:flex items-center gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer ${
                 isAdminMode
                   ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-amber-500/10'
                   : 'bg-[#121212] text-amber-400 border border-amber-500/30 hover:bg-[#181818]'
               }`}
               id="admin-mode-toggle"
+              title={isAdminMode ? "عرض المتجر" : "لوحة التحكم (الآدمن)"}
             >
               {isAdminMode ? (
                 <>
                   <Eye className="h-4 w-4" />
-                  <span>عرض المتجر</span>
+                  <span className="hidden xs:inline">عرض المتجر</span>
                 </>
               ) : (
                 <>
                   <Settings className="h-4 w-4" />
-                  <span>لوحة التحكم (الآدمن)</span>
+                  <span className="hidden xs:inline">لوحة التحكم (الآدمن)</span>
                 </>
               )}
             </button>
           )}
 
+          {/* Mobile Menu Toggle Button (Hamburger Menu - Mobile Only, visible if logged in) */}
+          {currentUser && (
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
+              title="القائمة"
+              id="mobile-menu-toggle-btn"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          )}
+
         </div>
       </div>
+
+      {/* Mobile Navigation Drawer Overlay */}
+      {isMobileMenuOpen && currentUser && (
+        <div className="fixed inset-0 z-50 flex justify-start md:hidden" dir="rtl">
+          {/* Backdrop overlay with fade animation */}
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 ease-in-out" 
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Drawer Content with slide-in animation */}
+          <div className="relative w-72 max-w-[85vw] bg-[#0c0c0c] border-l border-zinc-900 p-5 flex flex-col justify-between shadow-2xl h-full transition-transform duration-300 ease-out transform translate-x-0 z-10">
+            <div className="space-y-6">
+              
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-md shadow-amber-500/10 animate-pulse">
+                    <Crown className="h-4 w-4 text-slate-950 stroke-[2.5]" />
+                  </div>
+                  <span className="text-xs font-black text-white tracking-wide">قائمة التحكم الفاخرة</span>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {/* User Identity Card */}
+              <div className="rounded-2xl bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 p-4 border border-zinc-800/80 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-[9px] text-amber-400 font-extrabold tracking-wider uppercase">
+                    {currentUser.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
+                  </span>
+                </div>
+                <h4 className="text-sm font-black text-white">{currentUser.name}</h4>
+                <p className="text-[10px] text-zinc-400 truncate">{currentUser.email}</p>
+              </div>
+
+              {/* Navigation Items / Menu Buttons */}
+              <div className="space-y-3 pt-2">
+                
+                {/* Admin Mode Toggle (inside menu, only for admins) */}
+                {currentUser.role === 'admin' && (
+                  <button
+                    onClick={() => {
+                      setIsAdminMode(!isAdminMode);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between rounded-xl p-3.5 text-xs font-black transition-all border cursor-pointer ${
+                      isAdminMode
+                        ? 'bg-amber-500 text-slate-950 border-amber-600 font-black shadow-lg shadow-amber-500/10'
+                        : 'bg-zinc-900/50 text-amber-400 border-amber-500/20 hover:bg-zinc-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {isAdminMode ? <Eye className="h-4.5 w-4.5" /> : <Settings className="h-4.5 w-4.5" />}
+                      <span>{isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}</span>
+                    </div>
+                  </button>
+                )}
+
+                {/* Settings Button */}
+                <button
+                  onClick={() => {
+                    onOpenSettings();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 p-3.5 text-xs font-extrabold text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-900 transition-all cursor-pointer"
+                >
+                  <Settings className="h-4.5 w-4.5 text-zinc-400" />
+                  <span>إعدادات الحساب والضبط ⚙️</span>
+                </button>
+
+              </div>
+            </div>
+
+            {/* Logout button at bottom of drawer */}
+            <div className="border-t border-zinc-900 pt-4">
+              <button
+                onClick={() => {
+                  onLogout();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-red-600/10 border border-red-500/20 text-red-400 py-3 text-xs font-black hover:bg-red-600/20 active:scale-98 transition-all cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>تسجيل الخروج الآمن 🚪</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </header>
   );
 }

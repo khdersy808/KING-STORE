@@ -120,34 +120,33 @@ export default function AuthModal({
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const adminEmail = 'khdersy808@gmail.com';
 
     if (isLogin) {
       // Login flow with Firebase Auth & Firestore
       try {
         let userCredential;
-        const adminEmail = 'khdersy808@gmail.com';
 
-        if (normalizedEmail === adminEmail.toLowerCase() && password === 'Khder@2003') {
-          // Automatic Admin setup if not yet in Firebase Auth
-          try {
-            userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-          } catch (adminErr: any) {
-            if (adminErr.code === 'auth/user-not-found' || adminErr.code === 'auth/invalid-credential') {
+        try {
+          // Direct sign in using Firebase Console credentials (Firebase Auth)
+          userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        } catch (signInErr: any) {
+          // If the login is for the admin email and it failed due to not found or invalid credential,
+          // automatically register the account to avoid manual registration friction!
+          if (normalizedEmail === adminEmail.toLowerCase() && 
+              (signInErr.code === 'auth/invalid-credential' || 
+               signInErr.code === 'auth/user-not-found' || 
+               signInErr.code === 'auth/wrong-password')) {
+            try {
               userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
               await updateProfile(userCredential.user, { displayName: 'مدير النظام الملكي' });
-              await setDoc(doc(db, 'users', normalizedEmail), {
-                id: userCredential.user.uid,
-                name: 'مدير النظام الملكي',
-                email: normalizedEmail,
-                role: 'admin',
-                createdAt: new Date().toISOString()
-              });
-            } else {
-              throw adminErr;
+            } catch (signUpErr: any) {
+              // If signup fails (e.g. email in use but different password), throw the original sign-in error
+              throw signInErr;
             }
+          } else {
+            throw signInErr;
           }
-        } else {
-          userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         }
 
         const fbUser = userCredential.user;
@@ -166,19 +165,30 @@ export default function AuthModal({
         let role = 'customer';
         let nameVal = fbUser.displayName || normalizedEmail.split('@')[0];
 
-        if (userDoc.exists()) {
-          role = userDoc.data().role || 'customer';
-          nameVal = userDoc.data().name || nameVal;
-        } else {
-          // If profile missing in Firestore, create it
-          role = normalizedEmail === adminEmail ? 'admin' : 'customer';
+        if (normalizedEmail === adminEmail.toLowerCase()) {
+          role = 'admin';
+          // Force Firestore document to exist and have 'admin' role
           await setDoc(userDocRef, {
             id: fbUser.uid,
-            name: nameVal,
+            name: nameVal || 'مدير النظام الملكي',
             email: normalizedEmail,
-            role: role,
-            createdAt: new Date().toISOString()
-          });
+            role: 'admin',
+            createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
+          }, { merge: true });
+        } else {
+          if (userDoc.exists()) {
+            role = userDoc.data().role || 'customer';
+            nameVal = userDoc.data().name || nameVal;
+          } else {
+            // If profile missing in Firestore, create it
+            await setDoc(userDocRef, {
+              id: fbUser.uid,
+              name: nameVal,
+              email: normalizedEmail,
+              role: role,
+              createdAt: new Date().toISOString()
+            });
+          }
         }
 
         const foundUser: User = {
@@ -199,15 +209,22 @@ export default function AuthModal({
           setPassword('');
         }, 1500);
 
-      } catch (err: any) {
-        console.error("Login error: ", err);
+      } catch (error: any) {
+        console.log(error);
+        console.error(error.code, error.message);
         let errorMsgAr = 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
-        if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-          errorMsgAr = 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
-        } else if (err.code === 'auth/user-disabled') {
-          errorMsgAr = 'تم تعطيل هذا الحساب من قبل الإدارة.';
-        } else if (err.code === 'auth/too-many-requests') {
-          errorMsgAr = 'تم إدخال الكثير من المحاولات الخاطئة. تم قفل الحساب مؤقتاً، يرجى المحاولة لاحقاً.';
+        if (error.code === 'auth/invalid-credential') {
+          errorMsgAr = '⚠️ البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التحقق من المدخلات والمحاولة مجدداً.';
+        } else if (error.code === 'auth/user-not-found') {
+          errorMsgAr = '⚠️ هذا الحساب غير مسجل لدينا. يرجى التأكد من البريد الإلكتروني أو إنشاء حساب جديد.';
+        } else if (error.code === 'auth/wrong-password') {
+          errorMsgAr = '⚠️ كلمة المرور المكتوبة غير صحيحة. يرجى المحاولة مرة أخرى.';
+        } else if (error.code === 'auth/user-disabled') {
+          errorMsgAr = '⚠️ تم تعطيل هذا الحساب من قبل الإدارة.';
+        } else if (error.code === 'auth/too-many-requests') {
+          errorMsgAr = '⚠️ تم إدخال الكثير من المحاولات الخاطئة. تم قفل الحساب مؤقتاً، يرجى المحاولة لاحقاً.';
+        } else if (error.message) {
+          errorMsgAr = `⚠️ خطأ: ${error.message}`;
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -226,13 +243,15 @@ export default function AuthModal({
         // Send Email Verification (Dynamic Verification)
         await sendEmailVerification(fbUser);
 
+        const isDefaultAdmin = normalizedEmail === adminEmail.toLowerCase();
+
         // Save User Details in Firestore Database
         const newUser: User = {
           id: fbUser.uid,
           name: name.trim(),
           email: normalizedEmail,
           password: password,
-          role: isAdminRole ? 'admin' : 'customer'
+          role: (isAdminRole || isDefaultAdmin) ? 'admin' : 'customer'
         };
 
         const userDocRef = doc(db, 'users', normalizedEmail);
@@ -295,18 +314,28 @@ export default function AuthModal({
       let role = 'customer';
       let nameVal = fbUser.displayName || name.trim() || normalizedEmail.split('@')[0];
       
-      if (userDoc.exists()) {
-        role = userDoc.data().role || 'customer';
-        nameVal = userDoc.data().name || nameVal;
-      } else {
-        role = normalizedEmail === adminEmail ? 'admin' : 'customer';
+      if (normalizedEmail === adminEmail.toLowerCase()) {
+        role = 'admin';
         await setDoc(userDocRef, {
           id: fbUser.uid,
-          name: nameVal,
+          name: nameVal || 'مدير النظام الملكي',
           email: normalizedEmail,
-          role: role,
-          createdAt: new Date().toISOString()
-        });
+          role: 'admin',
+          createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
+        }, { merge: true });
+      } else {
+        if (userDoc.exists()) {
+          role = userDoc.data().role || 'customer';
+          nameVal = userDoc.data().name || nameVal;
+        } else {
+          await setDoc(userDocRef, {
+            id: fbUser.uid,
+            name: nameVal,
+            email: normalizedEmail,
+            role: role,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
       
       const loggedUser: User = {

@@ -13,7 +13,16 @@ import {
   signInWithPopup,
   type User as FirebaseUser
 } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+const firebaseConfig = {
+  apiKey: "AIzaSyD9oKYlMhlN67s6yEBxzF0c15q9VgwXHy0",
+  authDomain: "kingstore-42539.firebaseapp.com",
+  databaseURL: "https://kingstore-42539-default-rtdb.firebaseio.com",
+  projectId: "kingstore-42539",
+  storageBucket: "kingstore-42539.firebasestorage.app",
+  messagingSenderId: "260775608180",
+  appId: "1:260775608180:web:ac2b7f0f319c5650c7f621",
+  firestoreDatabaseId: "(default)"
+};
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);

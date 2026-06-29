@@ -34,6 +34,62 @@ const ai = new GoogleGenAI({
   }
 });
 
+// Robust Gemini generation with exponential backoff retries and fallback models to handle 503 "High demand"/"Unavailable" states
+async function generateContentWithFallbackAndRetry(
+  params: {
+    model: string;
+    contents: any;
+    config?: any;
+  },
+  fallbackModels: string | string[] = 'gemini-flash-latest'
+) {
+  const tryModel = async (modelName: string, maxRetries = 3) => {
+    let delay = 1000;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Gemini SDK] Calling generateContent with model: ${modelName} (Attempt ${attempt}/${maxRetries})`);
+        const response = await ai.models.generateContent({
+          ...params,
+          model: modelName,
+        });
+        return response;
+      } catch (error: any) {
+        const errMsg = error.message || String(error);
+        const isTransient = errMsg.includes("503") || errMsg.includes("UNAVAILABLE") || errMsg.includes("429") || errMsg.includes("limit") || errMsg.includes("high demand") || errMsg.includes("temporary");
+        
+        if (isTransient && attempt < maxRetries) {
+          console.warn(`[Gemini SDK Warning] Transient error on model ${modelName} (Attempt ${attempt}): ${errMsg}. Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 1.5;
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw new Error(`Failed after retries with model ${modelName}`);
+  };
+
+  try {
+    return await tryModel(params.model);
+  } catch (primaryError: any) {
+    const fallbackList = Array.isArray(fallbackModels) ? fallbackModels : [fallbackModels];
+    console.warn(`[Gemini SDK Warning] Primary model ${params.model} failed completely. Error:`, primaryError.message || primaryError);
+    
+    for (const fallbackModel of fallbackList) {
+      try {
+        console.log(`[Gemini SDK] Trying fallback model: ${fallbackModel}`);
+        return await tryModel(fallbackModel);
+      } catch (fallbackError: any) {
+        console.warn(`[Gemini SDK Warning] Fallback model ${fallbackModel} failed:`, fallbackError.message || fallbackError);
+      }
+    }
+    
+    // If we reach here, both primary and all fallbacks failed
+    console.error(`[Gemini SDK Error] Primary model and all fallback models failed.`);
+    throw primaryError; // Throw original error so caller can catch it
+  }
+}
+
 // Seed products on startup
 seedProducts().then(() => {
   console.log("Startup seeding completed.");
@@ -49,8 +105,12 @@ app.post("/api/users/sync", requireAuth, async (req: AuthRequest, res) => {
     const { name, email, role } = req.body;
     const uid = req.user.uid;
     const userEmail = email || req.user.email || "";
+    const adminEmail = 'khdersy808@gmail.com';
     
-    const dbUser = await getOrCreateUser(uid, name || "مستعمل", userEmail.toLowerCase(), role || "customer");
+    // Always force admin role if email matches adminEmail
+    const finalRole = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (role || 'customer');
+    
+    const dbUser = await getOrCreateUser(uid, name || "مستعمل", userEmail.toLowerCase(), finalRole);
     res.json({ success: true, user: dbUser });
   } catch (error: any) {
     console.error("User sync API error:", error);
@@ -75,7 +135,7 @@ app.post("/api/products", requireAuth, async (req: AuthRequest, res) => {
     const userEmail = req.user.email || "";
     const adminEmail = 'khdersy808@gmail.com';
     const profile = await getUserProfile(req.user.uid);
-    const role = profile?.role || (userEmail.toLowerCase() === adminEmail ? 'admin' : 'customer');
+    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
     
     if (role !== 'admin') {
       return res.status(403).json({ error: "غير مصرح لك بإضافة منتجات. هذه الصلاحية للمسؤولين فقط." });
@@ -116,7 +176,7 @@ app.get("/api/orders", requireAuth, async (req: AuthRequest, res) => {
     const userEmail = req.user.email || "";
     const adminEmail = 'khdersy808@gmail.com';
     const profile = await getUserProfile(req.user.uid);
-    const role = profile?.role || (userEmail.toLowerCase() === adminEmail ? 'admin' : 'customer');
+    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
 
     let list;
     if (role === 'admin') {
@@ -158,33 +218,76 @@ app.post("/api/ai/generate-image", async (req, res) => {
       });
     }
 
-    // Generate image using gemini-2.5-flash-image
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          {
-            text: prompt,
-          },
-        ],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: aspectRatio, // "1:1", "3:4", "4:3", "9:16", "16:9"
-          imageSize: "1K"
-        }
+    // Enhance and translate the prompt to English to guarantee excellent quality & correct rendering by the image generation model
+    let englishPrompt = prompt;
+    try {
+      const enhancementResponse = await generateContentWithFallbackAndRetry({
+        model: 'gemini-3.5-flash',
+        contents: `You are an expert image prompt engineer for product photography.
+Translate the following user product description to English if it is in Arabic, and expand it into a highly detailed, professional, and beautiful English image generation prompt for an e-commerce store product photo.
+Ensure the prompt specifies: clean studio background, professional commercial product photography, luxury studio lighting, high resolution, photorealistic, 8k.
+Do not include any introductory/preachy text, explanations, or quotes. Output ONLY the final English prompt.
+
+User product description: "${prompt}"`,
+      }, ['gemini-flash-latest', 'gemini-3.1-flash-lite']);
+      if (enhancementResponse.text) {
+        englishPrompt = enhancementResponse.text.trim().replace(/^"|"$/g, '');
       }
-    });
+    } catch (e) {
+      console.warn("Prompt translation/enhancement failed, using original prompt:", e);
+    }
+
+    console.log(`Generating image. Original prompt: "${prompt}". Enhanced prompt: "${englishPrompt}"`);
 
     let imageUrl = "";
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          const base64EncodeString = part.inlineData.data;
-          imageUrl = `data:image/png;base64,${base64EncodeString}`;
-          break;
+    try {
+      // Generate image using gemini-2.5-flash-image
+      const response = await generateContentWithFallbackAndRetry({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            {
+              text: englishPrompt,
+            },
+          ],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio, // "1:1", "3:4", "4:3", "9:16", "16:9"
+            imageSize: "1K"
+          }
+        }
+      }, ['gemini-3.1-flash-image']);
+
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            const base64EncodeString = part.inlineData.data;
+            imageUrl = `data:image/png;base64,${base64EncodeString}`;
+            break;
+          }
         }
       }
+    } catch (imageErr) {
+      console.warn("AI Image Generation failed or experienced high demand. Using high-quality Unsplash product placeholder instead.", imageErr);
+      
+      // Determine best matching placeholder based on prompt keywords (Arabic or English)
+      const lowercasePrompt = (prompt || "").toLowerCase();
+      const fallbacks = [
+        { keys: ['ساعة', 'watch', 'ساعات', 'ساعه'], url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['حذاء', 'shoe', 'sneaker', 'أحذية', 'جزمة', 'بوت'], url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['سماعة', 'headphone', 'earbud', 'سماعات', 'ايربودز'], url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['كاميرا', 'camera', 'تصوير', 'كاميرات'], url: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['نظارة', 'glass', 'sunglass', 'نظارات', 'نظاره'], url: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['عطر', 'perfume', 'روائح', 'عطور'], url: 'https://images.unsplash.com/photo-1547887537-6158d64c35b3?auto=format&fit=crop&w=1000&q=80' },
+        { keys: ['هاتف', 'phone', 'جوال', 'موبايل', 'ايفون', 'سامسونج'], url: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=1000&q=80' }
+      ];
+
+      const matched = fallbacks.find(item => 
+        item.keys.some(key => lowercasePrompt.includes(key))
+      );
+      
+      imageUrl = matched ? matched.url : 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=1000&q=80';
     }
 
     if (!imageUrl) {
@@ -196,6 +299,63 @@ app.post("/api/ai/generate-image", async (req, res) => {
     console.error("AI Image Generation Error:", error);
     res.status(500).json({ 
       error: error.message || "حدث خطأ أثناء توليد الصورة بالذكاء الاصطناعي." 
+    });
+  }
+});
+
+// API endpoint for AI Product Details Generation (Name, Description, Price, Category, and Image prompt)
+app.post("/api/ai/generate-product-details", async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "الوصف مطلوب لتوليد تفاصيل المنتج." });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ 
+        error: "مفتاح API الخاص بـ Gemini غير مهيأ. يرجى إضافته في الإعدادات > الأسرار (Settings > Secrets) باسم GEMINI_API_KEY." 
+      });
+    }
+
+    const systemInstruction = `
+You are an expert product specialist and e-commerce consultant for "King Store" (متجر الملوك), a premium store selling high-end products.
+Your task is to analyze the user's brief description (which can be in Arabic or English) and expand it into a fully structured, attractive, premium e-commerce product in Arabic.
+
+Return a JSON object conforming exactly to this schema:
+{
+  "name": "Catchy, professional, and luxurious Arabic title for the product",
+  "description": "Attractive, compelling, and professional Arabic description outlining key features, specs, and a persuasive marketing pitch",
+  "price": 120.00, // a reasonable numeric price. Extract if mentioned, otherwise suggest a realistic premium pricing in numbers
+  "category": "One of these existing categories: 'إلكترونيات' (electronics), 'ألعاب' (gaming), 'ساعات' (watches), 'بطاقات شحن' (gift cards), 'إكسسوارات' (accessories), or 'أخرى' (others)",
+  "imagePrompt": "A highly detailed, professional English prompt for generating a beautiful high-res product photo with neutral studio background, 3D render, luxury studio lighting, commercial product photography, 8k resolution, photorealistic"
+}
+
+Do not include any markdown styling or block quotes in your response. Return pure JSON.
+`;
+
+    const response = await generateContentWithFallbackAndRetry({
+      model: 'gemini-3.5-flash',
+      contents: {
+        parts: [
+          {
+            text: `User request/description: "${prompt}"`
+          }
+        ]
+      },
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: 'application/json'
+      }
+    }, ['gemini-flash-latest', 'gemini-3.1-flash-lite']);
+
+    const responseText = response.text?.trim() || "{}";
+    const productData = JSON.parse(responseText);
+
+    res.json({ success: true, ...productData });
+  } catch (error: any) {
+    console.error("AI Product Generation Error:", error);
+    res.status(500).json({ 
+      error: error.message || "حدث خطأ أثناء توليد تفاصيل المنتج بالذكاء الاصطناعي." 
     });
   }
 });

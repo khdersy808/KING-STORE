@@ -53,7 +53,8 @@ import {
   Mail,
   Phone,
   MapPin,
-  Activity
+  Activity,
+  Tags
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -70,9 +71,13 @@ interface AdminPanelProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
   users: User[];
   onDeleteUser: (userId: string) => void;
+  categories: string[];
+  onAddCategory: (categoryName: string) => Promise<void>;
+  onDeleteCategory: (categoryName: string) => Promise<void>;
+  onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
 }
 
-type AdminTab = 'analytics' | 'products' | 'gateways' | 'orders' | 'admins';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins';
 
 export default function AdminPanel({
   products,
@@ -86,7 +91,11 @@ export default function AdminPanel({
   orders,
   onUpdateOrderStatus,
   users,
-  onDeleteUser
+  onDeleteUser,
+  categories,
+  onAddCategory,
+  onDeleteCategory,
+  onUpdateCategory
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
 
@@ -97,12 +106,18 @@ export default function AdminPanel({
   const [formDescription, setFormDescription] = useState('');
   const [formPrice, setFormPrice] = useState(0);
   const [formType, setFormType] = useState<ProductType>('physical');
-  const [formCategory, setFormCategory] = useState('إلكترونيات');
+  const [formCategory, setFormCategory] = useState(() => categories[0] || 'إلكترونيات');
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formStock, setFormStock] = useState(10);
   const [formDownloadUrl, setFormDownloadUrl] = useState('');
   const [formLicenseKeys, setFormLicenseKeys] = useState('');
   const [productFormError, setProductFormError] = useState('');
+
+  // AI Smart Product Creator states
+  const [aiProductDesc, setAiProductDesc] = useState('');
+  const [isGeneratingProduct, setIsGeneratingProduct] = useState(false);
+  const [aiProductError, setAiProductError] = useState('');
+  const [showAiProductCreator, setShowAiProductCreator] = useState(false);
 
   // AI Image generation states
   const [aiPrompt, setAiPrompt] = useState('');
@@ -123,6 +138,12 @@ export default function AdminPanel({
   const [newGatewayIcon, setNewGatewayIcon] = useState('CreditCard');
   const [newGatewayInstructions, setNewGatewayInstructions] = useState('');
   const [newGatewayFields, setNewGatewayFields] = useState<{ key: string; label: string; placeholder: string; value: string }[]>([]);
+
+  // Category management local states
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryName, setEditingCategoryName] = useState<string | null>(null);
+  const [editCategoryNewValue, setEditCategoryNewValue] = useState('');
+  const [categoryFormError, setCategoryFormError] = useState('');
   
   // Custom fields form states
   const [fieldKey, setFieldKey] = useState('');
@@ -156,7 +177,7 @@ export default function AdminPanel({
     setFormDescription('');
     setFormPrice(0);
     setFormType('physical');
-    setFormCategory('إلكترونيات');
+    setFormCategory(categories[0] || 'إلكترونيات');
     setFormImageUrl('');
     setFormStock(10);
     setFormDownloadUrl('');
@@ -172,6 +193,12 @@ export default function AdminPanel({
     setGeneratedImageUrl('');
     setAiError('');
     setShowAiImageHelper(false);
+
+    // Reset AI Smart Product states
+    setAiProductDesc('');
+    setIsGeneratingProduct(false);
+    setAiProductError('');
+    setShowAiProductCreator(false);
   };
 
   const handleGenerateAiImage = async () => {
@@ -208,6 +235,74 @@ export default function AdminPanel({
       setAiError(err.message || 'حدث خطأ غير متوقع أثناء توليد الصورة.');
     } finally {
       setIsGeneratingImage(false);
+    }
+  };
+
+  const handleGenerateProductWithAi = async () => {
+    if (!aiProductDesc.trim()) {
+      setAiProductError('يرجى كتابة وصف للمنتج أولاً لكي يقوم الذكاء الاصطناعي بإنشائه.');
+      return;
+    }
+
+    setIsGeneratingProduct(true);
+    setAiProductError('');
+    try {
+      // 1. Generate Product Details
+      const detailsResponse = await fetch('/api/ai/generate-product-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: aiProductDesc }),
+      });
+
+      const detailsData = await detailsResponse.json();
+      if (!detailsResponse.ok) {
+        throw new Error(detailsData.error || 'فشل في توليد تفاصيل المنتج.');
+      }
+
+      // Populate details
+      setFormName(detailsData.name || '');
+      setFormDescription(detailsData.description || '');
+      setFormPrice(Number(detailsData.price) || 0);
+      
+      // Map category if match
+      if (detailsData.category && categories.includes(detailsData.category)) {
+        setFormCategory(detailsData.category);
+      } else {
+        setFormCategory(categories[0] || 'أخرى');
+      }
+
+      // 2. Generate Image using the generated imagePrompt
+      const imgPromptToUse = detailsData.imagePrompt || `${detailsData.name} studio lighting, commercial photography`;
+      
+      const imgResponse = await fetch('/api/ai/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: imgPromptToUse,
+          aspectRatio: '1:1',
+        }),
+      });
+
+      const imgData = await imgResponse.json();
+      if (!imgResponse.ok) {
+        console.warn('Image generation failed, but product details were created.');
+        setAiProductError('تم توليد تفاصيل المنتج بنجاح، ولكن فشل توليد الصورة تلقائياً. يمكنك توليدها يدوياً.');
+      } else {
+        setFormImageUrl(imgData.imageUrl);
+      }
+
+      // Reset prompt and keep creator active/inactive
+      setAiProductDesc('');
+      setShowAiProductCreator(false);
+    } catch (err: any) {
+      console.error(err);
+      setAiProductError(err.message || 'حدث خطأ أثناء توليد المنتج بالذكاء الاصطناعي.');
+    } finally {
+      setIsGeneratingProduct(false);
     }
   };
 
@@ -458,6 +553,17 @@ export default function AdminPanel({
             <span>إدارة المنتجات ({products.length})</span>
           </button>
           <button
+            onClick={() => { setActiveTab('categories'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'categories'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+            }`}
+          >
+            <Tags className="h-4 w-4" />
+            <span>تخصيص الفئات ({categories.length})</span>
+          </button>
+          <button
             onClick={() => { setActiveTab('gateways'); resetProductForm(); }}
             className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'gateways'
@@ -690,6 +796,64 @@ export default function AdminPanel({
               ) : (
                 <form onSubmit={handleSaveProduct} className="space-y-4 text-right">
                   
+                  {/* AI Smart Product Creator Panel */}
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs">
+                        <Sparkles className="h-4 w-4 animate-pulse text-amber-500" />
+                        <span>الصانع السحري بالذكاء الاصطناعي 🪄</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiProductCreator(!showAiProductCreator)}
+                        className="text-[10px] font-bold text-amber-600 hover:text-amber-700 bg-amber-500/10 px-2 py-1 rounded-lg transition"
+                      >
+                        {showAiProductCreator ? 'إخفاء ✕' : 'جرب الآن ✨'}
+                      </button>
+                    </div>
+                    
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      صِف المنتج الذي تريد إضافته (مثال: "سماعات قيمنق محيطية باللون الأحمر وسعرها 150 ريال") وسيقوم الذكاء الاصطناعي بتوليد الاسم، والوصف الاحترافي، والسعر، والتصنيف، وصورة ثلاثية الأبعاد مطابقة للمنتج فوراً!
+                    </p>
+
+                    {showAiProductCreator && (
+                      <div className="space-y-2 pt-2 border-t border-amber-500/10 transition-all">
+                        <textarea
+                          placeholder="اكتب وصفاً مختصراً أو مفصلاً للمنتج المراد صنعه بالذكاء الاصطناعي..."
+                          value={aiProductDesc}
+                          onChange={(e) => setAiProductDesc(e.target.value)}
+                          rows={3}
+                          className="w-full rounded-xl border border-amber-500/20 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none text-right font-medium animate-fade-in"
+                        />
+                        
+                        {aiProductError && (
+                          <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[11px] font-bold text-right">
+                            {aiProductError}
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          disabled={isGeneratingProduct}
+                          onClick={handleGenerateProductWithAi}
+                          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {isGeneratingProduct ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin text-slate-950" />
+                              <span>جاري التوليد السحري وتصميم الصورة... ✨</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4 text-slate-950" />
+                              <span>اصنع المنتج والصورة فوراً 🪄</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
                   {/* Name */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">اسم المنتج *</label>
@@ -732,13 +896,32 @@ export default function AdminPanel({
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">الفئة</label>
-                      <input
-                        type="text"
-                        placeholder="مثال: إلكترونيات، ملابس"
+                      <select
                         value={formCategory}
                         onChange={(e) => setFormCategory(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
-                      />
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none cursor-pointer text-right font-medium"
+                      >
+                        {categories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                        {formCategory && !categories.includes(formCategory) && (
+                          <option value={formCategory}>{formCategory}</option>
+                        )}
+                        {categories.length === 0 && (
+                          <option value="أخرى">أخرى</option>
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('categories');
+                        }}
+                        className="text-[9px] text-amber-600 hover:text-amber-700 font-bold mt-1 flex items-center gap-1"
+                      >
+                        ⚙️ إدارة وتخصيص الفئات في لوحة التحكم
+                      </button>
                     </div>
                   </div>
 
@@ -815,7 +998,7 @@ export default function AdminPanel({
                   {/* Image URL */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-700">رابط صورة المنتج (Unsplash أو غيره)</label>
+                      <label className="block text-xs font-bold text-slate-700">صورة المنتج (توليد مباشر بالذكاء الاصطناعي 🎨 أو رابط صورة)</label>
                       <button
                         type="button"
                         onClick={() => {
@@ -825,16 +1008,16 @@ export default function AdminPanel({
                             setAiPrompt(formName ? `${formName} ${formDescription ? '- ' + formDescription.slice(0, 50) : ''}` : '');
                           }
                         }}
-                        className="text-[10px] font-bold text-amber-600 flex items-center gap-1 hover:text-amber-700 bg-amber-500/10 px-2 py-1 rounded-lg transition"
+                        className="text-[10px] font-bold text-amber-600 flex items-center gap-1 hover:text-amber-700 bg-amber-500/10 px-2.5 py-1.5 rounded-lg transition"
                       >
-                        <Sparkles className="h-3 w-3" />
-                        <span>توليد بالذكاء الاصطناعي ✨</span>
+                        <Sparkles className="h-3 w-3 animate-pulse" />
+                        <span>توليد صورة بالذكاء الاصطناعي 🪄</span>
                       </button>
                     </div>
                     <div className="relative">
                       <input
-                        type="url"
-                        placeholder="https://images.unsplash.com/photo-..."
+                        type="text"
+                        placeholder="رابط الصورة (سيتم تعبئته تلقائياً عند توليد الصورة بالذكاء الاصطناعي)"
                         value={formImageUrl}
                         onChange={(e) => setFormImageUrl(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none pl-10"
@@ -868,16 +1051,19 @@ export default function AdminPanel({
                           </button>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2 text-right">
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-600 mb-1">وصف مخصص للصورة (أو اتركه فارغاً لاستخدام تفاصيل المنتج أعلاه):</label>
+                            <label className="block text-[10px] font-bold text-slate-600 mb-1">صِف الشيء الذي تريد توليد صورة له بالذكاء الاصطناعي (باللغة العربية):</label>
                             <textarea
-                              placeholder="مثال: صورة فنية ثلاثية الأبعاد بأسلوب النيون لعلبة سماعات رأس فاخرة..."
+                              placeholder="مثال: حذاء جري رياضي ذكي بلون أزرق برّاق ومستقبلية مع إضاءة نيون هادئة..."
                               value={aiPrompt}
                               onChange={(e) => setAiPrompt(e.target.value)}
-                              rows={2}
-                              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs focus:border-amber-400 focus:outline-none"
+                              rows={2.5}
+                              className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs focus:border-amber-400 focus:outline-none text-right font-medium"
                             />
+                            <span className="text-[9px] text-zinc-500 block mt-1">
+                              💡 اكتب وصفاً دقيقاً ومفصلاً للشيء الذي تريده، وسيقوم الذكاء الاصطناعي برسمه وتجسيده لك فوراً دون الحاجة لأي روابط خارجية!
+                            </span>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
@@ -906,7 +1092,7 @@ export default function AdminPanel({
                                 {isGeneratingImage ? (
                                   <>
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    <span>جاري الإنشاء...</span>
+                                    <span>جاري رسم المنتج... 🎨</span>
                                   </>
                                 ) : (
                                   <>
@@ -1071,6 +1257,205 @@ export default function AdminPanel({
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* TAB: CUSTOM PRODUCT CATEGORIES MANAGEMENT */}
+      {activeTab === 'categories' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Right Column: Manage / Add Category */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Plus className="h-5 w-5 text-amber-500" />
+                <span>إضافة فئة جديدة</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                أنشئ فئات خاصة بمتجرك لتنظيم منتجاتك وتسهيل تصفحها وفلترتها للمشترين بطريقة مميزة.
+              </p>
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setCategoryFormError('');
+                const name = newCategoryName.trim();
+                if (!name) {
+                  setCategoryFormError('يرجى إدخال اسم الفئة.');
+                  return;
+                }
+                if (categories.includes(name)) {
+                  setCategoryFormError('هذه الفئة موجودة بالفعل.');
+                  return;
+                }
+                await onAddCategory(name);
+                setNewCategoryName('');
+              }} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">اسم الفئة *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: ألعاب الواقع الافتراضي، مقتنيات"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none text-right font-medium"
+                  />
+                </div>
+
+                {categoryFormError && (
+                  <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[11px] font-bold text-right">
+                    {categoryFormError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>إضافة الفئة الملكية الجديدة ✨</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Editing State Box */}
+            {editingCategoryName && (
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-6 space-y-4 animate-fade-in">
+                <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                  <Edit2 className="h-4 w-4 text-blue-600" />
+                  <span>تعديل اسم الفئة</span>
+                </h3>
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  تعديل اسم الفئة سيقوم تلقائياً بتحديث كافة المنتجات المرتبطة بهذه الفئة في المتجر.
+                </p>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">الاسم القديم</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={editingCategoryName}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-xs text-slate-500 focus:outline-none text-right"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">الاسم الجديد للفئة *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="الاسم الجديد..."
+                      value={editCategoryNewValue}
+                      onChange={(e) => setEditCategoryNewValue(e.target.value)}
+                      className="w-full rounded-xl border border-blue-300 bg-white p-2.5 text-xs focus:border-blue-500 focus:outline-none text-right font-bold"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newVal = editCategoryNewValue.trim();
+                        if (!newVal || newVal === editingCategoryName) return;
+                        await onUpdateCategory(editingCategoryName, newVal);
+                        setEditingCategoryName(null);
+                        setEditCategoryNewValue('');
+                      }}
+                      className="flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
+                    >
+                      حفظ التغيير
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategoryName(null);
+                        setEditCategoryNewValue('');
+                      }}
+                      className="py-2 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Left Column: Categories List */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Tags className="h-5 w-5 text-amber-500" />
+                  <span>فئات المنتجات الحالية ({categories.length})</span>
+                </h3>
+                <span className="text-[10px] bg-amber-500/10 text-amber-700 px-2.5 py-1 rounded-full font-bold">
+                  تحديث فوري وآمن 🔒
+                </span>
+              </div>
+
+              {categories.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Tags className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm font-bold">لا يوجد أي فئات حالياً.</p>
+                  <p className="text-xs text-slate-400 mt-1">يرجى إضافة فئة جديدة لتظهر في هذه القائمة.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {categories.map((cat) => {
+                    const count = products.filter(p => p.category === cat).length;
+                    return (
+                      <div
+                        key={cat}
+                        className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50 hover:border-amber-500/30 hover:bg-amber-500/[0.01] transition-all"
+                      >
+                        <div className="text-right space-y-1">
+                          <span className="text-sm font-extrabold text-slate-900">{cat}</span>
+                          <div className="text-[10px] text-zinc-500 font-bold flex items-center gap-1">
+                            <Package className="h-3 w-3 text-slate-400" />
+                            <span>عدد المنتجات: <strong className="text-amber-600">{count}</strong> منتج</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategoryName(cat);
+                              setEditCategoryNewValue(cat);
+                            }}
+                            title="تعديل اسم الفئة"
+                            className="p-2 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-100 transition shadow-sm cursor-pointer"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (count > 0) {
+                                if (!confirm(`تحذير: الفئة "${cat}" تحتوي على ${count} منتج(منتجات) مرتبطة بها. حذف هذه الفئة لن يحذف المنتجات ولكن قد يؤثر على فلترتها. هل تود الاستمرار بالحذف؟`)) {
+                                  return;
+                                }
+                              }
+                              await onDeleteCategory(cat);
+                              if (editingCategoryName === cat) {
+                                setEditingCategoryName(null);
+                              }
+                            }}
+                            title="حذف الفئة"
+                            className="p-2 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-red-600 hover:border-red-100 transition shadow-sm cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

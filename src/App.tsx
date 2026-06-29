@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import ProductDetailsModal from './components/ProductDetailsModal';
 import AuthModal from './components/AuthModal';
+import SettingsModal from './components/SettingsModal';
 import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 
 export default function App() {
@@ -69,6 +70,51 @@ export default function App() {
 
   const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
 
+  // --- Dynamic Categories State Engine ---
+  const [categories, setCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('king_store_categories');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn("Error parsing saved categories:", err);
+      }
+    }
+    // Extract unique categories from initial products as fallback
+    return Array.from(new Set(INITIAL_PRODUCTS.map((p) => p.category)));
+  });
+
+  // Synchronize categories with Firestore real-time listener
+  useEffect(() => {
+    try {
+      const q = query(collection(db, 'categories'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const list: string[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.name) {
+              list.push(data.name);
+            }
+          });
+          if (list.length > 0) {
+            setCategories(list);
+          }
+        }
+      }, (error) => {
+        console.warn("Firestore listening categories warning (falling back to localStorage):", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase categories sync not fully active. Fallback to localStorage.", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('king_store_categories', JSON.stringify(categories));
+  }, [categories]);
+
   // Synchronize notifications with Firestore real-time listener
   useEffect(() => {
     try {
@@ -93,7 +139,7 @@ export default function App() {
           return list;
         });
       }, (error) => {
-        console.error("Firestore listening error: ", error);
+        console.warn("Firestore listening warning (falling back to localStorage):", error);
       });
       return () => unsubscribe();
     } catch (e) {
@@ -122,9 +168,23 @@ export default function App() {
             let role = 'customer';
             let nameVal = fbUser.displayName || fbUser.email.split('@')[0];
             
-            if (userDoc.exists()) {
-              role = userDoc.data().role || 'customer';
-              nameVal = userDoc.data().name || nameVal;
+            if (fbUser.email.toLowerCase() === adminEmail.toLowerCase()) {
+              role = 'admin';
+              nameVal = fbUser.displayName || 'مدير النظام الملكي';
+              // Merge/force update role to admin in Firestore
+              const { setDoc } = await import('./lib/firebase');
+              await setDoc(userDocRef, {
+                id: fbUser.uid,
+                name: nameVal,
+                email: fbUser.email.toLowerCase(),
+                role: 'admin',
+                createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
+              }, { merge: true });
+            } else {
+              if (userDoc.exists()) {
+                role = userDoc.data().role || 'customer';
+                nameVal = userDoc.data().name || nameVal;
+              }
             }
             
             setCurrentUser({
@@ -135,7 +195,7 @@ export default function App() {
               role: role as 'admin' | 'customer'
             });
           } catch (err) {
-            console.error("Error fetching user data from Firestore during auth sync:", err);
+            console.warn("Error fetching user data from Firestore during auth sync:", err);
           }
         }
       } else {
@@ -174,7 +234,7 @@ export default function App() {
     try {
       await addDoc(collection(db, 'notifications'), newNotif);
     } catch (e) {
-      console.error("Error adding notification to Firestore, falling back to local storage:", e);
+      console.warn("Error adding notification to Firestore, falling back to local storage:", e);
       const localNotif: AppNotification = {
         id: `notif_${Date.now()}_${Math.random()}`,
         ...newNotif,
@@ -201,7 +261,7 @@ export default function App() {
         await updateDoc(docRef, { isRead: true });
       }
     } catch (e) {
-      console.error("Error marking all notifications as read in Firestore:", e);
+      console.warn("Error marking all notifications as read in Firestore:", e);
     }
   };
 
@@ -215,7 +275,7 @@ export default function App() {
       const docRef = doc(db, 'notifications', id);
       await updateDoc(docRef, { isRead: true });
     } catch (e) {
-      console.error("Error marking notification as read in Firestore:", e);
+      console.warn("Error marking notification as read in Firestore:", e);
     }
   };
 
@@ -227,7 +287,7 @@ export default function App() {
       const docRef = doc(db, 'notifications', id);
       await deleteDoc(docRef);
     } catch (e) {
-      console.error("Error deleting notification in Firestore:", e);
+      console.warn("Error deleting notification in Firestore:", e);
     }
   };
 
@@ -262,6 +322,7 @@ export default function App() {
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
 
 
   // --- Admin Invitation Detection Engine ---
@@ -422,6 +483,69 @@ export default function App() {
     }
   };
 
+  // --- Category Management Handlers ---
+  const handleAddCategory = async (categoryName: string) => {
+    const trimmed = categoryName.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
+      showToast('خطأ', 'هذه الفئة موجودة بالفعل.', 'warning');
+      return;
+    }
+    const updated = [...categories, trimmed];
+    setCategories(updated);
+
+    try {
+      const { setDoc, doc } = await import('./lib/firebase');
+      await setDoc(doc(db, 'categories', trimmed), { name: trimmed });
+      showToast('تمت الإضافة', `تم إضافة فئة "${trimmed}" بنجاح 🏷️`, 'success');
+    } catch (e) {
+      console.warn("Error saving category to Firestore (saved locally):", e);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryName: string) => {
+    if (!confirm(`هل أنت متأكد من حذف الفئة "${categoryName}"؟`)) {
+      return;
+    }
+    const updated = categories.filter((c) => c !== categoryName);
+    setCategories(updated);
+
+    try {
+      const { deleteDoc, doc } = await import('./lib/firebase');
+      await deleteDoc(doc(db, 'categories', categoryName));
+      showToast('تم الحذف', `تم حذف فئة "${categoryName}" بنجاح 🏷️`, 'success');
+    } catch (e) {
+      console.warn("Error deleting category from Firestore (deleted locally):", e);
+    }
+  };
+
+  const handleUpdateCategory = async (oldName: string, newName: string) => {
+    const trimmedNew = newName.trim();
+    if (!trimmedNew || oldName === trimmedNew) return;
+    if (categories.includes(trimmedNew)) {
+      showToast('خطأ', 'الاسم الجديد للفئة موجود بالفعل.', 'warning');
+      return;
+    }
+
+    const updated = categories.map((c) => (c === oldName ? trimmedNew : c));
+    setCategories(updated);
+
+    try {
+      const { setDoc, deleteDoc, doc } = await import('./lib/firebase');
+      await deleteDoc(doc(db, 'categories', oldName));
+      await setDoc(doc(db, 'categories', trimmedNew), { name: trimmedNew });
+      
+      // Update any products that used this category
+      setProducts((prev) =>
+        prev.map((p) => (p.category === oldName ? { ...p, category: trimmedNew } : p))
+      );
+      
+      showToast('تم التعديل', `تم تعديل الفئة إلى "${trimmedNew}" بنجاح 🏷️`, 'success');
+    } catch (e) {
+      console.warn("Error updating category in Firestore (updated locally):", e);
+    }
+  };
+
   const handleAddReview = (productId: string, review: ProductReview) => {
     setProducts((prev) =>
       prev.map((p) => {
@@ -519,7 +643,6 @@ export default function App() {
   const enabledGateways = gateways.filter((gw) => gw.isEnabled);
 
   // Filter products for storefront view
-  const categories = Array.from(new Set(products.map((p) => p.category)));
 
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
@@ -553,6 +676,7 @@ export default function App() {
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onLogout={handleLogoutUser}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
         notifications={notifications}
         onMarkAllAsRead={handleMarkAllNotificationsAsRead}
         onMarkAsRead={handleMarkNotificationAsRead}
@@ -577,6 +701,10 @@ export default function App() {
             onUpdateOrderStatus={handleUpdateOrderStatus}
             users={users}
             onDeleteUser={handleDeleteUser}
+            categories={categories}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onUpdateCategory={handleUpdateCategory}
           />
         ) : (
           
@@ -585,8 +713,8 @@ export default function App() {
             {/* Elegant Majestic Hero Banner */}
             <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
               <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
-              <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-amber-500/10 blur-3xl" />
-              <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-amber-500/5 blur-3xl" />
+              <div className="absolute -top-40 -right-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
+              <div className="absolute -bottom-40 -left-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, rgba(245, 158, 11, 0) 70%)' }} />
 
               <div className="relative mx-auto max-w-7xl px-4 sm:px-6 text-center space-y-4">
                 <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-400 border border-amber-500/20">
@@ -679,7 +807,7 @@ export default function App() {
             <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6" id="apk-download-section">
               <div className="relative overflow-hidden rounded-3xl border border-amber-500/10 bg-gradient-to-br from-slate-900 via-slate-950 to-zinc-900 p-6 sm:p-8 text-zinc-100 shadow-xl flex flex-col justify-between">
                 <div className="absolute inset-0 bg-gradient-to-l from-amber-500/5 via-transparent to-transparent pointer-events-none" />
-                <div className="absolute -top-12 -left-12 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl" />
+                <div className="absolute -top-12 -left-12 h-32 w-32 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
                 
                 <div className="space-y-4">
                   <div className="flex flex-col md:flex-row items-start gap-4 text-right">
@@ -889,6 +1017,19 @@ export default function App() {
         existingUsers={users}
         adminInviteEmail={activeAdminInvite?.email}
         onClearInvite={handleClearInvite}
+      />
+
+      {/* 6.5. User Account Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        currentUser={currentUser}
+        onUpdateUser={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          // Keep local users registry up-to-date
+          setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+        }}
+        showToast={showToast}
       />
 
       {/* 7. Mobile App Installation & Generation Guide Modal */}

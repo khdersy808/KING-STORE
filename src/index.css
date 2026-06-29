@@ -11,4 +11,30 @@ body {
   background-color: #050505;
   color: #e2e8f0;
   direction: rtl; /* Set default Arabic RTL layout */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* 👑 تفعيل التسريع العتادي وتأمين رندرة مستقرة خالية من الاهتزاز والتشويش البصري */
+*, *::before, *::after {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* تطبيق استقرار الرندرة على الصور والبطاقات والأزرار والعناصر التي تحتوي على حركات وتأثيرات حركية */
+img, 
+button, 
+a, 
+.card, 
+.stable-render,
+[class*="transition-"], 
+[class*="hover:"],
+[class*="animate-"] {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+}
+
