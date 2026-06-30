@@ -171,6 +171,11 @@ export default function AdminPanel({
     return saved ? JSON.parse(saved) : {};
   });
 
+  // Advanced Product Management States
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('all');
+  const [productTypeFilter, setProductTypeFilter] = useState('all');
+
   // Reset product form
   const resetProductForm = () => {
     setFormName('');
@@ -457,6 +462,17 @@ export default function AdminPanel({
 
   const physicalProductsCount = products.filter(p => p.type === 'physical').length;
   const digitalProductsCount = products.filter(p => p.type === 'digital').length;
+
+  // Real-time filtered products for search and filter experience
+  const filteredProducts = React.useMemo(() => {
+    return products.filter((p) => {
+      const matchesSearch = p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) || 
+                            p.description.toLowerCase().includes(productSearchQuery.toLowerCase());
+      const matchesCategory = productCategoryFilter === 'all' || p.category === productCategoryFilter;
+      const matchesType = productTypeFilter === 'all' || p.type === productTypeFilter;
+      return matchesSearch && matchesCategory && matchesType;
+    });
+  }, [products, productSearchQuery, productCategoryFilter, productTypeFilter]);
 
   // Generate last 7 days array of objects for the charts
   const chartData = React.useMemo(() => {
@@ -1168,16 +1184,87 @@ export default function AdminPanel({
           {/* Right Column: Products Table / List */}
           <div className="lg:col-span-2">
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-base font-bold text-slate-900">كل منتجات KING STORE</h3>
-                <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
-                  إجمالي الأصناف: {products.length}
-                </span>
+              <div className="p-5 border-b border-slate-100 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h3 className="text-base font-bold text-slate-900">كل منتجات KING STORE</h3>
+                  <div className="flex items-center gap-2">
+                    {productSearchQuery || productCategoryFilter !== 'all' || productTypeFilter !== 'all' ? (
+                      <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
+                        المعروضة: {filteredProducts.length} من {products.length}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
+                        إجمالي الأصناف: {products.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Real-time Search & Filtering Panel */}
+                <div className="flex flex-col md:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="ابحث باسم المنتج أو الوصف..."
+                      value={productSearchQuery}
+                      onChange={(e) => setProductSearchQuery(e.target.value)}
+                      className="w-full pr-10 pl-4 py-2 rounded-xl border border-slate-200 text-xs focus:border-amber-400 focus:outline-none focus:bg-slate-50/50 bg-slate-50 text-right font-medium"
+                    />
+                    {productSearchQuery && (
+                      <button
+                        onClick={() => setProductSearchQuery('')}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        مسح
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {/* Category Filter */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                      <Filter className="h-3 w-3 text-slate-400" />
+                      <span className="text-[10px] font-bold text-slate-500">التصنيف:</span>
+                      <select
+                        value={productCategoryFilter}
+                        onChange={(e) => setProductCategoryFilter(e.target.value)}
+                        className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">كل التصنيفات</option>
+                        {categories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Type Filter */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+                      <Filter className="h-3 w-3 text-slate-400" />
+                      <span className="text-[10px] font-bold text-slate-500">النوع:</span>
+                      <select
+                        value={productTypeFilter}
+                        onChange={(e) => setProductTypeFilter(e.target.value)}
+                        className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">كل الأنواع</option>
+                        <option value="physical">منتجات ملموسة</option>
+                        <option value="digital">منتجات رقمية</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {products.length === 0 ? (
                 <div className="p-10 text-center text-slate-400 text-sm">
                   لا يوجد منتجات لعرضها. أضف منتجاً جديداً الآن من اليسار!
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="p-10 text-center text-slate-400 text-sm space-y-2">
+                  <AlertCircle className="h-8 w-8 text-slate-300 mx-auto animate-bounce" />
+                  <p className="font-bold">عذراً، لم نجد أي منتجات تطابق بحثك الحالي!</p>
+                  <p className="text-xs text-slate-400">تأكد من مراجعة الكلمات المدخلة أو التصفيات المحددة.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1192,7 +1279,7 @@ export default function AdminPanel({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {products.map((p) => (
+                      {filteredProducts.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="p-4">
                             <div className="flex items-center gap-3">

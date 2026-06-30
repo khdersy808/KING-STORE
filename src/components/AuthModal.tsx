@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { X, Mail, Lock, User as UserIcon, Shield, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { X, Mail, Lock, User as UserIcon, Shield, CheckCircle2, AlertCircle, Eye, EyeOff, Check } from 'lucide-react';
 import { User } from '../types';
 import { 
   auth, 
@@ -18,13 +18,16 @@ import {
   setDoc,
   getDoc,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (user: User) => void;
+  onLogin: (user: User, rememberMe?: boolean) => void;
   onRegister: (newUser: User) => void;
   existingUsers: User[];
   adminInviteEmail?: string;
@@ -48,6 +51,7 @@ export default function AuthModal({
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [isAdminRole, setIsAdminRole] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -125,6 +129,9 @@ export default function AuthModal({
     if (isLogin) {
       // Login flow with Firebase Auth & Firestore
       try {
+        // Set persistence dynamically based on Remember Me checkbox
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+        
         let userCredential;
 
         try {
@@ -199,7 +206,7 @@ export default function AuthModal({
           role: role as 'admin' | 'customer'
         };
 
-        onLogin(foundUser);
+        onLogin(foundUser, rememberMe);
         setSuccessMsg(`أهلاً بك مجدداً، ${nameVal}! تم تسجيل الدخول بنجاح.`);
         
         setTimeout(() => {
@@ -296,6 +303,9 @@ export default function AuthModal({
     setSuccessMsg('');
     setIsLoading(true);
     try {
+      // Set persistence dynamically based on Remember Me checkbox
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const result = await signInWithPopup(auth, provider);
@@ -346,7 +356,7 @@ export default function AuthModal({
         role: role as 'admin' | 'customer'
       };
       
-      onLogin(loggedUser);
+      onLogin(loggedUser, rememberMe);
       setSuccessMsg(`أهلاً بك، ${nameVal}! تم تسجيل دخولك بنجاح عبر Google.`);
       setTimeout(() => {
         onClose();
@@ -565,6 +575,26 @@ export default function AuthModal({
               <div className="p-3 bg-emerald-950/40 border border-emerald-900/30 rounded-xl text-xs text-emerald-400 font-semibold flex items-start gap-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* Remember Me Checkbox (تذكرني) */}
+            {isLogin && (
+              <div className="flex items-center justify-start py-1">
+                <label className="flex items-center gap-2.5 cursor-pointer group select-none">
+                  <div className="relative flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <div className="h-5 w-5 rounded-lg border border-zinc-800 bg-zinc-950 transition-all peer-checked:border-amber-400 peer-checked:bg-amber-400/10 flex items-center justify-center group-hover:border-amber-400/60">
+                      <Check className={`h-3.5 w-3.5 text-amber-400 transition-transform duration-200 ${rememberMe ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`} />
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">تذكرني على هذا الجهاز</span>
+                </label>
               </div>
             )}
 

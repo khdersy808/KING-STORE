@@ -58,8 +58,12 @@ export default function App() {
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('king_store_current_user');
-    return saved ? JSON.parse(saved) : null;
+    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
+    if (rememberMe) {
+      const saved = localStorage.getItem('king_store_current_user');
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
   });
 
   // --- Notifications & Toasts State ---
@@ -392,7 +396,8 @@ export default function App() {
   }, [users]);
 
   useEffect(() => {
-    if (currentUser) {
+    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
+    if (currentUser && rememberMe) {
       localStorage.setItem('king_store_current_user', JSON.stringify(currentUser));
     } else {
       localStorage.removeItem('king_store_current_user');
@@ -444,7 +449,8 @@ export default function App() {
   };
 
   // --- Authentication Handlers ---
-  const handleLoginUser = (user: User) => {
+  const handleLoginUser = (user: User, rememberMe: boolean = true) => {
+    localStorage.setItem('king_store_remember_me', rememberMe ? 'true' : 'false');
     setCurrentUser(user);
   };
 
@@ -462,6 +468,7 @@ export default function App() {
     } catch (e) {
       console.error("Firebase Auth signout error:", e);
     }
+    localStorage.removeItem('king_store_remember_me');
     setCurrentUser(null);
     setIsAdminMode(false);
   };
