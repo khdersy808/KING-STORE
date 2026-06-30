@@ -107,6 +107,51 @@ export async function addProduct(productData: {
   }
 }
 
+export async function updateProduct(id: number, productData: {
+  name?: string;
+  description?: string;
+  price?: number;
+  type?: string;
+  category?: string;
+  imageUrl?: string;
+  stock?: number;
+  downloadUrl?: string;
+  licenseKeys?: string[];
+}) {
+  try {
+    const result = await db.update(products)
+      .set({
+        name: productData.name,
+        description: productData.description,
+        price: productData.price !== undefined ? Number(productData.price) : undefined,
+        type: productData.type,
+        category: productData.category,
+        imageUrl: productData.imageUrl,
+        stock: productData.stock !== undefined ? productData.stock : null,
+        downloadUrl: productData.downloadUrl !== undefined ? productData.downloadUrl : null,
+        licenseKeys: productData.licenseKeys !== undefined ? productData.licenseKeys : null,
+      })
+      .where(eq(products.id, id))
+      .returning();
+    return result[0];
+  } catch (error) {
+    console.error("Database update product failed:", error);
+    throw new Error(`Failed to update product with ID ${id}.`, { cause: error });
+  }
+}
+
+export async function deleteProduct(id: number) {
+  try {
+    const result = await db.delete(products)
+      .where(eq(products.id, id))
+      .returning();
+    return result[0];
+  } catch (error) {
+    console.error("Database delete product failed:", error);
+    throw new Error(`Failed to delete product with ID ${id}.`, { cause: error });
+  }
+}
+
 // --- Orders Helpers ---
 export async function createOrder(orderData: {
   customerUid?: string;

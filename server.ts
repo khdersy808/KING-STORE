@@ -6,6 +6,8 @@ import dotenv from "dotenv";
 import { 
   getProducts, 
   addProduct, 
+  updateProduct,
+  deleteProduct,
   getOrCreateUser, 
   getUserProfile, 
   createOrder, 
@@ -149,6 +151,56 @@ app.post("/api/products", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Update an existing product (admin feature)
+app.put("/api/products/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userEmail = req.user.email || "";
+    const adminEmail = 'khdersy808@gmail.com';
+    const profile = await getUserProfile(req.user.uid);
+    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
+    
+    if (role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح لك بتعديل منتجات. هذه الصلاحية للمسؤولين فقط." });
+    }
+
+    const productId = Number(req.params.id);
+    if (isNaN(productId)) {
+      return res.status(400).json({ error: "معرف المنتج غير صالح." });
+    }
+
+    const updated = await updateProduct(productId, req.body);
+    res.json({ success: true, product: updated });
+  } catch (error: any) {
+    console.error("Update product API error:", error);
+    res.status(500).json({ error: error.message || "فشل تعديل المنتج." });
+  }
+});
+
+// Delete a product (admin feature)
+app.delete("/api/products/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userEmail = req.user.email || "";
+    const adminEmail = 'khdersy808@gmail.com';
+    const profile = await getUserProfile(req.user.uid);
+    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
+    
+    if (role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح لك بحذف منتجات. هذه الصلاحية للمسؤولين فقط." });
+    }
+
+    const productId = Number(req.params.id);
+    if (isNaN(productId)) {
+      return res.status(400).json({ error: "معرف المنتج غير صالح." });
+    }
+
+    const deleted = await deleteProduct(productId);
+    res.json({ success: true, product: deleted });
+  } catch (error: any) {
+    console.error("Delete product API error:", error);
+    res.status(500).json({ error: error.message || "فشل حذف المنتج." });
+  }
+});
+
 // Place an order (public)
 app.post("/api/orders", async (req, res) => {
   try {
@@ -241,37 +293,60 @@ User product description: "${prompt}"`,
 
     let imageUrl = "";
     try {
-      // Generate image using gemini-2.5-flash-image
-      const response = await generateContentWithFallbackAndRetry({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              text: englishPrompt,
-            },
-          ],
-        },
+      // 1. Try modern official Imagen model using ai.models.generateImages
+      console.log("[Gemini SDK] Trying Imagen 3 (imagen-3.0-generate-002) for high-quality image generation...");
+      const imagenResponse = await ai.models.generateImages({
+        model: 'imagen-3.0-generate-002',
+        prompt: englishPrompt,
         config: {
-          imageConfig: {
-            aspectRatio: aspectRatio, // "1:1", "3:4", "4:3", "9:16", "16:9"
-            imageSize: "1K"
-          }
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: aspectRatio, // "1:1", "3:4", "4:3", "9:16", "16:9"
         }
-      }, ['gemini-3.1-flash-image']);
-
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            const base64EncodeString = part.inlineData.data;
-            imageUrl = `data:image/png;base64,${base64EncodeString}`;
-            break;
-          }
-        }
+      });
+      if (imagenResponse.generatedImages?.[0]?.image?.imageBytes) {
+        const base64EncodeString = imagenResponse.generatedImages[0].image.imageBytes;
+        imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+        console.log("[Gemini SDK] Imagen 3 generated image successfully.");
+      } else {
+        throw new Error("Imagen response did not contain imageBytes");
       }
-    } catch (imageErr) {
-      console.warn("AI Image Generation failed or experienced high demand. Using high-quality Unsplash product placeholder instead.", imageErr);
+    } catch (imagenErr) {
+      console.warn("[Gemini SDK] Imagen 3 failed or not enabled on this API key. Trying fallback model gemini-2.5-flash-image...", imagenErr);
       
-      // Determine best matching placeholder based on prompt keywords (Arabic or English)
+      try {
+        // 2. Try gemini-2.5-flash-image
+        const response = await generateContentWithFallbackAndRetry({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+            parts: [{ text: englishPrompt }]
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio,
+              imageSize: "1K"
+            }
+          }
+        }, ['gemini-3.1-flash-image']);
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              const base64EncodeString = part.inlineData.data;
+              imageUrl = `data:image/png;base64,${base64EncodeString}`;
+              console.log("[Gemini SDK] gemini-2.5-flash-image generated image successfully.");
+              break;
+            }
+          }
+        }
+      } catch (geminiErr) {
+        console.warn("[Gemini SDK] Fallback gemini-2.5-flash-image failed as well. Handled gracefully.", geminiErr);
+      }
+    }
+
+    // 3. Fallback to high-quality Unsplash placeholder if both AI models failed or returned empty
+    if (!imageUrl) {
+      console.log("[Gemini SDK] All AI image models failed or returned empty. Applying high-quality Unsplash fallback.");
       const lowercasePrompt = (prompt || "").toLowerCase();
       const fallbacks = [
         { keys: ['ساعة', 'watch', 'ساعات', 'ساعه'], url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1000&q=80' },

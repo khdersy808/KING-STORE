@@ -155,6 +155,60 @@ export default function App() {
     localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
+  // Load products from backend Cloud SQL database on mount
+  useEffect(() => {
+    const loadDbProducts = async () => {
+      try {
+        const response = await fetch('/api/products');
+        if (response.ok) {
+          const dbProducts = await response.json();
+          if (Array.isArray(dbProducts) && dbProducts.length > 0) {
+            const mapped = dbProducts.map((p: any) => ({
+              ...p,
+              id: String(p.id)
+            }));
+            setProducts(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch products from backend database:", err);
+      }
+    };
+    loadDbProducts();
+  }, []);
+
+  // Load orders from backend Cloud SQL database when user logs in or auth changes
+  useEffect(() => {
+    const loadDbOrders = async () => {
+      if (!currentUser) return;
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch('/api/orders', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const dbOrders = await response.json();
+          if (Array.isArray(dbOrders)) {
+            const mapped = dbOrders.map((o: any) => ({
+              ...o,
+              id: String(o.id),
+              items: Array.isArray(o.items) ? o.items.map((item: any) => ({
+                ...item,
+                productId: String(item.productId)
+              })) : []
+            }));
+            setOrders(mapped);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch orders from backend database:", err);
+      }
+    };
+    loadDbOrders();
+  }, [currentUser]);
+
   // Synchronize authentication state with Firebase in real-time
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
@@ -474,19 +528,135 @@ export default function App() {
   };
 
   // --- Product Management Handlers ---
-  const handleAddProduct = (newProduct: Product) => {
+  const handleAddProduct = async (newProduct: Product) => {
+    // Optimistic local update
     setProducts((prev) => [newProduct, ...prev]);
+
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) {
+        showToast('تنبيه', 'يرجى تسجيل الدخول لحفظ المنتج في قاعدة البيانات.', 'info');
+        return;
+      }
+
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: newProduct.name,
+          description: newProduct.description,
+          price: Number(newProduct.price),
+          type: newProduct.type,
+          category: newProduct.category,
+          imageUrl: newProduct.imageUrl,
+          stock: newProduct.stock,
+          downloadUrl: newProduct.downloadUrl,
+          licenseKeys: newProduct.licenseKeys,
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.product) {
+          const dbProd = {
+            ...data.product,
+            id: String(data.product.id)
+          };
+          // Replace the optimistic product with the actual DB product containing the real ID
+          setProducts((prev) => 
+            prev.map((p) => (p.id === newProduct.id ? dbProd : p))
+          );
+          showToast('نجاح', `تم إضافة منتج "${newProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
+        }
+      } else {
+        const data = await res.json();
+        showToast('فشل المزامنة', data.error || 'فشل حفظ المنتج في قاعدة البيانات.', 'warning');
+      }
+    } catch (err) {
+      console.warn("Failed to save added product to backend Cloud SQL:", err);
+    }
   };
 
-  const handleUpdateProduct = (updatedProduct: Product) => {
+  const handleUpdateProduct = async (updatedProduct: Product) => {
+    // Optimistic local update
     setProducts((prev) =>
       prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
     );
+
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+
+      const numericId = Number(updatedProduct.id);
+      if (isNaN(numericId)) {
+        // If it's a temporary string ID and not in DB yet, we skip DB call
+        return;
+      }
+
+      const res = await fetch(`/api/products/${numericId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: updatedProduct.name,
+          description: updatedProduct.description,
+          price: Number(updatedProduct.price),
+          type: updatedProduct.type,
+          category: updatedProduct.category,
+          imageUrl: updatedProduct.imageUrl,
+          stock: updatedProduct.stock,
+          downloadUrl: updatedProduct.downloadUrl,
+          licenseKeys: updatedProduct.licenseKeys,
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.product) {
+          showToast('نجاح', `تم تحديث منتج "${updatedProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
+        }
+      } else {
+        const data = await res.json();
+        showToast('خطأ', data.error || 'فشل تحديث المنتج في قاعدة البيانات.', 'warning');
+      }
+    } catch (err) {
+      console.warn("Failed to update product in backend Cloud SQL:", err);
+    }
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     if (confirm('هل أنت متأكد من حذف هذا المنتج نهائياً من KING STORE؟')) {
+      // Optimistic local update
       setProducts((prev) => prev.filter((p) => p.id !== productId));
+
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+
+        const numericId = Number(productId);
+        if (isNaN(numericId)) return;
+
+        const res = await fetch(`/api/products/${numericId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (res.ok) {
+          showToast('تم الحذف', 'تم حذف المنتج من قاعدة البيانات بنجاح 🗑️', 'success');
+        } else {
+          const data = await res.json();
+          showToast('خطأ', data.error || 'فشل حذف المنتج من قاعدة البيانات.', 'warning');
+        }
+      } catch (err) {
+        console.warn("Failed to delete product from backend Cloud SQL:", err);
+      }
     }
   };
 
