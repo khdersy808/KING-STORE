@@ -136,6 +136,13 @@ export default function PaymentReceipt({ order, gateway, onPrint }: PaymentRecei
               <span className="font-black text-amber-400 select-all">{senderName}</span>
             </div>
 
+            {order.paymentDetails?.phoneNumber && (
+              <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                <span className="text-slate-400">رقم الهاتف المشترك بالخدمة</span>
+                <span className="font-extrabold text-white font-mono select-all text-[11px]">{order.paymentDetails.phoneNumber}</span>
+              </div>
+            )}
+
             {/* Recipient Store */}
             <div className="flex items-center justify-between py-1 border-b border-white/[0.03]">
               <span className="text-slate-400">المستلم المالي</span>

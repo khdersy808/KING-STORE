@@ -56,11 +56,15 @@ export default function Navbar({
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md">
+    <header className={`sticky top-0 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all ${isMobileMenuOpen ? 'z-[9999]' : 'z-40'}`}>
       <div className="mx-auto flex max-w-7xl h-18 items-center justify-between px-4 sm:px-6">
         
         {/* Right side: App Branding / Logo */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div 
+          onClick={() => window.location.reload()} 
+          className="flex items-center gap-3 shrink-0 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
+          title="تحديث المتجر"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-lg shadow-amber-500/10 animate-pulse">
             <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
           </div>
@@ -308,29 +312,17 @@ export default function Navbar({
           {/* User Profile / Auth State (DESKTOP VERSION) */}
           {currentUser ? (
             <div className="hidden md:flex items-center gap-2 lg:gap-3">
-              <div className="hidden lg:flex flex-col items-end text-right shrink-0">
-                <span className="text-xs font-bold text-zinc-100">{currentUser.name}</span>
-                <span className="text-[9px] text-amber-500 font-bold uppercase tracking-wider">
-                  {currentUser.role === 'admin' ? 'مدير النظام' : 'عضو ملكي'}
+              <button
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-3.5 py-2 text-xs font-bold transition-all shadow-md shadow-amber-500/5 cursor-pointer"
+                id="navbar-profile-drawer-btn"
+                title="افتح قائمة التحكم الفاخرة 👑"
+              >
+                <Crown className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                <span className="font-bold text-zinc-100">{currentUser.name}</span>
+                <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
+                  {currentUser.role === 'admin' ? 'المدير 👑' : 'الملكي 👑'}
                 </span>
-              </div>
-
-              <button
-                onClick={onOpenSettings}
-                className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 hover:text-amber-400 text-zinc-400 transition-all cursor-pointer animate-pulse"
-                title="إعدادات الحساب (الضبط)"
-                id="navbar-settings-btn"
-              >
-                <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </button>
-              
-              <button
-                onClick={onLogout}
-                className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-red-500/40 hover:text-red-400 text-zinc-400 transition-all cursor-pointer"
-                title="تسجيل الخروج"
-                id="navbar-logout-btn"
-              >
-                <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </button>
             </div>
           ) : (
@@ -386,49 +378,68 @@ export default function Navbar({
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer Overlay */}
+      {/* Royal Navigation Drawer Overlay */}
       {isMobileMenuOpen && currentUser && (
-        <div className="fixed inset-0 z-50 flex justify-start md:hidden" dir="rtl">
-          {/* Backdrop overlay with fade animation */}
+        <div className="fixed inset-0 z-[99999]" aria-modal="true" role="dialog" dir="rtl">
+          {/* Backdrop overlay */}
           <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300 ease-in-out" 
+            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md transition-opacity duration-300 ease-in-out cursor-pointer z-40" 
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
-          {/* Drawer Content with slide-in animation */}
-          <div className="relative w-72 max-w-[85vw] bg-[#0c0c0c] border-l border-zinc-900 p-5 flex flex-col justify-between shadow-2xl h-full transition-transform duration-300 ease-out transform translate-x-0 z-10">
-            <div className="space-y-6">
+          {/* Sliding container with fixed positioning and guaranteed solid background color */}
+          <div 
+            className="fixed top-0 right-0 z-50 w-80 bg-[#0F172A] border-l border-amber-500/20 p-6 flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] h-screen overflow-y-auto"
+            style={{ backgroundColor: '#0F172A' }}
+          >
+            
+            {/* Upper Content wrapper */}
+            <div className="flex flex-col gap-6">
               
               {/* Drawer Header */}
-              <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
+              <div className="flex items-center justify-between border-b border-amber-500/10 pb-4">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-md shadow-amber-500/10 animate-pulse">
-                    <Crown className="h-4 w-4 text-slate-950 stroke-[2.5]" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_15px_rgba(245,158,11,0.3)] ring-1 ring-amber-400/30 animate-pulse">
+                    <Crown className="h-5 w-5 text-slate-950 stroke-[2.5]" />
                   </div>
-                  <span className="text-xs font-black text-white tracking-wide">قائمة التحكم الفاخرة</span>
+                  <span className="text-sm font-black text-white tracking-wide">قائمة التحكم الفاخرة</span>
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900/60 hover:bg-slate-900/95 text-zinc-300 hover:text-white transition-all cursor-pointer border border-amber-500/15"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* User Identity Card */}
-              <div className="rounded-2xl bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 p-4 border border-zinc-800/80 space-y-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  <span className="text-[9px] text-amber-400 font-extrabold tracking-wider uppercase">
-                    {currentUser.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
-                  </span>
+              {/* 1. Header Section: User Identity Card (Royal Admin Profile Card) */}
+              <div className="rounded-2xl bg-slate-950/80 p-5 border border-amber-500/20 space-y-3.5 shadow-[0_4_25px_rgba(245,158,11,0.05)]">
+                <div className="flex items-center gap-3">
+                  {/* Glowing Crown Icon */}
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] ring-2 ring-amber-400/40">
+                    <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 min-w-0 text-right">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="text-xs text-amber-400 font-extrabold tracking-wider uppercase flex items-center gap-1">
+                        {currentUser.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
+                        <Crown className="h-3 w-3 text-amber-400 fill-amber-400" />
+                      </span>
+                    </div>
+                    <h4 className="text-base font-black text-white truncate">{currentUser.name}</h4>
+                  </div>
                 </div>
-                <h4 className="text-sm font-black text-white">{currentUser.name}</h4>
-                <p className="text-[10px] text-zinc-400 truncate">{currentUser.email}</p>
+                <div className="pt-2.5 border-t border-amber-500/10">
+                  <p className="text-xs text-white/90 select-all font-mono truncate bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-amber-500/5">
+                    <span className="text-amber-400 font-sans font-bold ml-1.5">البريد الإلكتروني:</span> 
+                    {currentUser.email}
+                  </p>
+                </div>
               </div>
 
-              {/* Navigation Items / Menu Buttons */}
-              <div className="space-y-3 pt-2">
+              {/* 2. Navigation Links: Middle Section */}
+              <div className="flex flex-col gap-4 pt-2">
                 
                 {/* Admin Mode Toggle (inside menu, only for admins) */}
                 {currentUser.role === 'admin' && (
@@ -437,15 +448,21 @@ export default function Navbar({
                       setIsAdminMode(!isAdminMode);
                       setIsMobileMenuOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between rounded-xl p-3.5 text-xs font-black transition-all border cursor-pointer ${
+                    className={`w-full flex items-center justify-between rounded-xl p-4 text-xs font-black transition-all duration-300 border cursor-pointer border-r-4 ${
                       isAdminMode
-                        ? 'bg-amber-500 text-slate-950 border-amber-600 font-black shadow-lg shadow-amber-500/10'
-                        : 'bg-zinc-900/50 text-amber-400 border-amber-500/20 hover:bg-zinc-900'
+                        ? 'bg-gradient-to-l from-amber-500/10 to-transparent border-amber-500/30 border-r-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.05)]'
+                        : 'bg-slate-900/50 text-white border-amber-500/10 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      {isAdminMode ? <Eye className="h-4.5 w-4.5" /> : <Settings className="h-4.5 w-4.5" />}
-                      <span>{isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}</span>
+                    <div className="flex items-center gap-3">
+                      {isAdminMode ? (
+                        <Eye className="h-5 w-5 text-amber-400" />
+                      ) : (
+                        <Settings className="h-5 w-5 text-amber-400" />
+                      )}
+                      <span className="text-white text-sm font-bold">
+                        {isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}
+                      </span>
                     </div>
                   </button>
                 )}
@@ -456,26 +473,28 @@ export default function Navbar({
                     onOpenSettings();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 p-3.5 text-xs font-extrabold text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-900 transition-all cursor-pointer"
+                  className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
                 >
-                  <Settings className="h-4.5 w-4.5 text-zinc-400" />
-                  <span>إعدادات الحساب والضبط ⚙️</span>
+                  <Settings className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-white text-sm font-bold">إعدادات الحساب والضبط ⚙️</span>
                 </button>
 
               </div>
             </div>
 
-            {/* Logout button at bottom of drawer */}
-            <div className="border-t border-zinc-900 pt-4">
+            {/* 3. Footer Section: Logout button at bottom of drawer */}
+            <div className="border-t border-amber-500/10 pt-5">
               <button
                 onClick={() => {
                   onLogout();
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-red-600/10 border border-red-500/20 text-red-400 py-3 text-xs font-black hover:bg-red-600/20 active:scale-98 transition-all cursor-pointer"
+                className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-rose-950/30 border border-rose-500/30 hover:border-amber-500/30 hover:bg-rose-950/50 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer group shadow-[0_4_15px_rgba(244,63,94,0.05)]"
               >
-                <LogOut className="h-4 w-4" />
-                <span>تسجيل الخروج الآمن 🚪</span>
+                <LogOut className="h-4.5 w-4.5 text-rose-400 group-hover:text-amber-400 transition-colors" />
+                <span className="text-white text-sm font-extrabold flex items-center gap-1.5">
+                  تسجيل الخروج الآمن 🚪
+                </span>
               </button>
             </div>
 

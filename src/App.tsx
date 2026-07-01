@@ -38,6 +38,46 @@ import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSn
 
 export default function App() {
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
+
+  // --- Pull-to-Refresh State System for Mobile ---
+  const [startY, setStartY] = useState<number>(0);
+  const [pullDistance, setPullDistance] = useState<number>(0);
+  const [isPulling, setIsPulling] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (window.scrollY === 0 && !isRefreshing) {
+      setStartY(e.touches[0].clientY);
+      setIsPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isPulling || isRefreshing) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+    if (diff > 0) {
+      // Tension factor 0.35 with a limit of 100px
+      const distance = Math.min(diff * 0.35, 100);
+      setPullDistance(distance);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isPulling) return;
+    setIsPulling(false);
+    if (pullDistance >= 80) {
+      setIsRefreshing(true);
+      setPullDistance(80);
+      // Brief delay then reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 700);
+    } else {
+      setPullDistance(0);
+    }
+  };
+
   // --- LocalStorage Persistence Engine ---
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('king_store_products');
@@ -934,8 +974,33 @@ export default function App() {
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800" dir="rtl">
+    <div 
+      className="min-h-screen bg-slate-50 flex flex-col text-slate-800 relative transition-transform duration-100 ease-out" 
+      dir="rtl"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={pullDistance > 0 ? { transform: `translateY(${pullDistance}px)` } : undefined}
+    >
       
+      {/* Pull-to-Refresh Royal Loader Spinner */}
+      {(pullDistance > 0 || isRefreshing) && (
+        <div 
+          className="fixed top-4 left-0 right-0 z-[999999] flex justify-center pointer-events-none transition-all duration-150"
+          style={{ 
+            transform: `translateY(${Math.min(pullDistance - 30, 40)}px)`,
+            opacity: Math.min(pullDistance / 50, 1) 
+          }}
+        >
+          <div className="bg-[#0F172A] border border-amber-500/30 shadow-[0_4px_30px_rgba(245,158,11,0.25)] rounded-full px-5 py-2.5 flex items-center gap-3 text-amber-400">
+            <div className={`h-4 w-4 rounded-full border-2 border-amber-500/20 border-t-amber-400 ${isRefreshing || pullDistance >= 80 ? 'animate-spin' : ''}`} />
+            <span className="text-[11px] font-black tracking-wide text-white font-sans">
+              {isRefreshing ? 'جاري تحديث القصر الملكي...' : pullDistance >= 80 ? 'افلت للتحديث الملكي الفوري ⚡' : 'اسحب لتحديث المتجر 👑'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. Navigation Bar */}
       <Navbar
         isAdminMode={isAdminMode}

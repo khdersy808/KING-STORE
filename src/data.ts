@@ -179,6 +179,32 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
     ]
   },
   {
+    id: 'syriatel_cash',
+    name: 'سيريتل كاش (Syriatel Cash)',
+    iconName: 'Smartphone',
+    isEnabled: true,
+    instructions: 'التحويل من حساب إلى حساب مجاني تماماً وبدون أي رسوم إضافية. يرجى تحويل قيمة الطلب مباشرة إلى رقم سيريتل كاش الموضح أدناه، ثم ملء البيانات وإرفاق الإيصال لتأكيد الدفع.',
+    accountIdentifier: '0987654321',
+    fields: [
+      { key: 'sender_name', label: 'الاسم الكامل للمرسل (الاسم الثلاثي للزبون)', placeholder: 'اكتب اسمك الثلاثي كما هو في حساب الدفع', value: '' },
+      { key: 'phone_number', label: 'رقم الهاتف المشترك بخدمة سيريتل كاش', placeholder: '09xxxxxxxx', value: '' },
+      { key: 'txn_id', label: 'معرف العملية / رقم الحوالة', placeholder: 'رقم العملية المستورد من تطبيق أقرب إليك', value: '' }
+    ]
+  },
+  {
+    id: 'mtn_cash',
+    name: 'إم تي إن كاش (MTN Cash)',
+    iconName: 'Smartphone',
+    isEnabled: true,
+    instructions: 'التحويل من حساب إلى حساب مجاني تماماً وبدون أي رسوم إضافية. يرجى تحويل قيمة الطلب مباشرة إلى رقم MTN Cash الموضح أدناه، ثم ملء البيانات وإرفاق الإيصال لتأكيد الدفع.',
+    accountIdentifier: '0998765432',
+    fields: [
+      { key: 'sender_name', label: 'الاسم الكامل للمرسل (الاسم الثلاثي للزبون)', placeholder: 'اكتب اسمك الثلاثي كما هو في حساب الدفع', value: '' },
+      { key: 'phone_number', label: 'رقم الهاتف المشترك بخدمة MTN Cash', placeholder: '09xxxxxxxx', value: '' },
+      { key: 'txn_id', label: 'معرف العملية / رقم الحوالة', placeholder: 'رقم العملية المستورد من تطبيق MTN', value: '' }
+    ]
+  },
+  {
     id: 'cash_on_delivery',
     name: 'الدفع عند الاستلام (COD)',
     iconName: 'Truck',
