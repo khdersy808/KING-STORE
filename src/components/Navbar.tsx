@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu } from 'lucide-react';
+import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck } from 'lucide-react';
 import { User, AppNotification } from '../types';
 
 interface NavbarProps {
@@ -22,6 +22,8 @@ interface NavbarProps {
   onMarkAllAsRead: () => void;
   onMarkAsRead: (id: string) => void;
   onDeleteNotification: (id: string) => void;
+  activeCustomerView?: 'store' | 'tracking';
+  setActiveCustomerView?: (view: 'store' | 'tracking') => void;
 }
 
 export default function Navbar({
@@ -39,6 +41,8 @@ export default function Navbar({
   onMarkAllAsRead,
   onMarkAsRead,
   onDeleteNotification,
+  activeCustomerView = 'store',
+  setActiveCustomerView,
 }: NavbarProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -70,6 +74,32 @@ export default function Navbar({
           </div>
         </div>
 
+        {/* Center-Right Navigation Tabs */}
+        {!isAdminMode && setActiveCustomerView && (
+          <div className="hidden md:flex items-center gap-1 bg-zinc-900/60 p-1 rounded-xl border border-zinc-800">
+            <button
+              onClick={() => setActiveCustomerView('store')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeCustomerView === 'store'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/10'
+                  : 'text-zinc-400 hover:text-amber-300'
+              }`}
+            >
+              المتجر الفاخر 🛍️
+            </button>
+            <button
+              onClick={() => setActiveCustomerView('tracking')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeCustomerView === 'tracking'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/10'
+                  : 'text-zinc-400 hover:text-amber-300'
+              }`}
+            >
+              تتبع طلبك الملكي 🔍
+            </button>
+          </div>
+        )}
+
         {/* Center: Search input (hidden when in admin mode) */}
         {!isAdminMode ? (
           <div className="hidden md:flex relative max-w-md w-full mx-8">
@@ -79,7 +109,7 @@ export default function Navbar({
             <input
               type="text"
               placeholder="ابحث عن هاتف، بطاقة ألعاب، كورس، أو سترة..."
-              value={searchQuery}
+              value={searchQuery || ""}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-full border border-zinc-800 bg-[#121212] py-2 pr-10 pl-4 text-sm text-zinc-100 placeholder-zinc-500 transition-colors focus:border-amber-400 focus:bg-[#151515] focus:outline-none focus:ring-2 focus:ring-amber-400/10"
             />
@@ -100,7 +130,7 @@ export default function Navbar({
               <input
                 type="text"
                 placeholder="بحث..."
-                value={searchQuery}
+                value={searchQuery || ""}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-20 xs:w-28 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
               />
@@ -240,6 +270,22 @@ export default function Navbar({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Mobile Track Order Button */}
+          {!isAdminMode && (
+            <button
+              onClick={() => setActiveCustomerView?.(activeCustomerView === 'tracking' ? 'store' : 'tracking')}
+              className={`flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border transition-all cursor-pointer ${
+                activeCustomerView === 'tracking'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold'
+                  : 'border-zinc-800 text-zinc-300 hover:text-amber-400'
+              }`}
+              title="تتبع طلبك الملكي"
+              id="mobile-track-btn"
+            >
+              <Truck className="h-4 w-4" />
+            </button>
           )}
 
           {/* Cart Icon (only if not admin mode) */}

@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { CartItem, PaymentGateway, Order, OrderItem, Product, User } from '../types';
+import PaymentReceipt from './PaymentReceipt';
 import {
   X,
   Minus,
@@ -60,9 +61,14 @@ export default function Cart({
   const [shippingAddress, setShippingAddress] = useState('');
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
   const [gatewayFieldValues, setGatewayFieldValues] = useState<Record<string, string>>({});
+  const [senderName, setSenderName] = useState('');
+  const [transactionId, setTransactionId] = useState('');
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState('');
+  const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
+  const [receiptFileName, setReceiptFileName] = useState<string>('');
+  const [zoomedQrUrl, setZoomedQrUrl] = useState<string | null>(null);
 
   // Pre-populate user details if logged in
   React.useEffect(() => {
@@ -101,6 +107,25 @@ export default function Cart({
     setGatewayFieldValues(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleReceiptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      setCheckoutError('حجم الصورة كبير جداً. الحد الأقصى 2 ميجابايت.');
+      return;
+    }
+    
+    setReceiptFileName(file.name);
+    setCheckoutError('');
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setReceiptBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Process checkout submission
   const handleSubmitCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,9 +148,17 @@ export default function Cart({
     // Verify gateway fields
     const selectedGateway = applicableGateways.find(gw => gw.id === selectedGatewayId);
     if (selectedGateway) {
-      for (const field of selectedGateway.fields) {
-        if (!gatewayFieldValues[field.key]?.trim()) {
-          setCheckoutError(`يرجى ملء حقل (${field.label}) لتأكيد الدفع.`);
+      if (selectedGateway.id !== 'cash_on_delivery') {
+        if (!senderName.trim()) {
+          setCheckoutError('يرجى كتابة اسم المرسل الكامل لتأكيد الدفع.');
+          return;
+        }
+        if (!transactionId.trim()) {
+          setCheckoutError('يرجى كتابة معرف العملية / رقم الحوالة لتأكيد الدفع.');
+          return;
+        }
+        if (!receiptBase64) {
+          setCheckoutError('يرجى رفع لقطة شاشة لإيصال التحويل لإتمام الطلب.');
           return;
         }
       }
@@ -149,9 +182,17 @@ export default function Cart({
       items: orderItems,
       totalAmount,
       paymentMethodId: selectedGatewayId,
-      paymentDetails: gatewayFieldValues,
-      status: selectedGatewayId === 'cash_on_delivery' ? 'pending' : 'completed', // Digital/Online cards are immediately completed, COD is pending
-      date: new Date().toISOString()
+      paymentDetails: {
+        ...gatewayFieldValues,
+        senderName,
+        transactionId,
+        gatewayName: selectedGateway?.name || selectedGatewayId
+      },
+      receiptUrl: receiptBase64 || undefined,
+      status: 'pending', // All new orders are pending verification by Admin
+      date: new Date().toISOString(),
+      senderName: selectedGatewayId !== 'cash_on_delivery' ? senderName : undefined,
+      transactionId: selectedGatewayId !== 'cash_on_delivery' ? transactionId : undefined
     };
 
     setCreatedOrder(newOrder);
@@ -166,7 +207,10 @@ export default function Cart({
     setTimeout(() => setCopiedKeyId(null), 2000);
   };
 
-  const getGatewayIcon = (iconName: string) => {
+  const getGatewayIcon = (iconName: string, customIconUrl?: string) => {
+    if (customIconUrl) {
+      return <img src={customIconUrl} alt="أيقونة البوابة" className="h-5 w-5 object-contain rounded bg-white p-0.5 border" referrerPolicy="no-referrer" />;
+    }
     switch (iconName) {
       case 'CreditCard': return <CreditCard className="h-5 w-5" />;
       case 'Smartphone': return <Smartphone className="h-5 w-5" />;
@@ -320,7 +364,7 @@ export default function Cart({
                       type="text"
                       required
                       placeholder="مثال: محمد أحمد العتيبي"
-                      value={customerName}
+                      value={customerName || ""}
                       onChange={(e) => setCustomerName(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none"
                     />
@@ -333,7 +377,7 @@ export default function Cart({
                         type="email"
                         required
                         placeholder="ضروري لإرسال المنتجات الرقمية"
-                        value={customerEmail}
+                        value={customerEmail || ""}
                         onChange={(e) => setCustomerEmail(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none"
                       />
@@ -344,7 +388,7 @@ export default function Cart({
                         type="tel"
                         required
                         placeholder="+9665xxxxxxxx"
-                        value={customerPhone}
+                        value={customerPhone || ""}
                         onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none"
                       />
@@ -365,7 +409,7 @@ export default function Cart({
                         required
                         rows={2}
                         placeholder="الدولة، المدينة، اسم الحي، الشارع، رقم المنزل بالتفصيل لضمان سرعة التوصيل"
-                        value={shippingAddress}
+                        value={shippingAddress || ""}
                         onChange={(e) => setShippingAddress(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none resize-none"
                       />
@@ -405,7 +449,7 @@ export default function Cart({
                                 className="h-4 w-4 text-amber-500 focus:ring-amber-500"
                               />
                               <div className="flex items-center gap-2">
-                                <span className="text-slate-700">{getGatewayIcon(gw.iconName)}</span>
+                                <span className="text-slate-700">{getGatewayIcon(gw.iconName, gw.customIconUrl)}</span>
                                 <span className="text-xs font-bold text-slate-900">{gw.name}</span>
                               </div>
                             </div>
@@ -418,21 +462,98 @@ export default function Cart({
                                 💡 {gw.instructions}
                               </p>
 
-                              {gw.fields.map((field) => (
-                                <div key={field.key}>
-                                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                                    {field.label} *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    placeholder={field.placeholder}
-                                    value={gatewayFieldValues[field.key] || ''}
-                                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                                    className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs focus:border-amber-400 focus:outline-none"
-                                  />
+                              {gw.accountIdentifier && (
+                                <div className="flex items-center justify-between bg-white border border-amber-200 rounded-lg p-2.5">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] text-slate-500 font-semibold mb-0.5">رقم الحساب / المعرّف</span>
+                                    <span className="text-xs font-bold text-slate-900 font-mono tracking-wider">{gw.accountIdentifier}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(gw.accountIdentifier || '', `acc-${gw.id}`)}
+                                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-md text-[10px] font-bold transition-colors flex items-center gap-1"
+                                  >
+                                    {copiedKeyId === `acc-${gw.id}` ? (
+                                      <>
+                                        <CheckCircle2 className="h-3 w-3" /> تم النسخ!
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="h-3 w-3" /> نسخ
+                                      </>
+                                    )}
+                                  </button>
                                 </div>
-                              ))}
+                              )}
+
+                              {gw.qrCodeUrl && (
+                                <div className="mt-2 flex flex-col items-center justify-center">
+                                  <span className="text-[10px] text-slate-500 mb-1">اضغط على رمز الـ QR لتكبيره بأعلى دقة ملوكية 👑</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setZoomedQrUrl(gw.qrCodeUrl || null)}
+                                    className="block border-2 border-amber-200 hover:border-amber-400 rounded-xl bg-white p-1.5 shadow-sm transition-all hover:scale-105"
+                                    title="اضغط للتكبير بأعلى دقة ملوكية"
+                                  >
+                                    <img src={gw.qrCodeUrl} alt="رمز الدفع السريع" className="w-32 h-32 object-contain" referrerPolicy="no-referrer" />
+                                  </button>
+                                </div>
+                              )}
+
+                              {gw.id !== 'cash_on_delivery' && (
+                                <div className="mt-2 border-t border-amber-200/50 pt-3 space-y-3">
+                                  {/* اسم المرسل الكامل */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                      اسم المرسل الكامل (إجباري) *
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={senderName || ""}
+                                      onChange={(e) => setSenderName(e.target.value)}
+                                      placeholder="اكتب اسمك الثلاثي كما هو في حساب الدفع"
+                                      className="block w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                      required
+                                    />
+                                  </div>
+
+                                  {/* معرف العملية / رقم الحوالة */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                      معرف العملية / رقم الحوالة (إجباري) *
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={transactionId || ""}
+                                      onChange={(e) => setTransactionId(e.target.value)}
+                                      placeholder="اكتب رقم العملية المكون من أرقام"
+                                      className="block w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                      required
+                                    />
+                                  </div>
+
+                                  {/* صورة إيصال التحويل */}
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                      صورة إيصال التحويل (إجباري) *
+                                    </label>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handleReceiptUpload}
+                                      className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 focus:outline-none cursor-pointer"
+                                    />
+                                    {receiptFileName && (
+                                      <p className="mt-1 text-[10px] text-emerald-600 font-medium">تم إرفاق: {receiptFileName}</p>
+                                    )}
+                                    {receiptBase64 && (
+                                      <div className="mt-2 rounded-lg overflow-hidden border border-slate-200 relative h-24 bg-slate-100 flex items-center justify-center">
+                                        <img src={receiptBase64} alt="إيصال الدفع" className="max-h-full max-w-full object-contain" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -462,6 +583,14 @@ export default function Cart({
                   <p className="mt-1 text-xs text-slate-500">
                     رقم الطلب الخاص بك: <strong className="text-slate-950 font-bold">{createdOrder.id}</strong>
                   </p>
+                </div>
+
+                {/* إشعار الدفع الملوكي */}
+                <div className="my-4 overflow-hidden rounded-2xl shadow-lg">
+                  <PaymentReceipt
+                    order={createdOrder}
+                    gateway={enabledGateways.find(g => g.id === createdOrder.paymentMethodId)}
+                  />
                 </div>
 
                 {/* Deliverables for Digital Products */}
@@ -618,6 +747,25 @@ export default function Cart({
 
         </div>
       </div>
+
+      {zoomedQrUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
+          <div className="relative max-w-lg w-full bg-white rounded-2xl p-6 shadow-2xl border border-slate-100 flex flex-col items-center gap-4 text-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setZoomedQrUrl(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-slate-100 p-1.5 rounded-full hover:bg-slate-200 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h3 className="text-sm font-bold text-slate-800">رمز الـ QR Code للدفع بأعلى دقة 👑</h3>
+            <div className="border border-slate-200 rounded-xl p-3 bg-white w-full max-w-sm">
+              <img src={zoomedQrUrl} alt="رمز الدفع مكبر" className="w-full h-auto object-contain max-h-[450px]" referrerPolicy="no-referrer" />
+            </div>
+            <p className="text-xs text-slate-500">قم بمسح الرمز ضوئياً من هاتفك لإتمام عملية التحويل الفوري بكل سهولة.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

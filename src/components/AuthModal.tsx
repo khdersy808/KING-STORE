@@ -427,7 +427,7 @@ export default function AuthModal({
                   type="email"
                   required
                   placeholder="example@kingstore.com"
-                  value={resetEmail}
+                  value={resetEmail || ""}
                   onChange={(e) => setResetEmail(e.target.value)}
                   className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />
@@ -487,7 +487,7 @@ export default function AuthModal({
                     type="text"
                     required
                     placeholder="أحمد العتيبي"
-                    value={name}
+                    value={name || ""}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                   />
@@ -504,7 +504,7 @@ export default function AuthModal({
                   type="email"
                   required
                   placeholder="example@kingstore.com"
-                  value={email}
+                  value={email || ""}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />
@@ -536,7 +536,7 @@ export default function AuthModal({
                   type={showPassword ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
-                  value={password}
+                  value={password || ""}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-10 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />

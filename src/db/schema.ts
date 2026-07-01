@@ -34,6 +34,7 @@ export const orders = pgTable('orders', {
   totalAmount: doublePrecision('total_amount').notNull(),
   paymentMethodId: text('payment_method_id').notNull(),
   paymentDetails: jsonb('payment_details').notNull(),
+  receiptUrl: text('receipt_url'), // Added to store uploaded payment receipt
   status: text('status').default('pending').notNull(), // 'pending', 'completed', 'cancelled'
   date: timestamp('date').defaultNow(),
 });

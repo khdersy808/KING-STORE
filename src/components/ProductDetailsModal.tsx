@@ -259,7 +259,7 @@ export default function ProductDetailsModal({
                       <input
                         type="text"
                         placeholder="مثال: أحمد العتيبي"
-                        value={reviewerName}
+                        value={reviewerName || ""}
                         onChange={(e) => setReviewerName(e.target.value)}
                         className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-2 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                       />
@@ -272,7 +272,7 @@ export default function ProductDetailsModal({
                       <input
                         type="email"
                         placeholder="مثال: custom@example.com"
-                        value={reviewerEmail}
+                        value={reviewerEmail || ""}
                         onChange={(e) => setReviewerEmail(e.target.value)}
                         className="w-full rounded-xl border border-zinc-800 bg-zinc-950 py-2 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                       />
@@ -313,7 +313,7 @@ export default function ProductDetailsModal({
                   <textarea
                     rows={2}
                     placeholder="اكتب تفاصيل تجربتك للمنتج هنا..."
-                    value={comment}
+                    value={comment || ""}
                     onChange={(e) => setComment(e.target.value)}
                     className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none resize-none"
                   />

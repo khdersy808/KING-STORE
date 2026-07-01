@@ -14,7 +14,8 @@ import {
   getOrders, 
   getNotifications, 
   addNotification,
-  seedProducts
+  seedProducts,
+  updateOrderStatus
 } from "./src/db/helpers.ts";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
 
@@ -244,6 +245,36 @@ app.get("/api/orders", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Update order status (admin feature)
+app.put("/api/orders/:id/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userEmail = req.user.email || "";
+    const adminEmail = 'khdersy808@gmail.com';
+    const profile = await getUserProfile(req.user.uid);
+    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
+    
+    if (role !== 'admin') {
+      return res.status(403).json({ error: "غير مصرح لك بتعديل حالة الطلب. هذه الصلاحية للمسؤولين فقط." });
+    }
+
+    const orderId = Number(req.params.id);
+    if (isNaN(orderId)) {
+      return res.status(400).json({ error: "معرف الطلب غير صالح." });
+    }
+
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ error: "حالة الطلب مطلوبة." });
+    }
+
+    const updated = await updateOrderStatus(orderId, status);
+    res.json({ success: true, order: updated });
+  } catch (error: any) {
+    console.error("Update order status API error:", error);
+    res.status(500).json({ error: error.message || "فشل تحديث حالة الطلب." });
+  }
+});
+
 // Fetch Notifications (public)
 app.get("/api/notifications", async (req, res) => {
   try {
@@ -256,8 +287,50 @@ app.get("/api/notifications", async (req, res) => {
   }
 });
 
+// Translate prompt to English for better Image Generation
+app.post("/api/ai/translate-prompt", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ 
+        error: "مفتاح API الخاص بـ Gemini غير مهيأ. يرجى إضافته في الإعدادات > الأسرار (Settings > Secrets) باسم GEMINI_API_KEY." 
+      });
+    }
+
+    let englishPrompt = prompt;
+    try {
+      const enhancementResponse = await generateContentWithFallbackAndRetry({
+        model: 'gemini-3.5-flash',
+        contents: `You are an expert image prompt engineer for product photography.
+Translate the following user product description to English if it is in Arabic, and expand it into a highly detailed, professional, and beautiful English image generation prompt for an e-commerce store product photo.
+Ensure the prompt specifies: clean studio background, professional commercial product photography, luxury studio lighting, high resolution, photorealistic, 8k.
+Do not include any introductory/preachy text, explanations, or quotes. Output ONLY the final English prompt.
+
+User product description: "${prompt}"`,
+      }, ['gemini-flash-latest', 'gemini-3.1-flash-lite']);
+      
+      if (enhancementResponse.text) {
+        englishPrompt = enhancementResponse.text.trim().replace(/^"|"$/g, '');
+      }
+    } catch (e) {
+      console.warn("Prompt translation/enhancement failed:", e);
+    }
+
+    res.json({ success: true, translatedPrompt: englishPrompt });
+  } catch (error: any) {
+    console.error("AI Translation Error:", error);
+    res.status(500).json({ 
+      error: error.message || "حدث خطأ أثناء ترجمة النص." 
+    });
+  }
+});
+
 // API endpoint for AI Image Generation
-app.post("/api/ai/generate-image", async (req, res) => {
+app.post("/api/ai/generate-image", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { prompt, aspectRatio = "1:1" } = req.body;
     if (!prompt) {
@@ -379,7 +452,7 @@ User product description: "${prompt}"`,
 });
 
 // API endpoint for AI Product Details Generation (Name, Description, Price, Category, and Image prompt)
-app.post("/api/ai/generate-product-details", async (req, res) => {
+app.post("/api/ai/generate-product-details", requireAuth, async (req: AuthRequest, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt) {

@@ -147,7 +147,8 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
     name: 'محفظة إلكترونية / إنستاباي (Instapay)',
     iconName: 'Smartphone',
     isEnabled: true,
-    instructions: 'قم بتحويل القيمة المطلوبة إلى رقم المحفظة أو عنوان الدفع (IPA) الموضح أدناه، ثم أدخل رقم التحويل أو رقم الهاتف للتأكيد.',
+    instructions: 'قم بتحويل القيمة المطلوبة إلى رقم المحفظة الموضح أدناه، ثم أدخل رقم التحويل أو رقم الهاتف للتأكيد.',
+    accountIdentifier: '01xxxxxxxxx',
     fields: [
       { key: 'wallet_number', label: 'رقم هاتف المحول منه', placeholder: '01xxxxxxxxx أو رقم الهاتف المسجل', value: '' },
       { key: 'txn_id', label: 'رقم مرجع التحويل / الإرسال', placeholder: 'رقم العملية المكون من 12 رقم', value: '' }
@@ -158,7 +159,8 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
     name: 'حساب PayPal الإلكتروني',
     iconName: 'Wallet',
     isEnabled: true,
-    instructions: 'يرجى تسجيل الدخول إلى PayPal وتأكيد التحويل إلى حساب المتجر الرسمي: payment@kingstore.com',
+    instructions: 'يرجى تسجيل الدخول إلى PayPal وتأكيد التحويل إلى حساب المتجر الرسمي.',
+    accountIdentifier: 'payment@kingstore.com',
     fields: [
       { key: 'paypal_email', label: 'بريدك الإلكتروني في بايبال', placeholder: 'example@email.com', value: '' }
     ]
@@ -168,7 +170,8 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
     name: 'تحويل بنكي مباشر',
     iconName: 'Building',
     isEnabled: false,
-    instructions: 'قم بتحويل المبلغ إلى بنك الراجحي: SA398000012345678901234 باسم شركة KING STORE، ثم ارفق تفاصيل التحويل أدناه.',
+    instructions: 'قم بتحويل المبلغ إلى حسابنا البنكي، ثم ارفق تفاصيل التحويل أدناه.',
+    accountIdentifier: 'SA398000012345678901234',
     fields: [
       { key: 'sender_name', label: 'اسم المحول الثلاثي', placeholder: 'الاسم كما يظهر في كشف الحساب', value: '' },
       { key: 'bank_name', label: 'اسم البنك المحول منه', placeholder: 'مثال: البنك الأهلي، بنك الرياض...', value: '' },

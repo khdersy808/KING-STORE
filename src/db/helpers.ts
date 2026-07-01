@@ -162,6 +162,7 @@ export async function createOrder(orderData: {
   totalAmount: number;
   paymentMethodId: string;
   paymentDetails: any;
+  receiptUrl?: string;
   items: {
     productId: string;
     productName: string;
@@ -182,6 +183,7 @@ export async function createOrder(orderData: {
         totalAmount: orderData.totalAmount,
         paymentMethodId: orderData.paymentMethodId,
         paymentDetails: orderData.paymentDetails,
+        receiptUrl: orderData.receiptUrl || null,
         status: 'pending',
       })
       .returning();
@@ -218,6 +220,19 @@ export async function getOrders(customerUid?: string) {
   } catch (error) {
     console.error("Database fetch orders failed:", error);
     throw new Error("Failed to retrieve orders.", { cause: error });
+  }
+}
+
+export async function updateOrderStatus(id: number, status: string) {
+  try {
+    const result = await db.update(orders)
+      .set({ status })
+      .where(eq(orders.id, id))
+      .returning();
+    return result[0];
+  } catch (error) {
+    console.error("Database update order status failed:", error);
+    throw new Error(`Failed to update order status with ID ${id}.`, { cause: error });
   }
 }
 

@@ -57,6 +57,7 @@ import {
   Tags
 } from 'lucide-react';
 import { User } from '../types';
+import { auth } from '../lib/firebase';
 
 interface AdminPanelProps {
   products: Product[];
@@ -108,10 +109,30 @@ export default function AdminPanel({
   const [formType, setFormType] = useState<ProductType>('physical');
   const [formCategory, setFormCategory] = useState(() => categories[0] || 'إلكترونيات');
   const [formImageUrl, setFormImageUrl] = useState('');
+  const [formImageFileName, setFormImageFileName] = useState('');
   const [formStock, setFormStock] = useState(10);
   const [formDownloadUrl, setFormDownloadUrl] = useState('');
   const [formLicenseKeys, setFormLicenseKeys] = useState('');
   const [productFormError, setProductFormError] = useState('');
+
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProductFormError('حجم الصورة كبير جداً. الحد الأقصى 2 ميجابايت.');
+      return;
+    }
+    
+    setFormImageFileName(file.name);
+    setProductFormError('');
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormImageUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // AI Smart Product Creator states
   const [aiProductDesc, setAiProductDesc] = useState('');
@@ -130,13 +151,20 @@ export default function AdminPanel({
   // Payment gateway selected for configuration
   const [editingGateway, setEditingGateway] = useState<PaymentGateway | null>(null);
   const [gatewayInstructions, setGatewayInstructions] = useState('');
+  const [gatewayAccountIdentifier, setGatewayAccountIdentifier] = useState('');
+  const [gatewayQrCodeUrl, setGatewayQrCodeUrl] = useState('');
+  const [gatewayCustomIconUrl, setGatewayCustomIconUrl] = useState('');
   const [gatewayFieldLabels, setGatewayFieldLabels] = useState<Record<string, string>>({});
+  const [gatewayToDelete, setGatewayToDelete] = useState<PaymentGateway | null>(null);
 
   // Add custom payment gateway states
   const [isAddingGateway, setIsAddingGateway] = useState(false);
   const [newGatewayName, setNewGatewayName] = useState('');
   const [newGatewayIcon, setNewGatewayIcon] = useState('CreditCard');
   const [newGatewayInstructions, setNewGatewayInstructions] = useState('');
+  const [newGatewayAccount, setNewGatewayAccount] = useState('');
+  const [newGatewayQrCode, setNewGatewayQrCode] = useState('');
+  const [newGatewayCustomIcon, setNewGatewayCustomIcon] = useState('');
   const [newGatewayFields, setNewGatewayFields] = useState<{ key: string; label: string; placeholder: string; value: string }[]>([]);
 
   // Category management local states
@@ -218,23 +246,44 @@ export default function AdminPanel({
     setGeneratedImageUrl('');
 
     try {
-      const response = await fetch('/api/ai/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: promptToUse,
-          aspectRatio: aiAspectRatio,
-        }),
-      });
+      let width = 500;
+      let height = 500;
+      
+      if (aiAspectRatio === '16:9') { width = 896; height = 504; }
+      else if (aiAspectRatio === '9:16') { width = 504; height = 896; }
+      else if (aiAspectRatio === '4:3') { width = 800; height = 600; }
+      else if (aiAspectRatio === '3:4') { width = 600; height = 800; }
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'فشل في توليد الصورة.');
+      // 1. Translate the prompt to English via backend
+      let englishPromptToUse = promptToUse;
+      try {
+        const token = await auth.currentUser?.getIdToken(true);
+        const transRes = await fetch('/api/ai/translate-prompt', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ prompt: promptToUse })
+        });
+        const transData = await transRes.json();
+        if (transData.success && transData.translatedPrompt) {
+          englishPromptToUse = transData.translatedPrompt;
+        }
+      } catch (err) {
+        console.warn('Translation failed, using original prompt');
       }
 
-      setGeneratedImageUrl(data.imageUrl);
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(englishPromptToUse)}?width=${width}&height=${height}&nologo=true`;
+      
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => reject(new Error('Failed to load image from Pollinations.'));
+        img.src = pollinationsUrl;
+      });
+
+      setGeneratedImageUrl(pollinationsUrl);
     } catch (err: any) {
       console.error(err);
       setAiError(err.message || 'حدث خطأ غير متوقع أثناء توليد الصورة.');
@@ -252,11 +301,13 @@ export default function AdminPanel({
     setIsGeneratingProduct(true);
     setAiProductError('');
     try {
+      const token = await auth.currentUser?.getIdToken(true);
       // 1. Generate Product Details
       const detailsResponse = await fetch('/api/ai/generate-product-details', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ prompt: aiProductDesc }),
       });
@@ -281,23 +332,20 @@ export default function AdminPanel({
       // 2. Generate Image using the generated imagePrompt
       const imgPromptToUse = detailsData.imagePrompt || `${detailsData.name} studio lighting, commercial photography`;
       
-      const imgResponse = await fetch('/api/ai/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: imgPromptToUse,
-          aspectRatio: '1:1',
-        }),
-      });
+      try {
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPromptToUse)}?width=500&height=500&nologo=true`;
+        
+        await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(true);
+          img.onerror = () => reject(new Error('Failed'));
+          img.src = pollinationsUrl;
+        });
 
-      const imgData = await imgResponse.json();
-      if (!imgResponse.ok) {
+        setFormImageUrl(pollinationsUrl);
+      } catch (err) {
         console.warn('Image generation failed, but product details were created.');
         setAiProductError('تم توليد تفاصيل المنتج بنجاح، ولكن فشل توليد الصورة تلقائياً. يمكنك توليدها يدوياً.');
-      } else {
-        setFormImageUrl(imgData.imageUrl);
       }
 
       // Reset prompt and keep creator active/inactive
@@ -362,10 +410,70 @@ export default function AdminPanel({
     resetProductForm();
   };
 
+  const handleExportProductsCSV = () => {
+    // Columns: اسم المنتج الرقمي, الفئة, السعر الحالي, كمية المخزون المتوفرة, حالة المنتج
+    const headers = [
+      'اسم المنتج الرقمي',
+      'الفئة (Category)',
+      'السعر الحالي ($)',
+      'كمية المخزون المتوفرة (Stock)',
+      'حالة المنتج'
+    ];
+
+    const rows = products.map(p => {
+      // Stock description
+      let stockDesc = '';
+      if (p.type === 'physical') {
+        stockDesc = p.stock !== undefined ? `${p.stock} قطعة` : '0 قطعة';
+      } else {
+        stockDesc = 'منتج رقمي (غير محدود)';
+      }
+
+      // All products are active by default in our list
+      const status = 'نشط';
+
+      return [
+        p.name,
+        p.category,
+        `$${p.price}`,
+        stockDesc,
+        status
+      ];
+    });
+
+    // Escape CSV values containing commas, quotes or newlines
+    const escapeCSV = (val: string) => {
+      let clean = val.replace(/"/g, '""');
+      if (clean.includes(',') || clean.includes('\n') || clean.includes('"')) {
+        clean = `"${clean}"`;
+      }
+      return clean;
+    };
+
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
+
+    // UTF-8 BOM
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `inventory_and_products_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Populate gateway form for editing
   const startEditGateway = (gateway: PaymentGateway) => {
     setEditingGateway(gateway);
     setGatewayInstructions(gateway.instructions);
+    setGatewayAccountIdentifier(gateway.accountIdentifier || '');
+    setGatewayQrCodeUrl(gateway.qrCodeUrl || '');
+    setGatewayCustomIconUrl(gateway.customIconUrl || '');
     const initialLabels: Record<string, string> = {};
     gateway.fields.forEach(f => {
       initialLabels[f.key] = f.label;
@@ -386,6 +494,9 @@ export default function AdminPanel({
     const updatedGateway: PaymentGateway = {
       ...editingGateway,
       instructions: gatewayInstructions,
+      accountIdentifier: gatewayAccountIdentifier.trim() || undefined,
+      qrCodeUrl: gatewayQrCodeUrl.trim() || undefined,
+      customIconUrl: gatewayCustomIconUrl.trim() || undefined,
       fields: updatedFields
     };
 
@@ -438,6 +549,9 @@ export default function AdminPanel({
       iconName: newGatewayIcon,
       isEnabled: true,
       instructions: newGatewayInstructions.trim(),
+      accountIdentifier: newGatewayAccount.trim() || undefined,
+      qrCodeUrl: newGatewayQrCode.trim() || undefined,
+      customIconUrl: newGatewayCustomIcon.trim() || undefined,
       fields: newGatewayFields
     };
 
@@ -447,6 +561,9 @@ export default function AdminPanel({
     setNewGatewayName('');
     setNewGatewayIcon('CreditCard');
     setNewGatewayInstructions('');
+    setNewGatewayAccount('');
+    setNewGatewayQrCode('');
+    setNewGatewayCustomIcon('');
     setNewGatewayFields([]);
     setIsAddingGateway(false);
     setGatewayFormError('');
@@ -521,7 +638,10 @@ export default function AdminPanel({
     return data;
   }, [orders]);
 
-  const getGatewayIcon = (iconName: string) => {
+  const getGatewayIcon = (iconName: string, customIconUrl?: string) => {
+    if (customIconUrl) {
+      return <img src={customIconUrl} alt="أيقونة البوابة" className="h-5 w-5 object-contain rounded bg-white" referrerPolicy="no-referrer" />;
+    }
     switch (iconName) {
       case 'CreditCard': return <CreditCard className="h-5 w-5 text-amber-600" />;
       case 'Smartphone': return <Smartphone className="h-5 w-5 text-amber-600" />;
@@ -836,7 +956,7 @@ export default function AdminPanel({
                       <div className="space-y-2 pt-2 border-t border-amber-500/10 transition-all">
                         <textarea
                           placeholder="اكتب وصفاً مختصراً أو مفصلاً للمنتج المراد صنعه بالذكاء الاصطناعي..."
-                          value={aiProductDesc}
+                          value={aiProductDesc || ""}
                           onChange={(e) => setAiProductDesc(e.target.value)}
                           rows={3}
                           className="w-full rounded-xl border border-amber-500/20 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none text-right font-medium animate-fade-in"
@@ -877,7 +997,7 @@ export default function AdminPanel({
                       type="text"
                       required
                       placeholder="مثال: ساعة يد ملكية ذهبية"
-                      value={formName}
+                      value={formName || ""}
                       onChange={(e) => setFormName(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
                     />
@@ -890,7 +1010,7 @@ export default function AdminPanel({
                       required
                       rows={3}
                       placeholder="اكتب وصفاً مفصلاً وجذاباً للمنتج ومواصفاته..."
-                      value={formDescription}
+                      value={formDescription || ""}
                       onChange={(e) => setFormDescription(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none resize-none"
                     />
@@ -992,7 +1112,7 @@ export default function AdminPanel({
                           type="url"
                           required
                           placeholder="https://example.com/download-link"
-                          value={formDownloadUrl}
+                          value={formDownloadUrl || ""}
                           onChange={(e) => setFormDownloadUrl(e.target.value)}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
                         />
@@ -1002,7 +1122,7 @@ export default function AdminPanel({
                         <input
                           type="text"
                           placeholder="KEY-1234, KEY-5678, KEY-9900"
-                          value={formLicenseKeys}
+                          value={formLicenseKeys || ""}
                           onChange={(e) => setFormLicenseKeys(e.target.value)}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
                         />
@@ -1031,23 +1151,35 @@ export default function AdminPanel({
                       </button>
                     </div>
                     <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="رابط الصورة (سيتم تعبئته تلقائياً عند توليد الصورة بالذكاء الاصطناعي)"
-                        value={formImageUrl}
-                        onChange={(e) => setFormImageUrl(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none pl-10"
-                      />
-                      {formImageUrl && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <img
-                            src={formImageUrl}
-                            alt="Preview"
-                            className="h-6 w-6 object-cover rounded border border-slate-200"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
+                      <div className="flex items-center gap-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-2 focus-within:border-amber-400 focus-within:bg-white transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProductImageUpload}
+                          className="flex-1 text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 focus:outline-none cursor-pointer"
+                        />
+                        {formImageUrl && (
+                          <div className="shrink-0 relative">
+                            <img
+                              src={formImageUrl}
+                              alt="Preview"
+                              className="h-10 w-10 object-cover rounded border border-slate-200"
+                              referrerPolicy="no-referrer"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => { setFormImageUrl(''); setFormImageFileName(''); }}
+                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition"
+                            >
+                              <X className="h-2 w-2" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {formImageFileName && (
+                        <p className="mt-1 text-[10px] text-emerald-600 font-medium">الملف المرفق: {formImageFileName}</p>
                       )}
+                      <p className="mt-1 text-[10px] text-slate-500">سيتم حفظ الصورة المرفوعة، أو الصورة المولدة بالذكاء الاصطناعي إن وُجدت.</p>
                     </div>
 
                     {/* AI Image Generation Panel */}
@@ -1072,7 +1204,7 @@ export default function AdminPanel({
                             <label className="block text-[10px] font-bold text-slate-600 mb-1">صِف الشيء الذي تريد توليد صورة له بالذكاء الاصطناعي (باللغة العربية):</label>
                             <textarea
                               placeholder="مثال: حذاء جري رياضي ذكي بلون أزرق برّاق ومستقبلية مع إضاءة نيون هادئة..."
-                              value={aiPrompt}
+                              value={aiPrompt || ""}
                               onChange={(e) => setAiPrompt(e.target.value)}
                               rows={2.5}
                               className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs focus:border-amber-400 focus:outline-none text-right font-medium"
@@ -1187,7 +1319,16 @@ export default function AdminPanel({
               <div className="p-5 border-b border-slate-100 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <h3 className="text-base font-bold text-slate-900">كل منتجات KING STORE</h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportProductsCSV}
+                      className="rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-3.5 py-1.5 text-[11px] font-bold text-emerald-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-50/30"
+                      title="تصدير بيانات المنتجات والمخزون الحالي بصيغة CSV ملائمة للاكسل"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>تصدير المخزون والمبيعات (CSV)</span>
+                    </button>
                     {productSearchQuery || productCategoryFilter !== 'all' || productTypeFilter !== 'all' ? (
                       <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
                         المعروضة: {filteredProducts.length} من {products.length}
@@ -1207,7 +1348,7 @@ export default function AdminPanel({
                     <input
                       type="text"
                       placeholder="ابحث باسم المنتج أو الوصف..."
-                      value={productSearchQuery}
+                      value={productSearchQuery || ""}
                       onChange={(e) => setProductSearchQuery(e.target.value)}
                       className="w-full pr-10 pl-4 py-2 rounded-xl border border-slate-200 text-xs focus:border-amber-400 focus:outline-none focus:bg-slate-50/50 bg-slate-50 text-right font-medium"
                     />
@@ -1388,7 +1529,7 @@ export default function AdminPanel({
                     type="text"
                     required
                     placeholder="مثال: ألعاب الواقع الافتراضي، مقتنيات"
-                    value={newCategoryName}
+                    value={newCategoryName || ""}
                     onChange={(e) => setNewCategoryName(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none text-right font-medium"
                   />
@@ -1427,7 +1568,7 @@ export default function AdminPanel({
                     <input
                       type="text"
                       disabled
-                      value={editingCategoryName}
+                      value={editingCategoryName || ""}
                       className="w-full rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-xs text-slate-500 focus:outline-none text-right"
                     />
                   </div>
@@ -1437,7 +1578,7 @@ export default function AdminPanel({
                       type="text"
                       required
                       placeholder="الاسم الجديد..."
-                      value={editCategoryNewValue}
+                      value={editCategoryNewValue || ""}
                       onChange={(e) => setEditCategoryNewValue(e.target.value)}
                       className="w-full rounded-xl border border-blue-300 bg-white p-2.5 text-xs focus:border-blue-500 focus:outline-none text-right font-bold"
                     />
@@ -1592,27 +1733,46 @@ export default function AdminPanel({
                     <input
                       type="text"
                       required
-                      value={newGatewayName}
+                      value={newGatewayName || ""}
                       onChange={(e) => setNewGatewayName(e.target.value)}
                       placeholder="مثال: STC Pay، تحويل فودافون كاش، محفظة أورنج..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
                     />
                   </div>
 
-                  {/* Gateway Icon */}
+
+
+                  {/* Custom Gateway Icon Upload */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">أيقونة البوابة الافتراضية *</label>
-                    <select
-                      value={newGatewayIcon}
-                      onChange={(e) => setNewGatewayIcon(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-amber-400 focus:bg-white focus:outline-none cursor-pointer"
-                    >
-                      <option value="CreditCard">بطاقة ائتمانية / مدى (CreditCard)</option>
-                      <option value="Smartphone">محفظة هاتف ذكي (Smartphone)</option>
-                      <option value="Wallet">محفظة إلكترونية / PayPal (Wallet)</option>
-                      <option value="Building">تحويل بنكي (Building)</option>
-                      <option value="Truck">الدفع عند الاستلام (Truck)</option>
-                    </select>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رفع أيقونة البوابة المخصصة (اختياري)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setNewGatewayCustomIcon(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="w-full text-xs text-slate-500 file:mr-0 file:ml-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                    />
+                    {newGatewayCustomIcon && (
+                      <div className="mt-2 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <img src={newGatewayCustomIcon} alt="معاينة الأيقونة" className="h-8 w-8 object-contain rounded bg-white p-0.5 border" />
+                        <span className="text-[10px] text-emerald-600 font-semibold">تم تحميل الأيقونة بنجاح ✅</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewGatewayCustomIcon('')}
+                          className="mr-auto text-red-500 hover:text-red-700 text-[10px] font-bold"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Gateway Instructions */}
@@ -1621,82 +1781,59 @@ export default function AdminPanel({
                     <textarea
                       required
                       rows={3}
-                      value={newGatewayInstructions}
+                      value={newGatewayInstructions || ""}
                       onChange={(e) => setNewGatewayInstructions(e.target.value)}
-                      placeholder="اكتب أرقام الحسابات البنكية أو أرقام الهواتف وتوجيهات عملية الإرسال التي ستظهر للعميل أثناء الطلب..."
+                      placeholder="اكتب توجيهات عملية الإرسال التي ستظهر للعميل أثناء الطلب..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none resize-none leading-relaxed"
                     />
                   </div>
 
-                  {/* Custom Fields configuration */}
-                  <div className="border-t border-slate-100 pt-3 space-y-3">
-                    <label className="block text-xs font-bold text-slate-800">حقول التحقق المطلوبة من العميل (اختياري)</label>
-                    <p className="text-[10px] text-slate-500 leading-relaxed">أضف حقولاً ليقوم العميل بتعبئتها لتأكيد عملية التحويل (مثل رقم المعاملة أو اسم المحول).</p>
-                    
-                    {/* List of currently added fields */}
-                    {newGatewayFields.length > 0 && (
-                      <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        {newGatewayFields.map(f => (
-                          <div key={f.key} className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/60 text-xs">
-                            <div className="text-right">
-                              <span className="font-bold text-slate-800">{f.label}</span>
-                              <span className="text-[9px] text-slate-400 block font-mono">({f.key})</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCustomField(f.key)}
-                              className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
+                  {/* Gateway Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الحساب / المحفظة / المعرّف (اختياري)</label>
+                    <input
+                      type="text"
+                      value={newGatewayAccount || ""}
+                      onChange={(e) => setNewGatewayAccount(e.target.value)}
+                      placeholder="مثال: 0987654321 أو payment@kingstore.com"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-amber-400 focus:bg-white focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  {/* Gateway QR Code */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رفع صورة الـ QR Code للحساب (اختياري)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setNewGatewayQrCode(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="w-full text-xs text-slate-500 file:mr-0 file:ml-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                    />
+                    {newGatewayQrCode && (
+                      <div className="mt-2 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <img src={newGatewayQrCode} alt="معاينة QR" className="h-10 w-10 object-contain rounded bg-white p-0.5 border" />
+                        <span className="text-[10px] text-emerald-600 font-semibold">تم تحميل الـ QR Code بنجاح ✅</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewGatewayQrCode('')}
+                          className="mr-auto text-red-500 hover:text-red-700 text-[10px] font-bold"
+                        >
+                          حذف
+                        </button>
                       </div>
                     )}
-
-                    {/* Add Custom Field Form */}
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/50 space-y-2">
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <div>
-                          <label className="block text-[9px] font-bold text-slate-500 mb-0.5">معرف الحقل (بالإنجليزي) *</label>
-                          <input
-                            type="text"
-                            value={fieldKey}
-                            onChange={(e) => setFieldKey(e.target.value)}
-                            placeholder="مثال: receipt_name"
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] focus:border-amber-400 focus:outline-none font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[9px] font-bold text-slate-500 mb-0.5">اسم الحقل بالعربية *</label>
-                          <input
-                            type="text"
-                            value={fieldLabel}
-                            onChange={(e) => setFieldLabel(e.target.value)}
-                            placeholder="مثال: اسم المحول"
-                            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] focus:border-amber-400 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">نص توضيحي للعميل (اختياري)</label>
-                        <input
-                          type="text"
-                          value={fieldPlaceholder}
-                          onChange={(e) => setFieldPlaceholder(e.target.value)}
-                          placeholder="مثال: الاسم كما في الحساب"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] focus:border-amber-400 focus:outline-none"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddCustomField}
-                        className="w-full rounded-lg bg-amber-500/10 border border-amber-500/20 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-500 hover:text-slate-950 transition-colors cursor-pointer"
-                      >
-                        + إدراج حقل تحقق العميل
-                      </button>
-                    </div>
                   </div>
+
+
 
                   {/* Submission actions */}
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
@@ -1739,7 +1876,7 @@ export default function AdminPanel({
               ) : (
                 <form onSubmit={handleSaveGateway} className="space-y-4 text-right">
                   <div className="flex items-center gap-2 font-bold text-slate-900 text-sm border-b border-slate-100 pb-2">
-                    {getGatewayIcon(editingGateway.iconName)}
+                    {getGatewayIcon(editingGateway.iconName, editingGateway.customIconUrl)}
                     <span>ضبط بوابة: {editingGateway.name}</span>
                   </div>
 
@@ -1749,30 +1886,92 @@ export default function AdminPanel({
                     <textarea
                       required
                       rows={4}
-                      value={gatewayInstructions}
+                      value={gatewayInstructions || ""}
                       onChange={(e) => setGatewayInstructions(e.target.value)}
-                      placeholder="اكتب أرقام الحسابات البنكية أو أرقام الهواتف وتوجيهات عملية الإرسال لتظهر للعميل أثناء الدفع..."
+                      placeholder="اكتب توجيهات عملية الإرسال لتظهر للعميل أثناء الدفع..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none resize-none leading-relaxed"
                     />
                   </div>
 
-                  {/* Customer Field Labels Config */}
-                  {editingGateway.fields.length > 0 && (
-                    <div className="space-y-3 border-t border-slate-100 pt-3">
-                      <label className="block text-xs font-bold text-slate-700">تخصيص مسميات حقول العميل المطلوب إدخالها:</label>
-                      {editingGateway.fields.map((field) => (
-                        <div key={field.key} className="space-y-1">
-                          <span className="text-[10px] text-slate-400 font-bold block">مسمى الحقل الحالي: ({field.key})</span>
-                          <input
-                            type="text"
-                            value={gatewayFieldLabels[field.key] || ''}
-                            onChange={(e) => setGatewayFieldLabels(prev => ({ ...prev, [field.key]: e.target.value }))}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Gateway Account */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الحساب / المحفظة / المعرّف (اختياري)</label>
+                    <input
+                      type="text"
+                      value={gatewayAccountIdentifier || ""}
+                      onChange={(e) => setGatewayAccountIdentifier(e.target.value)}
+                      placeholder="مثال: 0987654321 أو payment@kingstore.com"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:border-amber-400 focus:bg-white focus:outline-none font-mono"
+                    />
+                  </div>
+
+                  {/* Custom Gateway Icon Upload for Edit */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رفع أيقونة البوابة المخصصة (اختياري)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setGatewayCustomIconUrl(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="w-full text-xs text-slate-500 file:mr-0 file:ml-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                    />
+                    {gatewayCustomIconUrl && (
+                      <div className="mt-2 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <img src={gatewayCustomIconUrl} alt="معاينة الأيقونة" className="h-8 w-8 object-contain rounded bg-white p-0.5 border" />
+                        <span className="text-[10px] text-emerald-600 font-semibold">تم تحميل الأيقونة بنجاح ✅</span>
+                        <button
+                          type="button"
+                          onClick={() => setGatewayCustomIconUrl('')}
+                          className="mr-auto text-red-500 hover:text-red-700 text-[10px] font-bold"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Gateway QR Code */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رفع صورة الـ QR Code للحساب (اختياري)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setGatewayQrCodeUrl(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="w-full text-xs text-slate-500 file:mr-0 file:ml-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                    />
+                    {gatewayQrCodeUrl && (
+                      <div className="mt-2 flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <img src={gatewayQrCodeUrl} alt="معاينة QR" className="h-10 w-10 object-contain rounded bg-white p-0.5 border" />
+                        <span className="text-[10px] text-emerald-600 font-semibold">تم تحميل الـ QR Code بنجاح ✅</span>
+                        <button
+                          type="button"
+                          onClick={() => setGatewayQrCodeUrl('')}
+                          className="mr-auto text-red-500 hover:text-red-700 text-[10px] font-bold"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+
 
                   <div className="grid grid-cols-2 gap-2 pt-2">
                     <button
@@ -1820,7 +2019,7 @@ export default function AdminPanel({
                     
                     <div className="flex items-start gap-3">
                       <div className="rounded-xl bg-amber-500/10 p-3 mt-0.5">
-                        {getGatewayIcon(gw.iconName)}
+                        {getGatewayIcon(gw.iconName, gw.customIconUrl)}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -1832,16 +2031,7 @@ export default function AdminPanel({
                           )}
                         </div>
                         <p className="text-[11px] text-slate-500 max-w-md leading-relaxed mt-1">{gw.instructions}</p>
-                        {gw.fields.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            <span className="text-[10px] font-bold text-slate-400">الحقول المطلوبة:</span>
-                            {gw.fields.map(f => (
-                              <span key={f.key} className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                                {f.label}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+
                       </div>
                     </div>
 
@@ -1872,24 +2062,18 @@ export default function AdminPanel({
                         <Settings className="h-4 w-4" />
                       </button>
 
-                      {/* Delete custom gateway */}
-                      {gw.id.startsWith('custom_') && (
-                        <button
-                          onClick={() => {
-                            if (confirm('هل أنت متأكد من حذف طريقة الدفع المخصصة هذه؟')) {
-                              onDeleteGateway(gw.id);
-                              if (editingGateway?.id === gw.id) {
-                                setEditingGateway(null);
-                              }
-                            }
-                          }}
-                          className="rounded-xl border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 transition-colors"
-                          title="حذف طريقة الدفع"
-                          id={`delete-gw-${gw.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
+                      {/* Delete gateway */}
+                      <button
+                        onClick={() => {
+                          setGatewayToDelete(gw);
+                        }}
+                        className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100 transition-colors text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-50/50"
+                        title="حذف بوابة الدفع نهائياً"
+                        id={`delete-gw-${gw.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span>حذف البوابة</span>
+                      </button>
                     </div>
 
                   </div>
@@ -1996,7 +2180,7 @@ export default function AdminPanel({
                 <input
                   type="text"
                   placeholder="ابحث باسم العميل، البريد الإلكتروني، رقم الهاتف، أو رقم الطلب الفريد..."
-                  value={orderSearchQuery}
+                  value={orderSearchQuery || ""}
                   onChange={(e) => setOrderSearchQuery(e.target.value)}
                   className="w-full pr-10 pl-4 py-2.5 rounded-xl border border-slate-200 text-xs focus:border-amber-400 focus:outline-none focus:bg-slate-50/50 bg-slate-50"
                   id="order-search-input"
@@ -2204,11 +2388,23 @@ export default function AdminPanel({
                                   {gateways.find(g => g.id === order.paymentMethodId)?.name || order.paymentMethodId}
                                 </span>
                                 <div className="space-y-0.5 max-w-[160px] overflow-hidden">
-                                  {Object.entries(order.paymentDetails || {}).map(([key, val]) => (
-                                    <span key={key} className="text-[10px] text-slate-500 block truncate">
-                                      {key}: <strong className="text-slate-800 select-all">{val}</strong>
-                                    </span>
-                                  ))}
+                                  {Object.entries(order.paymentDetails || {}).map(([key, val]) => {
+                                    if (key === 'gatewayName') return null;
+                                    let label = key;
+                                    if (key === 'senderName') label = 'اسم المرسل';
+                                    if (key === 'transactionId') label = 'رقم الحوالة';
+                                    return (
+                                      <span key={key} className="text-[10px] text-slate-500 block truncate">
+                                        <span className="font-semibold text-slate-600">{label}:</span> <strong className="text-slate-800 select-all">{val}</strong>
+                                      </span>
+                                    );
+                                  })}
+                                  {order.receiptUrl && (
+                                    <a href={order.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-amber-600 font-bold hover:underline flex items-center gap-1 mt-1 bg-amber-50 rounded px-1 py-0.5 border border-amber-100 w-fit">
+                                      <ImageIcon className="w-3 h-3" />
+                                      صورة الإيصال
+                                    </a>
+                                  )}
                                 </div>
                               </div>
                             </td>
@@ -2342,7 +2538,7 @@ export default function AdminPanel({
                         }}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
-                        تأكيد الاكتمال
+                        موافقة وتفعيل الكود
                       </button>
                       <button
                         onClick={() => {
@@ -2362,7 +2558,7 @@ export default function AdminPanel({
                         }}
                         className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
-                        إلغاء الطلب
+                        رفض وإلغاء
                       </button>
                     </div>
                   </div>
@@ -2454,14 +2650,32 @@ export default function AdminPanel({
 
                         {/* Rendering customized gateway receipt details */}
                         <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1.5">
-                          {Object.entries(selectedOrderForModal.paymentDetails || {}).map(([key, val]) => (
-                            <div key={key} className="flex justify-between items-start gap-2 border-b border-slate-200/50 pb-1 last:border-0 last:pb-0">
-                              <span className="text-[10px] text-slate-500 font-bold">{key}:</span>
-                              <strong className="text-slate-800 select-all text-[11px] max-w-[140px] truncate font-mono text-left" title={val}>
-                                {val}
-                              </strong>
+                          {Object.entries(selectedOrderForModal.paymentDetails || {}).map(([key, val]) => {
+                            if (key === 'gatewayName') return null;
+                            let label = key;
+                            if (key === 'senderName') label = 'اسم المرسل الكامل';
+                            if (key === 'transactionId') label = 'معرف العملية / رقم الحوالة';
+                            return (
+                              <div key={key} className="flex justify-between items-start gap-2 border-b border-slate-200/50 pb-1 last:border-0 last:pb-0">
+                                <span className="text-[10px] text-slate-500 font-bold">{label}:</span>
+                                <strong className="text-slate-800 select-all text-[11px] max-w-[180px] truncate font-sans text-left" title={String(val)}>
+                                  {String(val)}
+                                </strong>
+                              </div>
+                            );
+                          })}
+                          
+                          {selectedOrderForModal.receiptUrl && (
+                            <div className="pt-3 mt-3 border-t border-slate-200/50">
+                              <span className="text-[11px] text-slate-700 font-bold block mb-2 flex items-center gap-1">
+                                <ImageIcon className="h-4 w-4 text-amber-500" />
+                                صورة الإيصال المرفقة من الزبون (اضغط للتكبير):
+                              </span>
+                              <a href={selectedOrderForModal.receiptUrl} target="_blank" rel="noopener noreferrer" className="block w-full max-h-[400px] bg-slate-100 overflow-hidden rounded-xl border border-slate-300 hover:border-amber-400 transition-colors shadow-sm flex items-center justify-center">
+                                <img src={selectedOrderForModal.receiptUrl} alt="إيصال الدفع" className="w-full h-full object-contain max-h-[400px]" />
+                              </a>
                             </div>
-                          ))}
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between pt-1 border-t border-slate-100">
@@ -2631,7 +2845,7 @@ export default function AdminPanel({
                       type="email"
                       required
                       placeholder="admin2@kingstore.com"
-                      value={adminEmailToInvite}
+                      value={adminEmailToInvite || ""}
                       onChange={(e) => setAdminEmailToInvite(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
                     />
@@ -2660,7 +2874,7 @@ export default function AdminPanel({
                       <input
                         type="text"
                         readOnly
-                        value={generatedLink}
+                        value={generatedLink || ""}
                         className="w-full rounded-lg border border-slate-200 bg-white py-2 pr-3 pl-16 text-[10px] font-mono text-slate-600 focus:outline-none text-left"
                         dir="ltr"
                       />
@@ -2816,6 +3030,51 @@ export default function AdminPanel({
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* 6. Delete Gateway Confirmation Modal */}
+      {gatewayToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div 
+            className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="bg-red-50 p-3 rounded-full">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">تأكيد حذف بوابة الدفع</h3>
+            </div>
+            
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6 font-medium">
+              تنبيه: هل أنت متأكد من حذف بوابة الدفع <span className="font-bold text-slate-900">"{gatewayToDelete.name}"</span> هذه نهائياً من السيستم؟ هذا الإجراء سيقوم بإزالتها تماماً من خيارات الزبائن ولا يمكن التراجع عنه.
+            </p>
+            
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setGatewayToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                إلغاء الأمر
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteGateway(gatewayToDelete.id);
+                  if (editingGateway?.id === gatewayToDelete.id) {
+                    setEditingGateway(null);
+                  }
+                  setGatewayToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>نعم، احذف نهائياً</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -8,6 +8,7 @@ import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
+import OrderTracking from './components/OrderTracking';
 import { Product, PaymentGateway, Order, CartItem, ProductType, OrderStatus, ProductReview, User, AppNotification } from './types';
 import { INITIAL_PRODUCTS, INITIAL_PAYMENT_GATEWAYS, INITIAL_ORDERS } from './data';
 import {
@@ -36,6 +37,7 @@ import SettingsModal from './components/SettingsModal';
 import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 
 export default function App() {
+  const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
   // --- LocalStorage Persistence Engine ---
   const [products, setProducts] = useState<Product[]>(() => {
     const saved = localStorage.getItem('king_store_products');
@@ -155,10 +157,23 @@ export default function App() {
     localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
+  // Helper to check if backend is ready
+  const checkServerReady = async () => {
+    try {
+      const res = await fetch('/api/health', { method: 'HEAD' });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
   // Load products from backend Cloud SQL database on mount
   useEffect(() => {
     const loadDbProducts = async () => {
       try {
+        const isReady = await checkServerReady();
+        if (!isReady) return; // Skip if server isn't ready
+
         const response = await fetch('/api/products');
         if (response.ok) {
           const dbProducts = await response.json();
@@ -170,8 +185,11 @@ export default function App() {
             setProducts(mapped);
           }
         }
-      } catch (err) {
-        console.warn("Failed to fetch products from backend database:", err);
+      } catch (err: any) {
+        // Silently handle fetch errors during startup
+        if (err.name !== 'TypeError' || !err.message.includes('Failed to fetch')) {
+          console.error("Error loading products:", err);
+        }
       }
     };
     loadDbProducts();
@@ -182,7 +200,12 @@ export default function App() {
     const loadDbOrders = async () => {
       if (!currentUser) return;
       try {
-        const token = await auth.currentUser?.getIdToken();
+        const isReady = await checkServerReady();
+        if (!isReady) return; // Skip if server isn't ready
+
+        const token = await auth.currentUser?.getIdToken(true);
+        if (!token) return;
+        
         const response = await fetch('/api/orders', {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -202,8 +225,11 @@ export default function App() {
             setOrders(mapped);
           }
         }
-      } catch (err) {
-        console.warn("Failed to fetch orders from backend database:", err);
+      } catch (err: any) {
+        // Silently handle fetch errors during startup
+        if (err.name !== 'TypeError' || !err.message.includes('Failed to fetch')) {
+          console.error("Error loading orders:", err);
+        }
       }
     };
     loadDbOrders();
@@ -533,7 +559,7 @@ export default function App() {
     setProducts((prev) => [newProduct, ...prev]);
 
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken(true);
       if (!token) {
         showToast('تنبيه', 'يرجى تسجيل الدخول لحفظ المنتج في قاعدة البيانات.', 'info');
         return;
@@ -587,7 +613,7 @@ export default function App() {
     );
 
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken(true);
       if (!token) return;
 
       const numericId = Number(updatedProduct.id);
@@ -635,7 +661,7 @@ export default function App() {
       setProducts((prev) => prev.filter((p) => p.id !== productId));
 
       try {
-        const token = await auth.currentUser?.getIdToken();
+        const token = await auth.currentUser?.getIdToken(true);
         if (!token) return;
 
         const numericId = Number(productId);
@@ -757,7 +783,8 @@ export default function App() {
   };
 
   // --- Orders Management Handlers ---
-  const handlePlaceOrder = (newOrder: Order) => {
+  const handlePlaceOrder = async (newOrder: Order) => {
+    // Add locally first for optimistic UI and immediate receipt view
     setOrders((prev) => [newOrder, ...prev]);
 
     // Create Admin notification
@@ -789,9 +816,53 @@ export default function App() {
         return p;
       })
     );
+
+    // Persist order to Cloud SQL PostgreSQL database via backend API
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          customerUid: auth.currentUser?.uid || null,
+          customerName: newOrder.customerName,
+          customerEmail: newOrder.customerEmail,
+          customerPhone: newOrder.customerPhone,
+          shippingAddress: newOrder.shippingAddress || null,
+          totalAmount: newOrder.totalAmount,
+          paymentMethodId: newOrder.paymentMethodId,
+          paymentDetails: newOrder.paymentDetails,
+          receiptUrl: newOrder.receiptUrl || null,
+          items: newOrder.items.map(item => ({
+            productId: String(item.productId),
+            productName: item.productName,
+            price: Number(item.price),
+            quantity: Number(item.quantity),
+            type: item.type
+          }))
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.order) {
+          // Replace local temporary ID with official database serial ID
+          const dbOrder = {
+            ...newOrder,
+            id: String(data.order.id)
+          };
+          setOrders((prev) => prev.map(o => o.id === newOrder.id ? dbOrder : o));
+          console.log(`[Database Sync] Order ${newOrder.id} persisted with DB ID: ${data.order.id}`);
+        }
+      }
+    } catch (err) {
+      console.error("[Database Sync] Failed to persist order to backend database:", err);
+    }
   };
 
-  const handleUpdateOrderStatus = (orderId: string, status: OrderStatus) => {
+  const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    // 1. Optimistic UI update
     setOrders((prev) => {
       const existingOrder = prev.find((o) => o.id === orderId);
       if (existingOrder) {
@@ -814,6 +885,29 @@ export default function App() {
       }
       return prev.map((o) => (o.id === orderId ? { ...o, status } : o));
     });
+
+    // 2. Persist update to database
+    try {
+      const numericId = Number(orderId.replace('ORD-', ''));
+      if (!isNaN(numericId)) {
+        const token = await auth.currentUser?.getIdToken(true);
+        const response = await fetch(`/api/orders/${numericId}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ status })
+        });
+        if (response.ok) {
+          console.log(`[Database Sync] Order status updated in backend: ${orderId} -> ${status}`);
+        } else {
+          console.warn("[Database Sync] Failed to update order status in backend.");
+        }
+      }
+    } catch (err) {
+      console.error("[Database Sync] Error updating order status in backend:", err);
+    }
   };
 
   // Get active enabled payment gateways
@@ -858,6 +952,8 @@ export default function App() {
         onMarkAllAsRead={handleMarkAllNotificationsAsRead}
         onMarkAsRead={handleMarkNotificationAsRead}
         onDeleteNotification={handleDeleteNotification}
+        activeCustomerView={activeCustomerView}
+        setActiveCustomerView={setActiveCustomerView}
       />
 
       {/* 2. Main Content Container */}
@@ -882,6 +978,12 @@ export default function App() {
             onAddCategory={handleAddCategory}
             onDeleteCategory={handleDeleteCategory}
             onUpdateCategory={handleUpdateCategory}
+          />
+        ) : activeCustomerView === 'tracking' ? (
+          <OrderTracking
+            orders={orders}
+            gateways={gateways}
+            onBackToStore={() => setActiveCustomerView('store')}
           />
         ) : (
           

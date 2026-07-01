@@ -309,7 +309,7 @@ export default function SettingsModal({
                   </span>
                   <input
                     type="text"
-                    value={name}
+                    value={name || ""}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="أدخل اسمك الكريم"
                     className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-right font-medium"
@@ -366,7 +366,7 @@ export default function SettingsModal({
                     </span>
                     <input
                       type={showPasswordForEmail ? 'text' : 'password'}
-                      value={currentPasswordForEmail}
+                      value={currentPasswordForEmail || ""}
                       onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
                       placeholder="أدخل كلمة مرورك الحالية للتأكيد"
                       className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
@@ -390,7 +390,7 @@ export default function SettingsModal({
                     </span>
                     <input
                       type="email"
-                      value={newEmail}
+                      value={newEmail || ""}
                       onChange={(e) => setNewEmail(e.target.value)}
                       placeholder="example@domain.com"
                       className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-left font-mono"
@@ -439,7 +439,7 @@ export default function SettingsModal({
                       </span>
                       <input
                         type={showCurrentPasswordForPass ? 'text' : 'password'}
-                        value={currentPasswordForPass}
+                        value={currentPasswordForPass || ""}
                         onChange={(e) => setCurrentPasswordForPass(e.target.value)}
                         placeholder="أدخل كلمة مرورك الحالية"
                         className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
@@ -463,7 +463,7 @@ export default function SettingsModal({
                       </span>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
-                        value={newPassword}
+                        value={newPassword || ""}
                         onChange={(e) => setNewPassword(e.target.value)}
                         placeholder="لا تقل عن 6 خانات أو رموز"
                         className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
@@ -487,7 +487,7 @@ export default function SettingsModal({
                       </span>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
-                        value={confirmPassword}
+                        value={confirmPassword || ""}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="أعد إدخال كلمة المرور الجديدة"
                         className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-right font-medium"

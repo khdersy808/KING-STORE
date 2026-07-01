@@ -41,6 +41,9 @@ export interface PaymentGateway {
   iconName: string;
   isEnabled: boolean;
   instructions: string; // تعليمات الدفع للعميل
+  accountIdentifier?: string; // الرقم أو المعرّف (رقم حساب، رقم محفظة، الخ)
+  qrCodeUrl?: string; // رابط صورة الـ QR Code الخاصة بالحساب
+  customIconUrl?: string; // صورة الأيقونة المخصصة المرفوعة من الأدمن
   fields: PaymentGatewayField[];
 }
 
@@ -64,8 +67,11 @@ export interface Order {
   totalAmount: number;
   paymentMethodId: string;
   paymentDetails: Record<string, string>; // القيم المدخلة لبوابة الدفع
+  receiptUrl?: string; // رابط صورة الإيصال المرفوعة
   status: OrderStatus;
   date: string;
+  senderName?: string;
+  transactionId?: string;
 }
 
 export interface CartItem {
