@@ -1196,10 +1196,10 @@ export default function App() {
               <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 
                 {/* 1. Filter by Product Type */}
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
                   <button
                     onClick={() => { setSelectedType('all'); setSelectedCategory('all'); }}
-                    className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
                       selectedType === 'all'
                         ? 'bg-slate-950 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1209,7 +1209,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => { setSelectedType('physical'); setSelectedCategory('all'); }}
-                    className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       selectedType === 'physical'
                         ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1220,7 +1220,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => { setSelectedType('digital'); setSelectedCategory('all'); }}
-                    className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       selectedType === 'digital'
                         ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/10'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1378,7 +1378,7 @@ export default function App() {
 
       {/* 7. Mobile App Installation & Generation Guide Modal */}
       {isApkGuideOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-md" dir="rtl">
           <div 
             className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
             onClick={(e) => e.stopPropagation()}

@@ -891,18 +891,18 @@ export default function Cart({
                   </button>
                 )
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
                     onClick={() => setStep('cart')}
-                    className="rounded-xl border border-slate-200 bg-white py-3.5 text-xs sm:text-sm font-bold text-amber-200/60 hover:bg-slate-50 transition-all"
+                    className="w-full sm:w-auto flex-1 rounded-xl border border-slate-200 bg-white py-3.5 text-xs sm:text-sm font-bold text-amber-200/60 hover:bg-slate-50 transition-all cursor-pointer"
                   >
                     العودة للسلة
                   </button>
                   <button
                     type="button"
                     onClick={handleSubmitCheckout}
-                    className="rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 py-3.5 text-xs sm:text-sm font-black text-slate-950 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15 cursor-pointer"
+                    className="w-full sm:w-auto flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 py-3.5 text-xs sm:text-sm font-black text-slate-950 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15 cursor-pointer"
                   >
                     <span>تأكيد الإرسال والدفع</span>
                     <CheckCircle2 className="h-4 w-4" />
@@ -916,7 +916,7 @@ export default function Cart({
       </div>
 
       {zoomedQrUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
+        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/50 px-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
           <div className="relative max-w-lg w-full bg-[#0F172AFF] border border-amber-500/20 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4 text-center text-right" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"

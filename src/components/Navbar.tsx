@@ -56,7 +56,7 @@ export default function Navbar({
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className={`sticky top-0 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all ${isMobileMenuOpen ? 'z-[9999]' : 'z-40'}`}>
+    <header className="sticky top-0 z-40 bg-[#0F172AFF] shadow-lg w-full border-b border-amber-500/10 text-[#e0e0e0] transition-all">
       <div className="mx-auto flex max-w-7xl h-18 items-center justify-between px-4 sm:px-6">
         
         {/* Right side: App Branding / Logo */}
@@ -127,22 +127,6 @@ export default function Navbar({
 
         {/* Left side: Controls */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          
-          {/* Search bar toggle for mobile */}
-          {!isAdminMode && (
-            <div className="md:hidden relative">
-              <input
-                type="text"
-                placeholder="بحث..."
-                value={searchQuery || ""}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-20 xs:w-28 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
-              />
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <Search className="h-3 w-3 text-zinc-500" />
-              </div>
-            </div>
-          )}
 
           {/* Notifications Bell Icon Button (shown to logged-in users) */}
           {currentUser && (
@@ -151,8 +135,8 @@ export default function Navbar({
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
                   isNotificationsOpen
-                    ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold'
-                    : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
+                    ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold shadow-lg shadow-amber-500/20'
+                    : 'bg-[#121212] border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5'
                 }`}
                 title="الإشعارات الملكية"
                 id="notif-toggle-btn"
@@ -167,7 +151,7 @@ export default function Navbar({
 
               {/* Notifications Dropdown Panel */}
               {isNotificationsOpen && (
-                <div className="absolute left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-50 divide-y divide-zinc-900 animate-fade-in">
+                <div className="fixed sm:absolute top-[70px] sm:top-auto sm:mt-2 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 w-[calc(100vw-2rem)] sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-50 divide-y divide-zinc-900 animate-fade-in">
                   
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between p-4 bg-zinc-900/40">
@@ -276,27 +260,11 @@ export default function Navbar({
             </div>
           )}
 
-          {/* Mobile Track Order Button */}
-          {!isAdminMode && (
-            <button
-              onClick={() => setActiveCustomerView?.(activeCustomerView === 'tracking' ? 'store' : 'tracking')}
-              className={`flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border transition-all cursor-pointer ${
-                activeCustomerView === 'tracking'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold'
-                  : 'border-zinc-800 text-zinc-300 hover:text-amber-400'
-              }`}
-              title="تتبع طلبك الملكي"
-              id="mobile-track-btn"
-            >
-              <Truck className="h-4 w-4" />
-            </button>
-          )}
-
           {/* Cart Icon (only if not admin mode) */}
           {!isAdminMode && (
             <button
               onClick={onOpenCart}
-              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
+              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5 transition-all cursor-pointer"
               title="سلة المشتريات"
               id="cart-toggle-btn"
             >
@@ -367,7 +335,7 @@ export default function Navbar({
           {currentUser && (
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
+              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5 transition-all cursor-pointer"
               title="القائمة"
               id="mobile-menu-toggle-btn"
             >
@@ -389,12 +357,11 @@ export default function Navbar({
 
           {/* Sliding container with fixed positioning and guaranteed solid background color */}
           <div 
-            className="fixed top-0 right-0 z-50 w-80 bg-[#0F172A] border-l border-amber-500/20 p-6 flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] h-screen overflow-y-auto"
-            style={{ backgroundColor: '#0F172A' }}
+            className="fixed top-0 right-0 z-50 w-80 bg-[#0F172AFF] border-l border-amber-500/20 p-6 flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] h-screen overflow-y-auto"
           >
             
             {/* Upper Content wrapper */}
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               
               {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-amber-500/10 pb-4">
@@ -483,15 +450,15 @@ export default function Navbar({
             </div>
 
             {/* 3. Footer Section: Logout button at bottom of drawer */}
-            <div className="border-t border-amber-500/10 pt-5">
+            <div className="border-t border-amber-500/10 pt-5 mt-4">
               <button
                 onClick={() => {
                   onLogout();
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-rose-950/30 border border-rose-500/30 hover:border-amber-500/30 hover:bg-rose-950/50 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer group shadow-[0_4_15px_rgba(244,63,94,0.05)]"
+                className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-red-900/50 border border-red-500/30 hover:border-amber-500/30 hover:bg-red-900/70 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer shadow-md shadow-red-900/20"
               >
-                <LogOut className="h-4.5 w-4.5 text-rose-400 group-hover:text-amber-400 transition-colors" />
+                <LogOut className="h-4.5 w-4.5 text-red-400 transition-colors" />
                 <span className="text-white text-sm font-extrabold flex items-center gap-1.5">
                   تسجيل الخروج الآمن 🚪
                 </span>

@@ -1584,7 +1584,7 @@ export default function AdminPanel({
                     />
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1594,7 +1594,7 @@ export default function AdminPanel({
                         setEditingCategoryName(null);
                         setEditCategoryNewValue('');
                       }}
-                      className="flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
+                      className="w-full sm:w-auto flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
                     >
                       حفظ التغيير
                     </button>
@@ -1604,7 +1604,7 @@ export default function AdminPanel({
                         setEditingCategoryName(null);
                         setEditCategoryNewValue('');
                       }}
-                      className="py-2 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
+                      className="w-full sm:w-auto py-2 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
                     >
                       إلغاء
                     </button>
@@ -2486,7 +2486,7 @@ export default function AdminPanel({
 
           {/* 5. Detailed Invoice & Fulfillment Modal Dialog */}
           {selectedOrderForModal && (
-            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+            <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm" dir="rtl">
               <div 
                 className="relative bg-white rounded-3xl border border-slate-200 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-slate-800"
                 onClick={(e) => e.stopPropagation()}
@@ -2530,13 +2530,13 @@ export default function AdminPanel({
                       </div>
                     </div>
 
-                    <div className="flex gap-1.5">
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <button
                         onClick={() => {
                           onUpdateOrderStatus(selectedOrderForModal.id, 'completed');
                           setSelectedOrderForModal(prev => prev ? { ...prev, status: 'completed' } : null);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         موافقة وتفعيل الكود
                       </button>
@@ -2545,7 +2545,7 @@ export default function AdminPanel({
                           onUpdateOrderStatus(selectedOrderForModal.id, 'pending');
                           setSelectedOrderForModal(prev => prev ? { ...prev, status: 'pending' } : null);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         تجهيز / انتظار
                       </button>
@@ -2556,7 +2556,7 @@ export default function AdminPanel({
                             setSelectedOrderForModal(prev => prev ? { ...prev, status: 'cancelled' } : null);
                           }
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         رفض وإلغاء
                       </button>
@@ -2747,12 +2747,12 @@ export default function AdminPanel({
                         />
                       </div>
 
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-col sm:flex-row justify-end gap-3">
                         <button
                           onClick={() => {
                             alert('تم حفظ بيانات التوصيل محلياً وتعديلها بنجاح!');
                           }}
-                          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
+                          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
                         >
                           حفظ التحديث 💾
                         </button>
@@ -3036,7 +3036,7 @@ export default function AdminPanel({
 
       {/* 6. Delete Gateway Confirmation Modal */}
       {gatewayToDelete && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm" dir="rtl">
           <div 
             className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
             onClick={(e) => e.stopPropagation()}
@@ -3052,11 +3052,11 @@ export default function AdminPanel({
               تنبيه: هل أنت متأكد من حذف بوابة الدفع <span className="font-bold text-slate-900">"{gatewayToDelete.name}"</span> هذه نهائياً من السيستم؟ هذا الإجراء سيقوم بإزالتها تماماً من خيارات الزبائن ولا يمكن التراجع عنه.
             </p>
             
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 w-full">
               <button
                 type="button"
                 onClick={() => setGatewayToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 إلغاء الأمر
               </button>
@@ -3069,7 +3069,7 @@ export default function AdminPanel({
                   }
                   setGatewayToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
               >
                 <Trash2 className="h-4 w-4" />
                 <span>نعم، احذف نهائياً</span>

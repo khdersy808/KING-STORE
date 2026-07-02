@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Settings, ShieldCheck, Lock, Mail, User, Eye, EyeOff, Save, Sparkles, Loader2 } from 'lucide-react';
 import { User as AppUser } from '../types';
 import { auth, db, doc, setDoc, getDoc, deleteDoc, updateDoc } from '../lib/firebase';
@@ -221,15 +222,15 @@ export default function SettingsModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
+  const modalContent = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl" onClick={onClose}>
       <div 
-        className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-md w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
+        className="relative flex flex-col bg-slate-900 rounded-3xl border border-amber-500/20 max-w-md w-full max-h-[90vh] shadow-2xl animate-fade-in text-zinc-100"
         onClick={(e) => e.stopPropagation()}
         id="settings-modal-container"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-950 to-slate-900 p-5 text-white flex items-center justify-between border-b border-amber-500/10">
+        <div className="shrink-0 bg-gradient-to-r from-slate-950 to-slate-900 p-5 text-white flex items-center justify-between border-b border-amber-500/10 rounded-t-3xl">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
               <Settings className="h-5 w-5 text-amber-400 animate-spin-slow" />
@@ -251,7 +252,7 @@ export default function SettingsModal({
         </div>
 
         {/* Custom Premium Tabs Navigation */}
-        <div className="flex border-b border-zinc-800 bg-slate-950/40 p-1.5">
+        <div className="shrink-0 flex border-b border-zinc-800 bg-slate-950/40 p-1.5">
           <button
             onClick={() => setActiveTab('profile')}
             className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
@@ -285,7 +286,7 @@ export default function SettingsModal({
         </div>
 
         {/* Modal Body / Tab Forms */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto overflow-x-hidden">
           {activeTab === 'profile' && (
             <form onSubmit={handleUpdateProfile} className="space-y-4">
               <div className="bg-amber-500/5 rounded-2xl p-4 border border-amber-500/10 mb-2">
@@ -535,7 +536,7 @@ export default function SettingsModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-950 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-zinc-400">
+        <div className="shrink-0 p-4 bg-slate-950 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-zinc-400 rounded-b-3xl">
           <span>🛡️ تشفير بيانات فائق الأمان بمقاييس ملوكية</span>
           <button
             onClick={onClose}
@@ -547,4 +548,6 @@ export default function SettingsModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

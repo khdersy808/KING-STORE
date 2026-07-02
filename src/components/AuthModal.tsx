@@ -381,7 +381,7 @@ export default function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" dir="rtl">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm animate-fade-in" dir="rtl">
       <div 
         className="relative w-full max-w-md overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl p-6"
         id="auth-modal-container"
