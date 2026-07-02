@@ -294,11 +294,11 @@ export default function Cart({
     <div className="fixed inset-0 z-50 overflow-hidden" aria-modal="true" role="dialog" dir="rtl">
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-      <div className="absolute inset-y-0 left-0 flex max-w-full pr-0 md:pr-10">
-        <div className="w-screen max-w-lg transform bg-[#0F172AFF] text-white shadow-2xl transition-all flex flex-col h-full rounded-r-2xl border-r border-amber-500/20">
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md h-[100dvh] overflow-hidden">
+        <div className="w-full h-full transform bg-[#0F172AFF] text-white shadow-2xl transition-all flex flex-col overflow-hidden sm:rounded-l-2xl border-l border-amber-500/20">
           
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-amber-500/10 px-6 py-5">
+          <div className="flex items-center justify-between border-b border-amber-500/10 px-4 py-4 sm:px-6 sm:py-5 shrink-0">
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               {step === 'cart' && 'سلة المشتريات 🛒'}
               {step === 'checkout' && 'إتمام الدفع والطلب 💳'}
@@ -313,7 +313,7 @@ export default function Cart({
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             
             {/* Step 1: Cart Items */}
             {step === 'cart' && (
@@ -854,7 +854,7 @@ export default function Cart({
 
           {/* Footer of Drawer (Cart checkout summary) */}
           {step !== 'success' && cartItems.length > 0 && (
-            <div className="border-t border-amber-500/10 p-6 bg-slate-950/40">
+            <div className="border-t border-amber-500/10 p-4 sm:p-6 bg-slate-950/40 shrink-0">
               <div className="flex items-center justify-between text-base font-bold text-slate-300 mb-4">
                 <span>المجموع الكلي:</span>
                 <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>

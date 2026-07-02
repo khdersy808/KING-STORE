@@ -47,10 +47,10 @@ export default function Navbar({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Filter notifications belonging to the current user (either user email or 'admin')
+  // Filter notifications belonging to the current user (either user email or 'admin' or 'all')
   const userNotifications = notifications.filter((n) => {
     if (!currentUser) return false;
-    return n.userId === currentUser.email || (n.userId === 'admin' && currentUser.role === 'admin');
+    return n.userId === 'all' || n.userId === currentUser.email || (n.userId === 'admin' && currentUser.role === 'admin');
   });
 
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;

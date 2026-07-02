@@ -72,6 +72,7 @@ export interface Order {
   date: string;
   senderName?: string;
   transactionId?: string;
+  agentId?: string; // معرف الوكيل الذي تمت العملية عن طريقه
 }
 
 export interface CartItem {
@@ -84,7 +85,20 @@ export interface User {
   name: string;
   email: string;
   password?: string;
-  role: 'admin' | 'customer';
+  role: 'admin' | 'customer' | 'agent';
+}
+
+export interface Agent {
+  id: string; // Document ID in Firestore
+  agentId: string; // Identical to email usually
+  name: string;
+  email: string;
+  walletLink: string;
+  assignedProducts: string[]; // Array of product IDs
+  assignedCategories?: string[]; // Array of category names/IDs allowed for this agent
+  totalSales: number;
+  pendingDues: number; // المبالغ المستحقة
+  status: 'active' | 'blocked';
 }
 
 export interface AppNotification {

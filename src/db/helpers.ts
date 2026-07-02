@@ -163,6 +163,8 @@ export async function createOrder(orderData: {
   paymentMethodId: string;
   paymentDetails: any;
   receiptUrl?: string;
+  agentId?: string;
+  isAgentSettled?: string;
   items: {
     productId: string;
     productName: string;
@@ -185,6 +187,8 @@ export async function createOrder(orderData: {
         paymentDetails: orderData.paymentDetails,
         receiptUrl: orderData.receiptUrl || null,
         status: 'pending',
+        agentId: orderData.agentId || null,
+        isAgentSettled: orderData.isAgentSettled || 'false',
       })
       .returning();
 
@@ -223,6 +227,16 @@ export async function getOrders(customerUid?: string) {
   }
 }
 
+export async function getOrderById(id: number) {
+  try {
+    const result = await db.select().from(orders).where(eq(orders.id, id));
+    return result[0] || null;
+  } catch (error) {
+    console.error("Database fetch order by ID failed:", error);
+    throw new Error(`Failed to retrieve order with ID ${id}.`, { cause: error });
+  }
+}
+
 export async function updateOrderStatus(id: number, status: string) {
   try {
     const result = await db.update(orders)
@@ -233,6 +247,19 @@ export async function updateOrderStatus(id: number, status: string) {
   } catch (error) {
     console.error("Database update order status failed:", error);
     throw new Error(`Failed to update order status with ID ${id}.`, { cause: error });
+  }
+}
+
+export async function updateOrderAgentSettled(id: number, isAgentSettled: string) {
+  try {
+    const result = await db.update(orders)
+      .set({ isAgentSettled })
+      .where(eq(orders.id, id))
+      .returning();
+    return result[0];
+  } catch (error) {
+    console.error("Database update order agent settled status failed:", error);
+    throw new Error(`Failed to update order settlement status with ID ${id}.`, { cause: error });
   }
 }
 

@@ -1,10 +1,10 @@
 {
-  "projectId": "numeric-folder-78phd",
+  "projectId": "kingstore-42539",
   "appId": "1:80043135372:web:58ed9bc8c72b03711946a9",
   "apiKey": "AIzaSyA-B82e8FwgQBR5iiwLGr6tzI6cDomQP9s",
-  "authDomain": "numeric-folder-78phd.firebaseapp.com",
+  "authDomain": "kingstore-42539.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-kingstore-0de88264-2a21-4322-9cdf-9f3e734cb912",
-  "storageBucket": "numeric-folder-78phd.firebasestorage.app",
+  "storageBucket": "kingstore-42539.firebasestorage.app",
   "messagingSenderId": "80043135372",
   "measurementId": ""
 }

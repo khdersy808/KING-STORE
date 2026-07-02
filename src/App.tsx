@@ -34,7 +34,8 @@ import {
 import ProductDetailsModal from './components/ProductDetailsModal';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
-import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
+import AgentDashboard from './components/AgentDashboard';
+import { db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 
 export default function App() {
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
@@ -285,7 +286,6 @@ export default function App() {
         
         if (isVerified && fbUser.email) {
           try {
-            const { getDoc } = await import('./lib/firebase');
             const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
             const userDoc = await getDoc(userDocRef);
             
@@ -296,7 +296,6 @@ export default function App() {
               role = 'admin';
               nameVal = fbUser.displayName || 'مدير النظام الملكي';
               // Merge/force update role to admin in Firestore
-              const { setDoc } = await import('./lib/firebase');
               await setDoc(userDocRef, {
                 id: fbUser.uid,
                 name: nameVal,
@@ -326,6 +325,7 @@ export default function App() {
         // If logged out from Firebase, clear client-side state
         setCurrentUser(null);
       }
+      setIsAuthLoaded(true);
     });
     return () => unsubscribe();
   }, []);
@@ -416,6 +416,26 @@ export default function App() {
   };
 
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [isAgentMode, setIsAgentMode] = useState<boolean>(false);
+
+  // Capture marketing agent ID from URL query parameters (?agent=xxx)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const agentEmail = params.get('agent');
+    if (agentEmail) {
+      localStorage.setItem('king_store_agent_id', agentEmail.toLowerCase());
+      console.log(`[Referral Hub] Active Agent set to: ${agentEmail}`);
+      
+      const prodId = params.get('product');
+      if (prodId && products.length > 0) {
+        const targetProd = products.find(p => p.id === prodId);
+        if (targetProd) {
+          setSelectedProduct(targetProd);
+        }
+      }
+    }
+  }, [products]);
+
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -445,9 +465,9 @@ export default function App() {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(false);
   const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-
 
   // --- Admin Invitation Detection Engine ---
   const [activeAdminInvite, setActiveAdminInvite] = useState<{ email: string; role: 'admin' } | null>(null);
@@ -544,8 +564,6 @@ export default function App() {
       }
       return [...prevItems, { product, quantity: 1 }];
     });
-    // Open cart drawer immediately for premium user experience
-    setIsCartOpen(true);
   };
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
@@ -738,7 +756,6 @@ export default function App() {
     setCategories(updated);
 
     try {
-      const { setDoc, doc } = await import('./lib/firebase');
       await setDoc(doc(db, 'categories', trimmed), { name: trimmed });
       showToast('تمت الإضافة', `تم إضافة فئة "${trimmed}" بنجاح 🏷️`, 'success');
     } catch (e) {
@@ -754,7 +771,6 @@ export default function App() {
     setCategories(updated);
 
     try {
-      const { deleteDoc, doc } = await import('./lib/firebase');
       await deleteDoc(doc(db, 'categories', categoryName));
       showToast('تم الحذف', `تم حذف فئة "${categoryName}" بنجاح 🏷️`, 'success');
     } catch (e) {
@@ -774,7 +790,6 @@ export default function App() {
     setCategories(updated);
 
     try {
-      const { setDoc, deleteDoc, doc } = await import('./lib/firebase');
       await deleteDoc(doc(db, 'categories', oldName));
       await setDoc(doc(db, 'categories', trimmedNew), { name: trimmedNew });
       
@@ -823,7 +838,11 @@ export default function App() {
   };
 
   // --- Orders Management Handlers ---
-  const handlePlaceOrder = async (newOrder: Order) => {
+  const handlePlaceOrder = async (orderToPlace: Order) => {
+    // Inject agentId if customer bought via agent referral link
+    const savedAgentId = localStorage.getItem('king_store_agent_id');
+    const newOrder = savedAgentId ? { ...orderToPlace, agentId: savedAgentId } : orderToPlace;
+
     // Add locally first for optimistic UI and immediate receipt view
     setOrders((prev) => [newOrder, ...prev]);
 
@@ -836,6 +855,17 @@ export default function App() {
       'order_created',
       newOrder.id
     );
+
+    // If an agent is tagged, let's also notify the agent about the new order!
+    if (newOrder.agentId) {
+      addNotification(
+        newOrder.agentId,
+        '👑 طلب جديد عبر رابطك التسويقي',
+        `قام العميل "${newOrder.customerName}" بطلب شراء جديد بقيمة ${newOrder.totalAmount.toLocaleString()} ل.س عبر رابطك التسويقي الملكي! يرجى مراجعة الطلب والموافقة عليه بعد تأكيد التحصيل.`,
+        'order_created',
+        newOrder.id
+      );
+    }
 
     // Create Customer notification
     addNotification(
@@ -874,6 +904,7 @@ export default function App() {
           paymentMethodId: newOrder.paymentMethodId,
           paymentDetails: newOrder.paymentDetails,
           receiptUrl: newOrder.receiptUrl || null,
+          agentId: newOrder.agentId || null,
           items: newOrder.items.map(item => ({
             productId: String(item.productId),
             productName: item.productName,
@@ -1023,7 +1054,15 @@ export default function App() {
 
       {/* 2. Main Content Container */}
       <div className="flex-1">
-        {isAdminMode ? (
+        {isAgentMode && currentUser && currentUser.role === 'agent' ? (
+          <AgentDashboard
+            currentUser={currentUser}
+            orders={orders}
+            products={products}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onBackToStore={() => setIsAgentMode(false)}
+          />
+        ) : isAdminMode ? (
           
           /* ADMIN DASHBOARD MODE */
           <AdminPanel
@@ -1043,6 +1082,7 @@ export default function App() {
             onAddCategory={handleAddCategory}
             onDeleteCategory={handleDeleteCategory}
             onUpdateCategory={handleUpdateCategory}
+            currentUser={currentUser}
           />
         ) : activeCustomerView === 'tracking' ? (
           <OrderTracking
@@ -1129,16 +1169,26 @@ export default function App() {
                       </div>
                       <h3 className="text-xl font-extrabold text-white">أهلاً بك يا {currentUser.name}! ✨</h3>
                       <p className="text-xs text-zinc-300 max-w-3xl leading-relaxed">
-                        لقد تم تسجيل دخولك بنجاح بصفتك <span className="text-amber-400 font-bold">{currentUser.role === 'admin' ? 'مدير النظام الفاخر' : 'عضو تسوق متميز'}</span>. حسابك نشط وجاهز للتسوق، وإضافة أي منتج إلى السلة، وإتمام الدفع بأمان.
+                        لقد تم تسجيل دخولك بنجاح بصفتك <span className="text-amber-400 font-bold">{currentUser.role === 'admin' ? 'مدير النظام الفاخر' : currentUser.role === 'agent' ? 'الوكيل المعتمد الفخم' : 'عضو تسوق متميز'}</span>. حسابك نشط وجاهز للعمل والتسوق وإنجاز المبيعات الملكية.
                       </p>
                     </div>
                     {currentUser.role === 'admin' && (
                       <div className="flex gap-3 shrink-0">
                         <button
-                          onClick={() => setIsAdminMode(true)}
+                          onClick={() => { setIsAdminMode(true); setIsAgentMode(false); }}
                           className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
                         >
                           لوحة تحكم الإدارة ⚙️
+                        </button>
+                      </div>
+                    )}
+                    {currentUser.role === 'agent' && (
+                      <div className="flex gap-3 shrink-0">
+                        <button
+                          onClick={() => { setIsAgentMode(true); setIsAdminMode(false); }}
+                          className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
+                        >
+                          لوحة تحكم الوكيل 👥
                         </button>
                       </div>
                     )}

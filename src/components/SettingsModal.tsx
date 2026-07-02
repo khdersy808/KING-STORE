@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLanguage } from '../LanguageContext';
 import { X, Settings, ShieldCheck, Lock, Mail, User, Eye, EyeOff, Save, Sparkles, Loader2 } from 'lucide-react';
 import { User as AppUser } from '../types';
 import { auth, db, doc, setDoc, getDoc, deleteDoc, updateDoc } from '../lib/firebase';
@@ -24,6 +25,7 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   if (!isOpen || !currentUser) return null;
 
+  const { language, setLanguage, t, isRtl } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -50,14 +52,24 @@ export default function SettingsModal({
     setIsSendingReset(true);
     try {
       const user = auth.currentUser;
-      if (!user || !user.email) throw new Error('لا يوجد بريد إلكتروني مرتبط بالحساب الحالي.');
+      if (!user || !user.email) throw new Error(language === 'ar' ? 'لا يوجد بريد إلكتروني مرتبط بالحساب الحالي.' : 'No email associated with current account.');
       
       const { sendPasswordResetEmail } = await import('../lib/firebase');
       await sendPasswordResetEmail(auth, user.email.toLowerCase());
-      showToast('📬 تم إرسال الرابط!', 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى التحقق من بريدك (والرسائل غير المرغوب فيها Spam).', 'success');
+      showToast(
+        language === 'ar' ? '📬 تم إرسال الرابط!' : '📬 Link Sent!', 
+        language === 'ar' 
+          ? 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح. يرجى التحقق من بريدك (والرسائل غير المرغوب فيها Spam).' 
+          : 'Password reset link was successfully sent to your email. Please check your inbox or spam.', 
+        'success'
+      );
     } catch (err: any) {
       console.error('Error sending reset email from Settings:', err);
-      showToast('خطأ في الإرسال ❌', err.message || 'حدث خطأ أثناء إرسال البريد الإلكتروني لإعادة تعيين كلمة المرور.', 'warning');
+      showToast(
+        language === 'ar' ? 'خطأ في الإرسال ❌' : 'Sending Error ❌', 
+        err.message || (language === 'ar' ? 'حدث خطأ أثناء إرسال البريد الإلكتروني لإعادة تعيين كلمة المرور.' : 'An error occurred while sending password reset email.'), 
+        'warning'
+      );
     } finally {
       setIsSendingReset(false);
     }
@@ -66,14 +78,18 @@ export default function SettingsModal({
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      showToast('خطأ في البيانات', 'الرجاء إدخال الاسم الجديد بشكل صحيح.', 'warning');
+      showToast(
+        language === 'ar' ? 'خطأ في البيانات' : 'Data Error', 
+        language === 'ar' ? 'الرجاء إدخال الاسم الجديد بشكل صحيح.' : 'Please enter the new name correctly.', 
+        'warning'
+      );
       return;
     }
 
     setIsLoading(true);
     try {
       const user = auth.currentUser;
-      if (!user) throw new Error('لا يوجد مستخدم نشط حالياً.');
+      if (!user) throw new Error(language === 'ar' ? 'لا يوجد مستخدم نشط حالياً.' : 'No active user found.');
 
       // 1. Update Profile in Firebase Auth
       await updateProfile(user, { displayName: name.trim() });
@@ -90,10 +106,18 @@ export default function SettingsModal({
         name: name.trim()
       });
 
-      showToast('تم التحديث بنجاح ✨', 'تم تعديل اسم الحساب بنجاح.', 'success');
+      showToast(
+        language === 'ar' ? 'تم التحديث بنجاح ✨' : 'Updated Successfully ✨', 
+        language === 'ar' ? 'تم تعديل اسم الحساب بنجاح.' : 'Profile name has been changed successfully.', 
+        'success'
+      );
     } catch (err: any) {
       console.error('Error updating name:', err);
-      showToast('فشل التحديث ❌', err.message || 'حدث خطأ غير متوقع أثناء تحديث الاسم.', 'warning');
+      showToast(
+        language === 'ar' ? 'فشل التحديث ❌' : 'Update Failed ❌', 
+        err.message || (language === 'ar' ? 'حدث خطأ غير متوقع أثناء تحديث الاسم.' : 'An error occurred while updating name.'), 
+        'warning'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -104,19 +128,27 @@ export default function SettingsModal({
     const targetNewEmail = newEmail.trim().toLowerCase();
 
     if (!targetNewEmail || !currentPasswordForEmail) {
-      showToast('حقول مطلوبة', 'الرجاء إدخال كلمة المرور الحالية والبريد الإلكتروني الجديد.', 'warning');
+      showToast(
+        language === 'ar' ? 'حقول مطلوبة' : 'Required Fields', 
+        language === 'ar' ? 'الرجاء إدخال كلمة المرور الحالية والبريد الإلكتروني الجديد.' : 'Please enter your current password and the new email address.', 
+        'warning'
+      );
       return;
     }
 
     if (targetNewEmail === currentUser.email.toLowerCase()) {
-      showToast('البريد متطابق', 'البريد الإلكتروني الجديد مطابق للبريد الحالي بالفعل.', 'warning');
+      showToast(
+        language === 'ar' ? 'البريد متطابق' : 'Email Identical', 
+        language === 'ar' ? 'البريد الإلكتروني الجديد مطابق للبريد الحالي بالفعل.' : 'The new email address matches your current one.', 
+        'warning'
+      );
       return;
     }
 
     setIsLoading(true);
     try {
       const user = auth.currentUser;
-      if (!user || !user.email) throw new Error('لا يوجد مستخدم نشط حالياً.');
+      if (!user || !user.email) throw new Error(language === 'ar' ? 'لا يوجد مستخدم نشط حالياً.' : 'No active user found.');
 
       // 1. Re-authenticate user
       const credential = EmailAuthProvider.credential(user.email, currentPasswordForEmail);
@@ -155,20 +187,30 @@ export default function SettingsModal({
         email: targetNewEmail
       });
 
-      showToast('تم تحديث البريد ✨', 'تم تغيير البريد الإلكتروني لحسابك بنجاح.', 'success');
+      showToast(
+        language === 'ar' ? 'تم تحديث البريد ✨' : 'Email Updated ✨', 
+        language === 'ar' ? 'تم تغيير البريد الإلكتروني لحسابك بنجاح.' : 'Your account email has been updated successfully.', 
+        'success'
+      );
       setCurrentPasswordForEmail('');
       setNewEmail('');
     } catch (err: any) {
       console.error('Error updating email:', err);
-      let errMsg = err.message || 'حدث خطأ غير متوقع.';
+      let errMsg = err.message || (language === 'ar' ? 'حدث خطأ غير متوقع.' : 'An unexpected error occurred.');
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        errMsg = 'كلمة المرور الحالية غير صحيحة. الرجاء التحقق وإعادة المحاولة.';
+        errMsg = language === 'ar' 
+          ? 'كلمة المرور الحالية غير صحيحة. الرجاء التحقق وإعادة المحاولة.' 
+          : 'Current password is incorrect. Please verify and try again.';
       } else if (err.code === 'auth/email-already-in-use') {
-        errMsg = 'البريد الإلكتروني الجديد مستخدم بالفعل في حساب آخر.';
+        errMsg = language === 'ar' 
+          ? 'البريد الإلكتروني الجديد مستخدم بالفعل في حساب آخر.' 
+          : 'The new email address is already in use by another account.';
       } else if (err.code === 'auth/invalid-email') {
-        errMsg = 'صيغة البريد الإلكتروني الجديد غير صالحة.';
+        errMsg = language === 'ar' 
+          ? 'صيغة البريد الإلكتروني الجديد غير صالحة.' 
+          : 'The new email address format is invalid.';
       }
-      showToast('فشل التحديث ❌', errMsg, 'warning');
+      showToast(language === 'ar' ? 'فشل التحديث ❌' : 'Update Failed ❌', errMsg, 'warning');
     } finally {
       setIsLoading(false);
     }
@@ -178,24 +220,36 @@ export default function SettingsModal({
     e.preventDefault();
 
     if (!currentPasswordForPass || !newPassword || !confirmPassword) {
-      showToast('حقول مطلوبة', 'الرجاء ملء كافة حقول كلمة المرور.', 'warning');
+      showToast(
+        language === 'ar' ? 'حقول مطلوبة' : 'Required Fields', 
+        language === 'ar' ? 'الرجاء ملء كافة حقول كلمة المرور.' : 'Please fill out all password fields.', 
+        'warning'
+      );
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      showToast('غير متطابق', 'كلمة المرور الجديدة وتأكيدها غير متطابقين.', 'warning');
+      showToast(
+        language === 'ar' ? 'غير متطابق' : 'Password Mismatch', 
+        language === 'ar' ? 'كلمة المرور الجديدة وتأكيدها غير متطابقين.' : 'The new password and password confirmation do not match.', 
+        'warning'
+      );
       return;
     }
 
     if (newPassword.length < 6) {
-      showToast('كلمة مرور ضعيفة', 'يجب أن تتكون كلمة المرور الجديدة من 6 خانات على الأقل.', 'warning');
+      showToast(
+        language === 'ar' ? 'كلمة مرور ضعيفة' : 'Weak Password', 
+        language === 'ar' ? 'يجب أن تتكون كلمة المرور الجديدة من 6 خانات على الأقل.' : 'The new password must be at least 6 characters.', 
+        'warning'
+      );
       return;
     }
 
     setIsLoading(true);
     try {
       const user = auth.currentUser;
-      if (!user || !user.email) throw new Error('لا يوجد مستخدم نشط حالياً.');
+      if (!user || !user.email) throw new Error(language === 'ar' ? 'لا يوجد مستخدم نشط حالياً.' : 'No active user found.');
 
       // 1. Re-authenticate user
       const credential = EmailAuthProvider.credential(user.email, currentPasswordForPass);
@@ -204,26 +258,34 @@ export default function SettingsModal({
       // 2. Update Password in Firebase Auth
       await updatePassword(user, newPassword);
 
-      showToast('تم تحديث كلمة المرور ✨', 'تم تغيير كلمة مرور حسابك بنجاح.', 'success');
+      showToast(
+        language === 'ar' ? 'تم تحديث كلمة المرور ✨' : 'Password Updated ✨', 
+        language === 'ar' ? 'تم تغيير كلمة مرور حسابك بنجاح.' : 'Your account password has been updated successfully.', 
+        'success'
+      );
       setCurrentPasswordForPass('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
       console.error('Error updating password:', err);
-      let errMsg = err.message || 'حدث خطأ غير متوقع.';
+      let errMsg = err.message || (language === 'ar' ? 'حدث خطأ غير متوقع.' : 'An unexpected error occurred.');
       if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        errMsg = 'كلمة المرور الحالية غير صحيحة. الرجاء التحقق وإعادة المحاولة.';
+        errMsg = language === 'ar' 
+          ? 'كلمة المرور الحالية غير صحيحة. الرجاء التحقق وإعادة المحاولة.' 
+          : 'Current password is incorrect. Please verify and try again.';
       } else if (err.code === 'auth/weak-password') {
-        errMsg = 'كلمة المرور الجديدة ضعيفة للغاية. يرجى اختيار كلمة مرور لا تقل عن 6 خانات.';
+        errMsg = language === 'ar' 
+          ? 'كلمة المرور الجديدة ضعيفة للغاية. يرجى اختيار كلمة مرور لا تقل عن 6 خانات.' 
+          : 'New password is too weak. Please choose at least 6 characters.';
       }
-      showToast('فشل التحديث ❌', errMsg, 'warning');
+      showToast(language === 'ar' ? 'فشل التحديث ❌' : 'Update Failed ❌', errMsg, 'warning');
     } finally {
       setIsLoading(false);
     }
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir={isRtl ? 'rtl' : 'ltr'} onClick={onClose}>
       <div 
         className="relative flex flex-col bg-slate-900 rounded-3xl border border-amber-500/20 max-w-md w-full max-h-[90vh] shadow-2xl animate-fade-in text-zinc-100"
         onClick={(e) => e.stopPropagation()}
@@ -236,9 +298,9 @@ export default function SettingsModal({
               <Settings className="h-5 w-5 text-amber-400 animate-spin-slow" />
             </div>
             <div>
-              <span className="text-[10px] font-extrabold text-amber-400 block uppercase tracking-wide">الملف الشخصي والأمان 👑</span>
+              <span className="text-[10px] font-extrabold text-amber-400 block uppercase tracking-wide">{t('settings.title')}</span>
               <h4 className="text-sm sm:text-base font-black flex items-center gap-1.5 mt-0.5">
-                <span>إعدادات الحساب الملكي</span>
+                <span>{t('settings.subtitle')}</span>
               </h4>
             </div>
           </div>
@@ -261,7 +323,7 @@ export default function SettingsModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            الملف الشخصي
+            {t('settings.profileTab')}
           </button>
           <button
             onClick={() => setActiveTab('email')}
@@ -271,7 +333,7 @@ export default function SettingsModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            تغيير البريد
+            {t('settings.emailTab')}
           </button>
           <button
             onClick={() => setActiveTab('password')}
@@ -281,7 +343,7 @@ export default function SettingsModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            كلمة المرور
+            {t('settings.passwordTab')}
           </button>
         </div>
 
@@ -292,28 +354,28 @@ export default function SettingsModal({
               <div className="bg-amber-500/5 rounded-2xl p-4 border border-amber-500/10 mb-2">
                 <div className="flex items-center gap-2 mb-1.5">
                   <User className="h-4 w-4 text-amber-400" />
-                  <span className="text-xs font-bold text-amber-400">معلومات الحساب الحالي</span>
+                  <span className="text-xs font-bold text-amber-400">{t('settings.currentAccountInfo')}</span>
                 </div>
                 <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
-                  أهلاً بك، بريدك الإلكتروني هو: <span className="text-zinc-200 font-bold font-mono">{currentUser.email}</span>
+                  {t('settings.welcomeEmail', { email: currentUser.email })}
                 </p>
                 <p className="text-[11px] text-zinc-500 font-medium leading-relaxed mt-0.5">
-                  نوع الحساب: <span className="text-amber-500 font-bold">{currentUser.role === 'admin' ? 'مدير النظام (Admin)' : 'عضو ملكي'}</span>
+                  {t('settings.accountType', { role: currentUser.role === 'admin' ? t('settings.roleAdmin') : t('settings.roleCustomer') })}
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300 block">الاسم الشخصي / اللقب</label>
+                <label className="text-xs font-bold text-zinc-300 block">{t('settings.nameLabel')}</label>
                 <div className="relative">
-                  <span className="absolute right-3 top-3.5 text-zinc-500">
+                  <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                     <User className="h-4 w-4" />
                   </span>
                   <input
                     type="text"
                     value={name || ""}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="أدخل اسمك الكريم"
-                    className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-right font-medium"
+                    placeholder={t('settings.namePlaceholder')}
+                    className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-4 text-right' : 'pl-10 pr-4 text-left'} text-xs sm:text-sm text-white font-medium`}
                     required
                   />
                 </div>
@@ -329,7 +391,7 @@ export default function SettingsModal({
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                <span>حفظ التعديلات الملكية</span>
+                <span>{t('settings.saveEdits')}</span>
               </button>
             </form>
           )}
@@ -341,9 +403,9 @@ export default function SettingsModal({
                   <Mail className="h-6 w-6" />
                 </div>
                 <div>
-                  <h5 className="text-sm font-extrabold text-amber-400 mb-2">تسجيل دخول عبر Google 🌐</h5>
+                  <h5 className="text-sm font-extrabold text-amber-400 mb-2">{t('settings.googleUserTitle')}</h5>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    أنت مسجل الدخول باستخدام حساب Google الخاص بك. لا يمكنك تغيير البريد الإلكتروني الخاص بك من هنا. يرجى إدارته مباشرة من إعدادات حساب Google الخاص بك.
+                    {t('settings.googleUserDesc')}
                   </p>
                 </div>
               </div>
@@ -352,31 +414,31 @@ export default function SettingsModal({
                 <div className="bg-red-500/5 rounded-2xl p-4 border border-red-500/10 mb-2">
                   <div className="flex items-center gap-2 mb-1">
                     <ShieldCheck className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-bold text-red-400">تحذير أمان هام!</span>
+                    <span className="text-xs font-bold text-red-400">{t('settings.securityWarning')}</span>
                   </div>
                   <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
-                    تغيير البريد الإلكتروني يتطلب إعادة التحقق. يرجى إدخال كلمة مرورك الحالية لتأكيد الهوية وتجنب الإيقاف العشوائي.
+                    {t('settings.emailWarningDesc')}
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300 block">كلمة المرور الحالية</label>
+                  <label className="text-xs font-bold text-zinc-300 block">{t('settings.currentPassword')}</label>
                   <div className="relative">
-                    <span className="absolute right-3 top-3.5 text-zinc-500">
+                    <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                       <Lock className="h-4 w-4" />
                     </span>
                     <input
                       type={showPasswordForEmail ? 'text' : 'password'}
                       value={currentPasswordForEmail || ""}
                       onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
-                      placeholder="أدخل كلمة مرورك الحالية للتأكيد"
-                      className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
+                      placeholder={t('settings.currentPasswordPlaceholder')}
+                      className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-10 text-right' : 'pl-10 pr-10 text-left'} text-xs sm:text-sm text-white font-medium`}
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPasswordForEmail(!showPasswordForEmail)}
-                      className="absolute left-3 top-3 text-zinc-500 hover:text-zinc-300"
+                      className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-3 text-zinc-500 hover:text-zinc-300`}
                     >
                       {showPasswordForEmail ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -384,9 +446,9 @@ export default function SettingsModal({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-300 block">البريد الإلكتروني الجديد</label>
+                  <label className="text-xs font-bold text-zinc-300 block">{t('settings.newEmail')}</label>
                   <div className="relative">
-                    <span className="absolute right-3 top-3.5 text-zinc-500">
+                    <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                       <Mail className="h-4 w-4" />
                     </span>
                     <input
@@ -394,7 +456,7 @@ export default function SettingsModal({
                       value={newEmail || ""}
                       onChange={(e) => setNewEmail(e.target.value)}
                       placeholder="example@domain.com"
-                      className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-left font-mono"
+                      className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-4 text-left' : 'pl-10 pr-4 text-left'} text-xs sm:text-sm text-white font-mono`}
                       required
                     />
                   </div>
@@ -410,7 +472,7 @@ export default function SettingsModal({
                   ) : (
                     <Sparkles className="h-4 w-4" />
                   )}
-                  <span>تحديث البريد الإلكتروني</span>
+                  <span>{t('settings.updateEmailBtn')}</span>
                 </button>
               </form>
             )
@@ -423,9 +485,9 @@ export default function SettingsModal({
                   <Lock className="h-6 w-6" />
                 </div>
                 <div>
-                  <h5 className="text-sm font-extrabold text-amber-400 mb-2">حساب Google مرتبطه به كلمة المرور 🌐</h5>
+                  <h5 className="text-sm font-extrabold text-amber-400 mb-2">{t('settings.googleUserTitle')}</h5>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    حسابك مسجل باستخدام Google ولا يحتوي على كلمة مرور محلية. يمكنك إدارة أو تغيير كلمة المرور بأمان من خلال إعدادات حساب Google الخاص بك.
+                    {t('settings.googleUserPassDesc')}
                   </p>
                 </div>
               </div>
@@ -433,23 +495,23 @@ export default function SettingsModal({
               <div className="space-y-4">
                 <form onSubmit={handleUpdatePassword} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-300 block">كلمة المرور الحالية</label>
+                    <label className="text-xs font-bold text-zinc-300 block">{t('settings.currentPasswordPass')}</label>
                     <div className="relative">
-                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                      <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                         <Lock className="h-4 w-4" />
                       </span>
                       <input
                         type={showCurrentPasswordForPass ? 'text' : 'password'}
                         value={currentPasswordForPass || ""}
                         onChange={(e) => setCurrentPasswordForPass(e.target.value)}
-                        placeholder="أدخل كلمة مرورك الحالية"
-                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
+                        placeholder={t('settings.currentPasswordPassPlaceholder')}
+                        className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-10 text-right' : 'pl-10 pr-10 text-left'} text-xs sm:text-sm text-white font-medium`}
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowCurrentPasswordForPass(!showCurrentPasswordForPass)}
-                        className="absolute left-3 top-3 text-zinc-500 hover:text-zinc-300"
+                        className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-3 text-zinc-500 hover:text-zinc-300`}
                       >
                         {showCurrentPasswordForPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -457,23 +519,23 @@ export default function SettingsModal({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-300 block">كلمة المرور الجديدة</label>
+                    <label className="text-xs font-bold text-zinc-300 block">{t('settings.newPassword')}</label>
                     <div className="relative">
-                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                      <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                         <Lock className="h-4 w-4 animate-pulse" />
                       </span>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
                         value={newPassword || ""}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="لا تقل عن 6 خانات أو رموز"
-                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-right font-medium"
+                        placeholder={t('settings.newPasswordPlaceholder')}
+                        className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-10 text-right' : 'pl-10 pr-10 text-left'} text-xs sm:text-sm text-white font-medium`}
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute left-3 top-3 text-zinc-500 hover:text-zinc-300"
+                        className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-3 text-zinc-500 hover:text-zinc-300`}
                       >
                         {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -481,17 +543,17 @@ export default function SettingsModal({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-300 block">تأكيد كلمة المرور الجديدة</label>
+                    <label className="text-xs font-bold text-zinc-300 block">{t('settings.confirmPassword')}</label>
                     <div className="relative">
-                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                      <span className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3.5 text-zinc-500`}>
                         <Lock className="h-4 w-4" />
                       </span>
                       <input
                         type={showNewPassword ? 'text' : 'password'}
                         value={confirmPassword || ""}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="أعد إدخال كلمة المرور الجديدة"
-                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-right font-medium"
+                        placeholder={t('settings.confirmPasswordPlaceholder')}
+                        className={`w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 ${isRtl ? 'pr-10 pl-4 text-right' : 'pl-10 pr-4 text-left'} text-xs sm:text-sm text-white font-medium`}
                         required
                       />
                     </div>
@@ -507,14 +569,14 @@ export default function SettingsModal({
                     ) : (
                       <Sparkles className="h-4 w-4" />
                     )}
-                    <span>حفظ كلمة المرور الجديدة</span>
+                    <span>{t('settings.savePasswordBtn')}</span>
                   </button>
                 </form>
 
                 {/* Secure Password Reset Fallback Block */}
                 <div className="pt-3 border-t border-zinc-800/80 text-center">
                   <p className="text-[10px] text-zinc-400 mb-2">
-                    هل نسيت كلمة المرور الحالية أو تواجه صعوبة في تسجيل الدخول مجدداً؟
+                    {t('settings.forgotPassPrompt')}
                   </p>
                   <button
                     type="button"
@@ -527,7 +589,7 @@ export default function SettingsModal({
                     ) : (
                       <Mail className="h-3 w-3" />
                     )}
-                    <span>إرسال رابط إعادة التعيين لبريدي الإلكتروني 📬</span>
+                    <span>{t('settings.sendResetLink')}</span>
                   </button>
                 </div>
               </div>
@@ -537,12 +599,12 @@ export default function SettingsModal({
 
         {/* Footer */}
         <div className="shrink-0 p-4 bg-slate-950 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-zinc-400 rounded-b-3xl">
-          <span>🛡️ تشفير بيانات فائق الأمان بمقاييس ملوكية</span>
+          <span>{t('settings.footerSecure')}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 text-[10px] font-extrabold text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-all cursor-pointer"
           >
-            إغلاق الضبط
+            {t('settings.closeSettings')}
           </button>
         </div>
       </div>

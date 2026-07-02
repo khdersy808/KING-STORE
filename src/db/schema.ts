@@ -36,6 +36,8 @@ export const orders = pgTable('orders', {
   paymentDetails: jsonb('payment_details').notNull(),
   receiptUrl: text('receipt_url'), // Added to store uploaded payment receipt
   status: text('status').default('pending').notNull(), // 'pending', 'completed', 'cancelled'
+  agentId: text('agent_id'), // معرف الوكيل (مثلا بريده الإلكتروني)
+  isAgentSettled: text('is_agent_settled').default('false'), // حالة تسوية الأرباح مع الأدمن ('true' or 'false')
   date: timestamp('date').defaultNow(),
 });
 

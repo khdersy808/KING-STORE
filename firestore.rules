@@ -20,15 +20,48 @@ service cloud.firestore {
     }
     
     // Rules for users
-    match /users/{document} {
-      allow read: if true;
-      allow write: if true;
+    match /users/{userId} {
+      allow read, write: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin'
+      );
     }
     
     // Rules for categories
     match /categories/{document} {
       allow read: if true;
-      allow write: if true;
+      allow write: if request.auth != null && (
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Rules for messages
+    match /messages/{document} {
+      allow create, delete, update: if request.auth != null && (
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin'
+      );
+      allow read: if request.auth != null && (
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin' ||
+        resource.data.receiverId == request.auth.token.email || 
+        resource.data.receiverId == 'all'
+      );
+    }
+
+    // Rules for agents
+    match /agents/{document} {
+      allow read: if request.auth != null && (
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin' ||
+        resource.data.email.toLowerCase() == request.auth.token.email.toLowerCase()
+      );
+      allow write: if request.auth != null && (
+        request.auth.token.email == 'khdersy808@gmail.com' || 
+        request.auth.token.role == 'admin'
+      );
     }
   }
 }

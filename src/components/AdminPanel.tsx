@@ -58,6 +58,8 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { auth } from '../lib/firebase';
+import AdminMessages from './AdminMessages';
+import AdminAgents from './AdminAgents';
 
 interface AdminPanelProps {
   products: Product[];
@@ -76,9 +78,10 @@ interface AdminPanelProps {
   onAddCategory: (categoryName: string) => Promise<void>;
   onDeleteCategory: (categoryName: string) => Promise<void>;
   onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
+  currentUser: User | null;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'messages' | 'agents';
 
 export default function AdminPanel({
   products,
@@ -96,7 +99,8 @@ export default function AdminPanel({
   categories,
   onAddCategory,
   onDeleteCategory,
-  onUpdateCategory
+  onUpdateCategory,
+  currentUser
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
 
@@ -731,6 +735,28 @@ export default function AdminPanel({
           >
             <Shield className="h-4 w-4" />
             <span>المدراء والدعوات ({users.filter(u => u.role === 'admin').length})</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('messages'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'messages'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+            }`}
+          >
+            <Mail className="h-4 w-4" />
+            <span>الرسائل والإشعارات الملكية 👑</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('agents'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'agents'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            <span>إدارة الوكلاء والعمولات 👥</span>
           </button>
         </div>
       </div>
@@ -3032,6 +3058,14 @@ export default function AdminPanel({
 
           </div>
         </div>
+      )}
+
+      {activeTab === 'messages' && (
+        <AdminMessages users={users} currentUser={currentUser} />
+      )}
+
+      {activeTab === 'agents' && (
+        <AdminAgents products={products} orders={orders} categories={categories} />
       )}
 
       {/* 6. Delete Gateway Confirmation Modal */}

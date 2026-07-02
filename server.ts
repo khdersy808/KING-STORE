@@ -15,7 +15,9 @@ import {
   getNotifications, 
   addNotification,
   seedProducts,
-  updateOrderStatus
+  updateOrderStatus,
+  getOrderById,
+  updateOrderAgentSettled
 } from "./src/db/helpers.ts";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.ts";
 
@@ -223,17 +225,20 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-// Fetch orders (authenticated: customer gets their own, admin gets all)
+// Fetch orders (authenticated: customer gets their own, admin gets all, agent gets theirs)
 app.get("/api/orders", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userEmail = req.user.email || "";
-    const adminEmail = 'khdersy808@gmail.com';
+    const userEmail = (req.user.email || "").toLowerCase();
+    const adminEmail = 'khdersy808@gmail.com'.toLowerCase();
     const profile = await getUserProfile(req.user.uid);
-    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
+    const role = userEmail === adminEmail ? 'admin' : (profile?.role || 'customer');
 
     let list;
     if (role === 'admin') {
       list = await getOrders();
+    } else if (role === 'agent') {
+      const allOrders = await getOrders();
+      list = allOrders.filter(o => o.agentId && o.agentId.toLowerCase() === userEmail);
     } else {
       list = await getOrders(req.user.uid);
     }
@@ -245,18 +250,14 @@ app.get("/api/orders", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Update order status (admin feature)
+// Update order status (admin or assigned agent feature)
 app.put("/api/orders/:id/status", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userEmail = req.user.email || "";
-    const adminEmail = 'khdersy808@gmail.com';
+    const userEmail = (req.user.email || "").toLowerCase();
+    const adminEmail = 'khdersy808@gmail.com'.toLowerCase();
     const profile = await getUserProfile(req.user.uid);
-    const role = userEmail.toLowerCase() === adminEmail.toLowerCase() ? 'admin' : (profile?.role || 'customer');
+    const role = userEmail === adminEmail ? 'admin' : (profile?.role || 'customer');
     
-    if (role !== 'admin') {
-      return res.status(403).json({ error: "غير مصرح لك بتعديل حالة الطلب. هذه الصلاحية للمسؤولين فقط." });
-    }
-
     const orderId = Number(req.params.id);
     if (isNaN(orderId)) {
       return res.status(400).json({ error: "معرف الطلب غير صالح." });
@@ -265,6 +266,22 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthRequest, res) => 
     const { status } = req.body;
     if (!status) {
       return res.status(400).json({ error: "حالة الطلب مطلوبة." });
+    }
+
+    const order = await getOrderById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "الطلب غير موجود." });
+    }
+
+    if (role !== 'admin') {
+      if (role === 'agent') {
+        const isAssigned = order.agentId && order.agentId.toLowerCase() === userEmail;
+        if (!isAssigned) {
+          return res.status(403).json({ error: "غير مصرح لك بتعديل هذا الطلب. يمكنك تعديل طلبات زبائنك فقط." });
+        }
+      } else {
+        return res.status(403).json({ error: "غير مصرح لك بتعديل حالة الطلب. هذه الصلاحية للمسؤولين والوكلاء فقط." });
+      }
     }
 
     const updated = await updateOrderStatus(orderId, status);

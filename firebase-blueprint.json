@@ -46,9 +46,34 @@
         "password": "string"
       }
     },
+    "messages": {
+      "fields": {
+        "id": "string",
+        "senderId": "string",
+        "receiverId": "string",
+        "title": "string",
+        "body": "string",
+        "timestamp": "string",
+        "isRead": "boolean"
+      }
+    },
     "categories": {
       "fields": {
         "name": "string"
+      }
+    },
+    "agents": {
+      "fields": {
+        "id": "string",
+        "agentId": "string",
+        "name": "string",
+        "email": "string",
+        "walletLink": "string",
+        "assignedProducts": "array",
+        "assignedCategories": "array",
+        "totalSales": "number",
+        "pendingDues": "number",
+        "status": "string"
       }
     }
   }
