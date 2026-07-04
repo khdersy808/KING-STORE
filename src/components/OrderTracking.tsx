@@ -209,14 +209,14 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
                   {/* Step 2 */}
                   <div className="relative flex gap-4 items-start">
                     <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                      searchedOrder.status === 'completed' || searchedOrder.status === 'processing' || activeStep >= 2
+                      searchedOrder.status === 'completed' || activeStep >= 2
                         ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold shadow-md shadow-amber-500/10' 
                         : 'bg-white border-slate-200 text-slate-400'
                     }`}>
                       <ShoppingBag className="h-4 w-4" />
                     </div>
                     <div className="space-y-1">
-                      <span className={`text-xs font-black block ${searchedOrder.status === 'completed' || searchedOrder.status === 'processing' || activeStep >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>
+                      <span className={`text-xs font-black block ${searchedOrder.status === 'completed' || activeStep >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>
                         قيد التجهيز والتأصيل الفني 📦
                       </span>
                       <p className="text-[11px] leading-relaxed text-slate-500">

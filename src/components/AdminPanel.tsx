@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { Product, PaymentGateway, Order, ProductType, OrderStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon } from '../types';
 import {
   BarChart,
   Bar,
@@ -54,12 +55,15 @@ import {
   Phone,
   MapPin,
   Activity,
-  Tags
+  Tags,
+  Crown,
+  MessageSquare,
+  Percent
 } from 'lucide-react';
 import { User } from '../types';
-import { auth } from '../lib/firebase';
-import AdminMessages from './AdminMessages';
-import AdminAgents from './AdminAgents';
+import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from '../lib/firebase';
+import AgentDashboard from './AgentDashboard';
+import MessagingSystem from './MessagingSystem';
 
 interface AdminPanelProps {
   products: Product[];
@@ -78,10 +82,9 @@ interface AdminPanelProps {
   onAddCategory: (categoryName: string) => Promise<void>;
   onDeleteCategory: (categoryName: string) => Promise<void>;
   onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
-  currentUser: User | null;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'messages' | 'agents';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts';
 
 export default function AdminPanel({
   products,
@@ -99,10 +102,28 @@ export default function AdminPanel({
   categories,
   onAddCategory,
   onDeleteCategory,
-  onUpdateCategory,
-  currentUser
+  onUpdateCategory
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
+  const [adminEmail, setAdminEmail] = useState<string | null>(() => {
+    const saved = localStorage.getItem('king_store_current_user');
+    if (saved) {
+      try {
+        const user = JSON.parse(saved);
+        return user.email;
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user?.email) {
+        setAdminEmail(user.email);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Product form states
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -207,6 +228,193 @@ export default function AdminPanel({
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('all');
   const [productTypeFilter, setProductTypeFilter] = useState('all');
+
+  // Discounts & Coupons States
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_coupons');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('king_store_coupons', JSON.stringify(coupons));
+  }, [coupons]);
+
+  const [isAddingCoupon, setIsAddingCoupon] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+  
+  // Coupon Form States
+  const [couponCode, setCouponCode] = useState('');
+  const [couponType, setCouponType] = useState<'percentage' | 'fixed'>('percentage');
+  const [couponValue, setCouponValue] = useState<number>(10);
+  const [couponMinAmount, setCouponMinAmount] = useState<number>(0);
+  const [couponExpiryDate, setCouponExpiryDate] = useState('');
+  const [couponIsActive, setCouponIsActive] = useState(true);
+  const [couponFormError, setCouponFormError] = useState('');
+  const [couponFormSuccess, setCouponFormSuccess] = useState('');
+
+  // Global Discount States
+  const [globalDiscountPercentage, setGlobalDiscountPercentage] = useState<number>(0);
+  const [savingGlobalDiscount, setSavingGlobalDiscount] = useState(false);
+  const [globalDiscountSuccess, setGlobalDiscountSuccess] = useState('');
+
+  // Synchronize Coupons from Firestore
+  useEffect(() => {
+    try {
+      const q = collection(db, 'coupons');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: Coupon[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Coupon);
+        });
+        list.sort((a, b) => {
+          if (a.createdAt && b.createdAt) {
+            return b.createdAt.localeCompare(a.createdAt);
+          }
+          return 0;
+        });
+        setCoupons(list);
+      }, (error) => {
+        console.warn("Error loading coupons from Firestore:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase coupons sync not active.", e);
+    }
+  }, []);
+
+  // Synchronize Settings from Firestore
+  useEffect(() => {
+    try {
+      const docRef = doc(db, 'settings', 'discounts');
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.globalDiscount === 'number') {
+            setGlobalDiscountPercentage(data.globalDiscount);
+          }
+        }
+      }, (error) => {
+        console.warn("Error loading global discount setting:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase settings sync not active.", e);
+    }
+  }, []);
+
+  // Save Global Storewide Discount
+  const handleSaveGlobalDiscount = async (value: number) => {
+    setSavingGlobalDiscount(true);
+    setGlobalDiscountSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'discounts');
+      await setDoc(docRef, { globalDiscount: value }, { merge: true });
+      setGlobalDiscountSuccess('تم حفظ نسبة الخصم العام بنجاح على المتجر! 🎉');
+      setTimeout(() => setGlobalDiscountSuccess(''), 3000);
+    } catch (err: any) {
+      console.error("Error saving global discount:", err);
+    } finally {
+      setSavingGlobalDiscount(false);
+    }
+  };
+
+  // Save / Update Coupon
+  const handleSaveCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponFormError('');
+    setCouponFormSuccess('');
+
+    const codeClean = couponCode.trim().toUpperCase();
+    if (!codeClean) {
+      setCouponFormError('الرجاء إدخال كود الخصم');
+      return;
+    }
+    if (couponValue <= 0) {
+      setCouponFormError('الرجاء إدخال قيمة خصم صالحة أكبر من صفر');
+      return;
+    }
+
+    try {
+      const couponData = {
+        code: codeClean,
+        type: couponType,
+        value: Number(couponValue),
+        minAmount: Number(couponMinAmount),
+        isActive: couponIsActive,
+        expiryDate: couponExpiryDate || 'لا ينتهي',
+        usageCount: editingCoupon ? editingCoupon.usageCount : 0,
+        createdAt: editingCoupon ? editingCoupon.createdAt : new Date().toISOString(),
+      };
+
+      if (editingCoupon) {
+        const docRef = doc(db, 'coupons', editingCoupon.id);
+        await setDoc(docRef, couponData, { merge: true });
+        setCouponFormSuccess('تم تعديل كود الخصم بنجاح! 🏷️');
+      } else {
+        // Check for duplicates
+        const isDuplicate = coupons.some(c => c.code === codeClean);
+        if (isDuplicate) {
+          setCouponFormError('كود الخصم هذا موجود بالفعل!');
+          return;
+        }
+        const collectionRef = collection(db, 'coupons');
+        await addDoc(collectionRef, couponData);
+        setCouponFormSuccess('تم إضافة كود الخصم الجديد بنجاح! 🎉');
+      }
+
+      // Reset form
+      setCouponCode('');
+      setCouponType('percentage');
+      setCouponValue(10);
+      setCouponMinAmount(0);
+      setCouponExpiryDate('');
+      setCouponIsActive(true);
+      setEditingCoupon(null);
+      setIsAddingCoupon(false);
+
+      setTimeout(() => setCouponFormSuccess(''), 3000);
+    } catch (err: any) {
+      console.error("Error saving coupon:", err);
+      setCouponFormError('حدث خطأ أثناء حفظ كود الخصم.');
+    }
+  };
+
+  // Toggle Coupon Active State
+  const handleToggleCoupon = async (coupon: Coupon) => {
+    try {
+      const docRef = doc(db, 'coupons', coupon.id);
+      await setDoc(docRef, { isActive: !coupon.isActive }, { merge: true });
+    } catch (err) {
+      console.error("Error toggling coupon:", err);
+    }
+  };
+
+  // Delete Coupon
+  const handleDeleteCoupon = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف كود الخصم هذا نهائياً؟')) return;
+    try {
+      const docRef = doc(db, 'coupons', id);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.error("Error deleting coupon:", err);
+    }
+  };
+
+  // Load Coupon for Edit
+  const handleEditCoupon = (coupon: Coupon) => {
+    setEditingCoupon(coupon);
+    setCouponCode(coupon.code);
+    setCouponType(coupon.type);
+    setCouponValue(coupon.value);
+    setCouponMinAmount(coupon.minAmount);
+    setCouponExpiryDate(coupon.expiryDate === 'لا ينتهي' ? '' : coupon.expiryDate);
+    setCouponIsActive(coupon.isActive);
+    setIsAddingCoupon(true);
+  };
 
   // Reset product form
   const resetProductForm = () => {
@@ -662,7 +870,7 @@ export default function AdminPanel({
       {/* Title & Banner */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">لوحة الإدارة والتخصيص</h2>
+          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">لوحة الإدارة الملكية</h2>
           <p className="text-sm text-slate-500 mt-1">
             إدارة المنتجات الملموسة والرقمية، تهيئة وضبط بوابات الدفع، ومتابعة الطلبات المكتملة والواردة.
           </p>
@@ -704,6 +912,17 @@ export default function AdminPanel({
             <span>تخصيص الفئات ({categories.length})</span>
           </button>
           <button
+            onClick={() => { setActiveTab('discounts'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'discounts'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <Percent className="h-4 w-4 text-amber-500" />
+            <span>تخصيص لوحة الخصومات 🏷️</span>
+          </button>
+          <button
             onClick={() => { setActiveTab('gateways'); resetProductForm(); }}
             className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'gateways'
@@ -737,34 +956,33 @@ export default function AdminPanel({
             <span>المدراء والدعوات ({users.filter(u => u.role === 'admin').length})</span>
           </button>
           <button
-            onClick={() => { setActiveTab('messages'); resetProductForm(); }}
-            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'messages'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
-            }`}
-          >
-            <Mail className="h-4 w-4" />
-            <span>الرسائل والإشعارات الملكية 👑</span>
-          </button>
-          <button
             onClick={() => { setActiveTab('agents'); resetProductForm(); }}
             className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'agents'
                 ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
-                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
             }`}
           >
-            <Users className="h-4 w-4" />
-            <span>إدارة الوكلاء والعمولات 👥</span>
+            <Crown className="h-4 w-4 text-amber-500" />
+            <span>إدارة الوكلاء والمحافظات 👑</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('messages'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'messages'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4 text-amber-500" />
+            <span>نظام الرسائل والمحادثات 💬</span>
           </button>
         </div>
       </div>
-
-      {/* TAB 1: ANALYTICS */}
       {activeTab === 'analytics' && (
         <div className="space-y-8">
           {/* Bento Statistics Grid */}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             
             {/* Total Revenue */}
@@ -918,6 +1136,43 @@ export default function AdminPanel({
               تطبيقك يدعم نوعين من المنتجات: <strong>المنتجات الملموسة</strong> التي تتطلب شحناً (وتدعم الدفع عند الاستلام)، و<strong>المنتجات غير الملموسة</strong> (رقمية مثل الكورسات والتراخيص) التي يتم توصيلها بشكل فوري ومباشر إلى العميل بمجرد تأكيد دفعه أونلاين. تأكد من إعداد بوابات الدفع الخاصة بك أدناه لتلقي الأموال بنجاح!
             </p>
           </div>
+        </div>
+      )}
+
+      {/* TAB: AGENTS (إدارة الوكلاء والمحافظات) */}
+      {activeTab === 'agents' && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl">
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-6">إحصائيات المبيعات النشطة للمحافظات</h3>
+            <div className="h-64 sm:h-80 w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { name: 'دمشق', sales: 58000 },
+                  { name: 'حلب', sales: 42000 },
+                  { name: 'حمص', sales: 31000 },
+                ]} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                  <XAxis dataKey="name" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} />
+                  <YAxis stroke="#888" tick={{ fill: '#888', fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                    itemStyle={{ color: '#fbbf24', fontWeight: 'bold' }}
+                  />
+                  <Bar dataKey="sales" name="المبيعات الكلية" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl">
+            <AgentDashboard isAdminMode={true} />
+          </div>
+        </div>
+      )}
+
+      {/* TAB: MESSAGES (نظام الرسائل والمحادثات) */}
+      {activeTab === 'messages' && (
+        <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl">
+          <MessagingSystem />
         </div>
       )}
 
@@ -1610,7 +1865,7 @@ export default function AdminPanel({
                     />
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1620,7 +1875,7 @@ export default function AdminPanel({
                         setEditingCategoryName(null);
                         setEditCategoryNewValue('');
                       }}
-                      className="w-full sm:w-auto flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
+                      className="flex-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
                     >
                       حفظ التغيير
                     </button>
@@ -1630,7 +1885,7 @@ export default function AdminPanel({
                         setEditingCategoryName(null);
                         setEditCategoryNewValue('');
                       }}
-                      className="w-full sm:w-auto py-2 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
+                      className="py-2 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
                     >
                       إلغاء
                     </button>
@@ -2512,7 +2767,7 @@ export default function AdminPanel({
 
           {/* 5. Detailed Invoice & Fulfillment Modal Dialog */}
           {selectedOrderForModal && (
-            <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm" dir="rtl">
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
               <div 
                 className="relative bg-white rounded-3xl border border-slate-200 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-slate-800"
                 onClick={(e) => e.stopPropagation()}
@@ -2556,13 +2811,13 @@ export default function AdminPanel({
                       </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex gap-1.5">
                       <button
                         onClick={() => {
                           onUpdateOrderStatus(selectedOrderForModal.id, 'completed');
                           setSelectedOrderForModal(prev => prev ? { ...prev, status: 'completed' } : null);
                         }}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         موافقة وتفعيل الكود
                       </button>
@@ -2571,7 +2826,7 @@ export default function AdminPanel({
                           onUpdateOrderStatus(selectedOrderForModal.id, 'pending');
                           setSelectedOrderForModal(prev => prev ? { ...prev, status: 'pending' } : null);
                         }}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         تجهيز / انتظار
                       </button>
@@ -2582,7 +2837,7 @@ export default function AdminPanel({
                             setSelectedOrderForModal(prev => prev ? { ...prev, status: 'cancelled' } : null);
                           }
                         }}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[11px] font-black shadow-sm transition-all cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
                         رفض وإلغاء
                       </button>
@@ -2773,12 +3028,12 @@ export default function AdminPanel({
                         />
                       </div>
 
-                      <div className="flex flex-col sm:flex-row justify-end gap-3">
+                      <div className="flex justify-end gap-2">
                         <button
                           onClick={() => {
                             alert('تم حفظ بيانات التوصيل محلياً وتعديلها بنجاح!');
                           }}
-                          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
+                          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all cursor-pointer"
                         >
                           حفظ التحديث 💾
                         </button>
@@ -2812,6 +3067,316 @@ export default function AdminPanel({
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* TAB: DISCOUNTS & COUPONS MANAGEMENT */}
+      {activeTab === 'discounts' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          {/* Header Card */}
+          <div className="rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="bg-amber-500/20 p-2.5 rounded-2xl text-amber-500">
+                    <Percent className="h-6 w-6" />
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">إدارة وتخصيص الخصومات والقسائم</h2>
+                </div>
+                <p className="text-slate-400 text-xs sm:text-sm leading-relaxed max-w-2xl font-medium">
+                  تحكم بنسب الخصم المباشرة على مستوى المتجر كامل أو قم بإنشاء وتعديل أكواد الخصم الترويجية (قسائم التخفيض) لجذب المزيد من المشترين وتنشيط المبيعات.
+                </p>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingCoupon(!isAddingCoupon);
+                    if (editingCoupon) setEditingCoupon(null);
+                  }}
+                  className="px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Plus className="h-4.5 w-4.5" />
+                  <span>{isAddingCoupon ? 'إلغاء الأمر' : 'إنشاء كود خصم جديد'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Global Store Discount Card */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <Sparkles className="h-5 w-5 text-amber-500" />
+                  <h3 className="text-base font-bold text-slate-900">الخصم العام للمتجر (Direct Storewide)</h3>
+                </div>
+
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  سيتم تطبيق هذه النسبة من الخصم مباشرة وتلقائياً على أسعار المنتجات المعروضة في المتجر للزبائن. حدد النسبة لتطبيق خصم مباشر فوري.
+                </p>
+
+                <div className="space-y-3 pt-2">
+                  <label className="block text-xs font-bold text-slate-700">نسبة الخصم العام (%)</label>
+                  <div className="relative rounded-2xl shadow-sm">
+                    <input
+                      type="number"
+                      min="0"
+                      max="90"
+                      value={globalDiscountPercentage}
+                      onChange={(e) => setGlobalDiscountPercentage(Math.max(0, Math.min(90, Number(e.target.value))))}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pr-4 pl-12 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-colors"
+                    />
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                      <span className="text-slate-400 font-bold text-sm">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {globalDiscountSuccess && (
+                  <div className="p-3 bg-emerald-50 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{globalDiscountSuccess}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={savingGlobalDiscount}
+                  onClick={() => handleSaveGlobalDiscount(globalDiscountPercentage)}
+                  className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {savingGlobalDiscount ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4 text-amber-500" />
+                  )}
+                  <span>{savingGlobalDiscount ? 'جاري الحفظ...' : 'تطبيق وحفظ الخصم العام'}</span>
+                </button>
+              </div>
+
+              {/* Form to Add / Edit Coupon */}
+              {isAddingCoupon && (
+                <form onSubmit={handleSaveCoupon} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4 animate-fade-in">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <Plus className="h-5 w-5 text-amber-600" />
+                    <h3 className="text-base font-bold text-slate-900">
+                      {editingCoupon ? 'تعديل كود الخصم الحالي' : 'توليد كود خصم جديد'}
+                    </h3>
+                  </div>
+
+                  {couponFormError && (
+                    <div className="p-3 bg-red-50 text-red-800 rounded-2xl text-xs font-bold flex items-center gap-1.5">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>{couponFormError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">كود الخصم (Promo Code)</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: KINGSTORE20"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-700">نوع الخصم</label>
+                        <select
+                          value={couponType}
+                          onChange={(e) => setCouponType(e.target.value as 'percentage' | 'fixed')}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-xs sm:text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer"
+                        >
+                          <option value="percentage">نسبة مئوية (%)</option>
+                          <option value="fixed">مبلغ ثابت ($ / ل.س)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-700">قيمة التخفيض</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={couponValue}
+                          onChange={(e) => setCouponValue(Number(e.target.value))}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">الحد الأدنى لقيمة الطلب (للتفعيل)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0 (بدون حد أدنى)"
+                        value={couponMinAmount}
+                        onChange={(e) => setCouponMinAmount(Number(e.target.value))}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">تاريخ انتهاء الصلاحية</label>
+                      <input
+                        type="date"
+                        value={couponExpiryDate}
+                        onChange={(e) => setCouponExpiryDate(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <input
+                        type="checkbox"
+                        id="couponIsActive"
+                        checked={couponIsActive}
+                        onChange={(e) => setCouponIsActive(e.target.checked)}
+                        className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                      />
+                      <label htmlFor="couponIsActive" className="text-xs font-bold text-slate-700 cursor-pointer">
+                        تفعيل الكود فوراً للاستخدام
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="submit"
+                      className="flex-1 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>{editingCoupon ? 'حفظ التعديلات' : 'إنشاء القسيمة'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingCoupon(false);
+                        setEditingCoupon(null);
+                      }}
+                      className="px-4 py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Coupons List Table */}
+            <div className="lg:col-span-2">
+              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Settings className="h-5 w-5 text-slate-700" />
+                    <h3 className="text-base font-bold text-slate-900">سجل قسائم التخفيض المفعلة ({coupons.length})</h3>
+                  </div>
+                </div>
+
+                {couponFormSuccess && (
+                  <div className="mx-6 mt-4 p-3 bg-emerald-50 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{couponFormSuccess}</span>
+                  </div>
+                )}
+
+                {coupons.length === 0 ? (
+                  <div className="p-12 text-center text-slate-400 space-y-3">
+                    <Percent className="h-12 w-12 mx-auto text-slate-300" />
+                    <p className="text-sm font-bold">لا يوجد أي أكواد تخفيض مضافة حالياً.</p>
+                    <p className="text-xs text-slate-400">انقر على زر "إنشاء كود خصم جديد" بالأعلى للبدء.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-xs font-extrabold border-b border-slate-100">
+                          <th className="p-4">الكود والرمز</th>
+                          <th className="p-4">نسبة / قيمة الخصم</th>
+                          <th className="p-4">الحد الأدنى</th>
+                          <th className="p-4">الانتهاء</th>
+                          <th className="p-4">الاستخدام</th>
+                          <th className="p-4 text-center">الحالة</th>
+                          <th className="p-4 text-left">التحكم</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700 text-xs sm:text-sm font-medium">
+                        {coupons.map((coupon) => (
+                          <tr key={coupon.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="p-4">
+                              <span className="inline-block px-3 py-1.5 rounded-xl bg-slate-900 text-amber-500 font-mono font-black text-sm tracking-wider shadow-sm">
+                                {coupon.code}
+                              </span>
+                            </td>
+                            <td className="p-4 font-bold text-slate-900">
+                              {coupon.type === 'percentage' ? (
+                                <span>{coupon.value}%</span>
+                              ) : (
+                                <span>{coupon.value.toLocaleString()} ل.س</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-slate-500">
+                              {coupon.minAmount > 0 ? (
+                                <span>{coupon.minAmount.toLocaleString()} ل.س</span>
+                              ) : (
+                                <span className="text-slate-400">بدون حد</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-slate-500 font-medium">
+                              {coupon.expiryDate}
+                            </td>
+                            <td className="p-4 font-bold text-slate-600">
+                              {coupon.usageCount || 0} مرات
+                            </td>
+                            <td className="p-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCoupon(coupon)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black cursor-pointer transition-all ${
+                                  coupon.isActive
+                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                    : 'bg-red-50 text-red-700 hover:bg-red-100'
+                                }`}
+                              >
+                                <span className={`h-2.5 w-2.5 rounded-full ${coupon.isActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-600'}`} />
+                                <span>{coupon.isActive ? 'نشط' : 'معطل'}</span>
+                              </button>
+                            </td>
+                            <td className="p-4 text-left">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditCoupon(coupon)}
+                                  className="p-2 rounded-xl text-slate-600 hover:text-amber-600 hover:bg-amber-50 transition-all cursor-pointer"
+                                  title="تعديل الكود"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCoupon(coupon.id)}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer"
+                                  title="حذف الكود نهائياً"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3060,17 +3625,9 @@ export default function AdminPanel({
         </div>
       )}
 
-      {activeTab === 'messages' && (
-        <AdminMessages users={users} currentUser={currentUser} />
-      )}
-
-      {activeTab === 'agents' && (
-        <AdminAgents products={products} orders={orders} categories={categories} />
-      )}
-
       {/* 6. Delete Gateway Confirmation Modal */}
       {gatewayToDelete && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm" dir="rtl">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
           <div 
             className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
             onClick={(e) => e.stopPropagation()}
@@ -3086,11 +3643,11 @@ export default function AdminPanel({
               تنبيه: هل أنت متأكد من حذف بوابة الدفع <span className="font-bold text-slate-900">"{gatewayToDelete.name}"</span> هذه نهائياً من السيستم؟ هذا الإجراء سيقوم بإزالتها تماماً من خيارات الزبائن ولا يمكن التراجع عنه.
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-end gap-3 w-full">
+            <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setGatewayToDelete(null)}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 إلغاء الأمر
               </button>
@@ -3103,7 +3660,7 @@ export default function AdminPanel({
                   }
                   setGatewayToDelete(null);
                 }}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
+                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
               >
                 <Trash2 className="h-4 w-4" />
                 <span>نعم، احذف نهائياً</span>

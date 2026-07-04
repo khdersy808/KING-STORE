@@ -29,16 +29,25 @@ import {
   Check,
   Copy,
   ExternalLink,
-  Code
+  Code,
+  Grid,
+  Home,
+  User as UserIcon,
+  ShoppingCart,
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import ProductDetailsModal from './components/ProductDetailsModal';
+import { BottomNav } from './components/BottomNav';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
 import AgentDashboard from './components/AgentDashboard';
-import { db, collection, doc, addDoc, updateDoc, deleteDoc, getDoc, setDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
+import MessagingSystem from './components/MessagingSystem';
+import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 
 export default function App() {
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
+  const [currentTab, setCurrentTab] = useState<string>('home');
 
   // --- Pull-to-Refresh State System for Mobile ---
   const [startY, setStartY] = useState<number>(0);
@@ -162,6 +171,28 @@ export default function App() {
     localStorage.setItem('king_store_categories', JSON.stringify(categories));
   }, [categories]);
 
+  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+
+  // Synchronize global discount setting from Firestore real-time listener
+  useEffect(() => {
+    try {
+      const docRef = doc(db, 'settings', 'discounts');
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.globalDiscount === 'number') {
+            setGlobalDiscount(data.globalDiscount);
+          }
+        }
+      }, (error) => {
+        console.warn("Error listening to global discount in App:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase global discount sync not fully active.", e);
+    }
+  }, []);
+
   // Synchronize notifications with Firestore real-time listener
   useEffect(() => {
     try {
@@ -198,83 +229,6 @@ export default function App() {
     localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  // Helper to check if backend is ready
-  const checkServerReady = async () => {
-    try {
-      const res = await fetch('/api/health', { method: 'HEAD' });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  // Load products from backend Cloud SQL database on mount
-  useEffect(() => {
-    const loadDbProducts = async () => {
-      try {
-        const isReady = await checkServerReady();
-        if (!isReady) return; // Skip if server isn't ready
-
-        const response = await fetch('/api/products');
-        if (response.ok) {
-          const dbProducts = await response.json();
-          if (Array.isArray(dbProducts) && dbProducts.length > 0) {
-            const mapped = dbProducts.map((p: any) => ({
-              ...p,
-              id: String(p.id)
-            }));
-            setProducts(mapped);
-          }
-        }
-      } catch (err: any) {
-        // Silently handle fetch errors during startup
-        if (err.name !== 'TypeError' || !err.message.includes('Failed to fetch')) {
-          console.error("Error loading products:", err);
-        }
-      }
-    };
-    loadDbProducts();
-  }, []);
-
-  // Load orders from backend Cloud SQL database when user logs in or auth changes
-  useEffect(() => {
-    const loadDbOrders = async () => {
-      if (!currentUser) return;
-      try {
-        const isReady = await checkServerReady();
-        if (!isReady) return; // Skip if server isn't ready
-
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) return;
-        
-        const response = await fetch('/api/orders', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (response.ok) {
-          const dbOrders = await response.json();
-          if (Array.isArray(dbOrders)) {
-            const mapped = dbOrders.map((o: any) => ({
-              ...o,
-              id: String(o.id),
-              items: Array.isArray(o.items) ? o.items.map((item: any) => ({
-                ...item,
-                productId: String(item.productId)
-              })) : []
-            }));
-            setOrders(mapped);
-          }
-        }
-      } catch (err: any) {
-        // Silently handle fetch errors during startup
-        if (err.name !== 'TypeError' || !err.message.includes('Failed to fetch')) {
-          console.error("Error loading orders:", err);
-        }
-      }
-    };
-    loadDbOrders();
-  }, [currentUser]);
 
   // Synchronize authentication state with Firebase in real-time
   useEffect(() => {
@@ -286,6 +240,7 @@ export default function App() {
         
         if (isVerified && fbUser.email) {
           try {
+            const { getDoc } = await import('./lib/firebase');
             const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
             const userDoc = await getDoc(userDocRef);
             
@@ -296,6 +251,7 @@ export default function App() {
               role = 'admin';
               nameVal = fbUser.displayName || 'مدير النظام الملكي';
               // Merge/force update role to admin in Firestore
+              const { setDoc } = await import('./lib/firebase');
               await setDoc(userDocRef, {
                 id: fbUser.uid,
                 name: nameVal,
@@ -325,7 +281,6 @@ export default function App() {
         // If logged out from Firebase, clear client-side state
         setCurrentUser(null);
       }
-      setIsAuthLoaded(true);
     });
     return () => unsubscribe();
   }, []);
@@ -416,26 +371,6 @@ export default function App() {
   };
 
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-  const [isAgentMode, setIsAgentMode] = useState<boolean>(false);
-
-  // Capture marketing agent ID from URL query parameters (?agent=xxx)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const agentEmail = params.get('agent');
-    if (agentEmail) {
-      localStorage.setItem('king_store_agent_id', agentEmail.toLowerCase());
-      console.log(`[Referral Hub] Active Agent set to: ${agentEmail}`);
-      
-      const prodId = params.get('product');
-      if (prodId && products.length > 0) {
-        const targetProd = products.find(p => p.id === prodId);
-        if (targetProd) {
-          setSelectedProduct(targetProd);
-        }
-      }
-    }
-  }, [products]);
-
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -465,9 +400,9 @@ export default function App() {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [isAuthLoaded, setIsAuthLoaded] = useState<boolean>(false);
   const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+
 
   // --- Admin Invitation Detection Engine ---
   const [activeAdminInvite, setActiveAdminInvite] = useState<{ email: string; role: 'admin' } | null>(null);
@@ -564,6 +499,8 @@ export default function App() {
       }
       return [...prevItems, { product, quantity: 1 }];
     });
+    // Open cart drawer immediately for premium user experience
+    setIsCartOpen(true);
   };
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
@@ -756,6 +693,7 @@ export default function App() {
     setCategories(updated);
 
     try {
+      const { setDoc, doc } = await import('./lib/firebase');
       await setDoc(doc(db, 'categories', trimmed), { name: trimmed });
       showToast('تمت الإضافة', `تم إضافة فئة "${trimmed}" بنجاح 🏷️`, 'success');
     } catch (e) {
@@ -771,6 +709,7 @@ export default function App() {
     setCategories(updated);
 
     try {
+      const { deleteDoc, doc } = await import('./lib/firebase');
       await deleteDoc(doc(db, 'categories', categoryName));
       showToast('تم الحذف', `تم حذف فئة "${categoryName}" بنجاح 🏷️`, 'success');
     } catch (e) {
@@ -790,6 +729,7 @@ export default function App() {
     setCategories(updated);
 
     try {
+      const { setDoc, deleteDoc, doc } = await import('./lib/firebase');
       await deleteDoc(doc(db, 'categories', oldName));
       await setDoc(doc(db, 'categories', trimmedNew), { name: trimmedNew });
       
@@ -838,11 +778,7 @@ export default function App() {
   };
 
   // --- Orders Management Handlers ---
-  const handlePlaceOrder = async (orderToPlace: Order) => {
-    // Inject agentId if customer bought via agent referral link
-    const savedAgentId = localStorage.getItem('king_store_agent_id');
-    const newOrder = savedAgentId ? { ...orderToPlace, agentId: savedAgentId } : orderToPlace;
-
+  const handlePlaceOrder = async (newOrder: Order) => {
     // Add locally first for optimistic UI and immediate receipt view
     setOrders((prev) => [newOrder, ...prev]);
 
@@ -855,17 +791,6 @@ export default function App() {
       'order_created',
       newOrder.id
     );
-
-    // If an agent is tagged, let's also notify the agent about the new order!
-    if (newOrder.agentId) {
-      addNotification(
-        newOrder.agentId,
-        '👑 طلب جديد عبر رابطك التسويقي',
-        `قام العميل "${newOrder.customerName}" بطلب شراء جديد بقيمة ${newOrder.totalAmount.toLocaleString()} ل.س عبر رابطك التسويقي الملكي! يرجى مراجعة الطلب والموافقة عليه بعد تأكيد التحصيل.`,
-        'order_created',
-        newOrder.id
-      );
-    }
 
     // Create Customer notification
     addNotification(
@@ -904,7 +829,6 @@ export default function App() {
           paymentMethodId: newOrder.paymentMethodId,
           paymentDetails: newOrder.paymentDetails,
           receiptUrl: newOrder.receiptUrl || null,
-          agentId: newOrder.agentId || null,
           items: newOrder.items.map(item => ({
             productId: String(item.productId),
             productName: item.productName,
@@ -1005,8 +929,9 @@ export default function App() {
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <div 
-      className="min-h-screen bg-slate-50 flex flex-col text-slate-800 relative transition-transform duration-100 ease-out" 
+    <>
+      <div 
+        className="min-h-screen bg-slate-50 flex flex-col text-slate-800 relative transition-transform duration-100 ease-out will-change-scroll scroll-smooth transform-gpu backface-hidden main-store-container" 
       dir="rtl"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -1054,14 +979,36 @@ export default function App() {
 
       {/* 2. Main Content Container */}
       <div className="flex-1">
-        {isAgentMode && currentUser && currentUser.role === 'agent' ? (
-          <AgentDashboard
-            currentUser={currentUser}
-            orders={orders}
-            products={products}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onBackToStore={() => setIsAgentMode(false)}
-          />
+        {currentTab === 'agents' ? (
+          <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
+            <div className="mb-8 space-y-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                <Users className="h-4 w-4" />
+                <span>فريق الوكلاء المعتمدين 🤝</span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">لوحة الوكلاء والموزعين المعتمدين</h3>
+              <p className="text-xs sm:text-sm text-slate-500">
+                تصفح وتواصل مع وكلائنا المعتمدين لتسهيل عمليات الدفع المحلّي والحصول على بطاقات التعبئة الفورية لـ KING STORE.
+              </p>
+            </div>
+            <AgentDashboard isAdminMode={isAdminMode} />
+          </section>
+        ) : currentTab === 'messaging' ? (
+          <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 text-right">
+            <div className="mb-8 space-y-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                <MessageSquare className="h-4 w-4" />
+                <span>المحادثة المباشرة الفورية 💬</span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">نظام الدعم الفني الملكي</h3>
+              <p className="text-xs sm:text-sm text-slate-500">
+                راسل الإدارة وطاقم الدعم الفني مباشرة وبكل أمان لحل أي استفسار أو مشكلة تتعلق بطلباتك.
+              </p>
+            </div>
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
+              <MessagingSystem />
+            </div>
+          </section>
         ) : isAdminMode ? (
           
           /* ADMIN DASHBOARD MODE */
@@ -1082,7 +1029,6 @@ export default function App() {
             onAddCategory={handleAddCategory}
             onDeleteCategory={handleDeleteCategory}
             onUpdateCategory={handleUpdateCategory}
-            currentUser={currentUser}
           />
         ) : activeCustomerView === 'tracking' ? (
           <OrderTracking
@@ -1094,290 +1040,676 @@ export default function App() {
           
           /* CUSTOMER STOREFRONT MODE */
           <>
-            {/* Elegant Majestic Hero Banner */}
-            <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
-              <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
-              <div className="absolute -top-40 -right-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
-              <div className="absolute -bottom-40 -left-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, rgba(245, 158, 11, 0) 70%)' }} />
+            {currentTab === 'home' && (
+              <>
+                {/* Elegant Majestic Hero Banner */}
+                <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
+                  <div className="absolute -top-40 -right-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
+                  <div className="absolute -bottom-40 -left-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, rgba(245, 158, 11, 0) 70%)' }} />
 
-              <div className="relative mx-auto max-w-7xl px-4 sm:px-6 text-center space-y-4">
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-400 border border-amber-500/20">
-                  <Sparkles className="h-4 w-4 animate-spin-slow text-amber-400" />
-                  <span>متجر الملوك للتجارة الإلكترونية المتكاملة</span>
-                </div>
-                
-                <h2 className="text-3xl font-black sm:text-5xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-300 to-yellow-100">
-                  متجر KING STORE الفاخر
-                </h2>
-                
-                <p className="mx-auto max-w-2xl text-xs sm:text-base text-slate-300 leading-relaxed">
-                  بوابتك الملكية لاقتناء أفخر المنتجات الملموسة والشحن السريع، وأفضل المنتجات والاشتراكات الرقمية والتراخيص البرمجية مع التسليم الآلي الفوري على بريدك الإلكتروني.
-                </p>
-
-                {/* Core trust badges */}
-                <div className="pt-6 flex flex-wrap justify-center gap-6 text-xs text-amber-400/80 font-bold">
-                  <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
-                    <ShieldCheck className="h-4 w-4 text-amber-500" />
-                    <span>ضمان وأمان 100٪</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
-                    <Zap className="h-4 w-4 text-amber-500" />
-                    <span>تسليم رقمي فوري ⚡</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
-                    <Truck className="h-4 w-4 text-amber-500" />
-                    <span>توصيل ملموس سريع 📦</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Welcome Segment & Onboarding Card */}
-            <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
-              {!currentUser ? (
-                <div className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-slate-900 p-6 text-zinc-100 shadow-xl">
-                  <div className="absolute inset-0 bg-gradient-to-l from-amber-500/10 via-transparent to-transparent" />
-                  <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="text-right space-y-2">
-                      <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-400 border border-amber-500/20">
-                        <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                        <span>أهلاً بك في البوابة الملكية لـ KING STORE! 👋</span>
-                      </div>
-                      <h3 className="text-xl font-extrabold text-white">ضيفنا العزيز، نحن سعداء بوجودك معنا اليوم! ✨</h3>
-                      <p className="text-xs text-zinc-300 max-w-3xl leading-relaxed">
-                        للحصول على تجربة تسوق آمنة وكاملة، وتوفير إمكانية الشراء الفوري مع متابعة طلباتك أو تفعيل المنتجات الرقمية فورياً، <strong className="text-amber-400 font-bold">يرجى تسجيل الدخول أو إنشاء حسابك الفاخر الآن</strong>. التسوق والشراء غير متاحين للزوار غير المسجلين لحفظ الخصوصية وتأمين التسليم الفوري.
-                      </p>
+                  <div className="relative mx-auto max-w-7xl px-4 sm:px-6 text-center space-y-4">
+                    <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-400 border border-amber-500/20">
+                      <Sparkles className="h-4 w-4 animate-spin-slow text-amber-400" />
+                      <span>متجر الملوك للتجارة الإلكترونية المتكاملة</span>
                     </div>
-                    <div className="flex gap-3 shrink-0">
+                    
+                    <h2 className="text-3xl font-black sm:text-5xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-300 to-yellow-100">
+                      متجر KING STORE الفاخر
+                    </h2>
+                    
+                    <p className="mx-auto max-w-2xl text-xs sm:text-base text-slate-300 leading-relaxed">
+                      بوابتك الملكية لاقتناء أفخر المنتجات الملموسة والشحن السريع، وأفضل المنتجات والاشتراكات الرقمية والتراخيص البرمجية مع التسليم الآلي الفوري على بريدك الإلكتروني.
+                    </p>
+
+                    {/* Core trust badges */}
+                    <div className="pt-6 flex flex-wrap justify-center gap-6 text-xs text-amber-400/80 font-bold">
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                        <ShieldCheck className="h-4 w-4 text-amber-500" />
+                        <span>ضمان وأمان 100٪</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                        <Zap className="h-4 w-4 text-amber-500" />
+                        <span>تسليم رقمي فوري ⚡</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                        <Truck className="h-4 w-4 text-amber-500" />
+                        <span>توصيل ملموس سريع 📦</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* --- 🎁 بنر العروض المميز الفاخر (Featured Offers Banner) --- */}
+                <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-8 border border-amber-500/20 shadow-xl">
+                    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-transparent pointer-events-none" />
+                    <div className="absolute -top-16 -left-16 h-36 w-36 pointer-events-none bg-amber-500/5 rounded-full blur-3xl" />
+                    <div className="relative flex flex-col lg:flex-row items-center justify-between gap-8">
+                      <div className="text-right space-y-3 max-w-xl">
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-xs font-bold text-amber-400 border border-amber-500/30">
+                          <Crown className="h-4 w-4 text-amber-400 animate-bounce" />
+                          <span>عروض ملوك الأسبوع الحصرية 👑</span>
+                        </div>
+                        <h3 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-200 to-amber-400">
+                          خصومات استثنائية تصل إلى 30٪ على أفخم السلع!
+                        </h3>
+                        <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                          اكتشف تشكيلتنا الحصرية الممتازة من الأجهزة الملموسة والاشتراكات الرقمية النادرة. احصل على شحن مجاني للمنتجات المادية أو تفعيل ذكي فوري للمنتجات الرقمية فور إتمام طلبك اليوم!
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full lg:w-auto">
+                        {products.slice(0, 2).map((product) => (
+                          <div 
+                            key={`offer-${product.id}`}
+                            onClick={() => setSelectedProduct(product)}
+                            className="bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3 sm:p-4 text-right transition-all duration-300 cursor-pointer group shadow-lg"
+                          >
+                            <div className="relative overflow-hidden rounded-xl bg-slate-950 h-24 sm:h-28 flex items-center justify-center">
+                              <img 
+                                src={product.imageUrl || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=300"} 
+                                alt={product.name} 
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                              />
+                              <span className="absolute top-2 right-2 bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-md animate-pulse">
+                                عرض ملكي خاص ✨
+                              </span>
+                            </div>
+                            <h4 className="text-xs sm:text-sm font-bold text-white mt-3 line-clamp-1 group-hover:text-amber-400 transition-colors">
+                              {product.name}
+                            </h4>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-xs sm:text-sm font-black text-amber-400">
+                                {product.price} ل.س
+                              </span>
+                              <span className="text-[9px] sm:text-[10px] text-zinc-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                                {product.type === 'digital' ? 'تسليم فوري ⚡' : 'شحن سريع 📦'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Welcome Segment & Onboarding Card */}
+                <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+                  {!currentUser ? (
+                    <div className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-slate-900 p-6 text-zinc-100 shadow-xl">
+                      <div className="absolute inset-0 bg-gradient-to-l from-amber-500/10 via-transparent to-transparent" />
+                      <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="text-right space-y-2">
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-400 border border-amber-500/20">
+                            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                            <span>أهلاً بك في البوابة الملكية لـ KING STORE! 👋</span>
+                          </div>
+                          <h3 className="text-xl font-extrabold text-white">ضيفنا العزيز، نحن سعداء بوجودك معنا اليوم! ✨</h3>
+                          <p className="text-xs text-zinc-300 max-w-3xl leading-relaxed">
+                            للحصول على تجربة تسوق آمنة وكاملة، وتوفير إمكانية الشراء الفوري مع متابعة طلباتك أو تفعيل المنتجات الرقمية فورياً، <strong className="text-amber-400 font-bold">يرجى تسجيل الدخول أو إنشاء حسابك الفاخر الآن</strong>. التسوق والشراء غير متاحين للزوار غير المسجلين لحفظ الخصوصية وتأمين التسليم الفوري.
+                          </p>
+                        </div>
+                        <div className="flex gap-3 shrink-0">
+                          <button
+                            onClick={() => setIsAuthModalOpen(true)}
+                            className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
+                          >
+                            تسجيل الدخول / إنشاء حساب 👑
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900 p-6 text-zinc-100 shadow-xl">
+                      <div className="absolute inset-0 bg-gradient-to-l from-emerald-500/10 via-transparent to-transparent" />
+                      <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="text-right space-y-2">
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
+                            <Crown className="h-3.5 w-3.5 text-emerald-400" />
+                            <span>مرحباً بك مجدداً في قصرك! 👑</span>
+                          </div>
+                          <h3 className="text-xl font-extrabold text-white">أهلاً بك يا {currentUser.name}! ✨</h3>
+                          <p className="text-xs text-zinc-300 max-w-3xl leading-relaxed">
+                            لقد تم تسجيل دخولك بنجاح بصفتك <span className="text-amber-400 font-bold">{currentUser.role === 'admin' ? 'مدير النظام الفاخر' : 'عضو تسوق متميز'}</span>. حسابك نشط وجاهز للتسوق، وإضافة أي منتج إلى السلة، وإتمام الدفع بأمان.
+                          </p>
+                        </div>
+                        {currentUser.role === 'admin' && (
+                          <div className="flex gap-3 shrink-0">
+                            <button
+                              onClick={() => setIsAdminMode(true)}
+                              className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
+                            >
+                              لوحة تحكم الإدارة ⚙️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                {/* Android APK & PWA installation guidance section */}
+                <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6" id="apk-download-section">
+                  <div className="relative overflow-hidden rounded-3xl border border-amber-500/10 bg-gradient-to-br from-slate-900 via-slate-950 to-zinc-900 p-6 sm:p-8 text-zinc-100 shadow-xl flex flex-col justify-between">
+                    <div className="absolute inset-0 bg-gradient-to-l from-amber-500/5 via-transparent to-transparent pointer-events-none" />
+                    <div className="absolute -top-12 -left-12 h-32 w-32 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
+                    
+                    <div className="space-y-4">
+                      <div className="flex flex-col md:flex-row items-start gap-4 text-right">
+                        <div className="p-4 bg-amber-500/10 text-amber-400 rounded-2xl border border-amber-500/20 shrink-0 mx-auto md:mx-0">
+                          <Smartphone className="h-8 w-8 text-amber-400 stroke-[2]" />
+                        </div>
+                        <div className="space-y-2 text-center md:text-right flex-1">
+                          <div className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-400 bg-amber-400/10 px-3 py-1 rounded-full border border-amber-400/20">
+                            <Sparkles className="h-3 w-3 text-amber-400" />
+                            <span>تطبيق الهواتف الذكية لـ KING STORE 📲</span>
+                          </div>
+                          <h4 className="text-xl font-black text-white">
+                            <span>تثبيت وتشغيل متجر KING STORE على جهازك المحمول</span>
+                          </h4>
+                          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed max-w-4xl">
+                            استمتع بتجربة تسوق ملكية فائقة السرعة مع دعم كامل لقواعد البيانات والتحقق من الطلبات! يمكنك تثبيت متجرنا فورا كـ تطبيق ويب تقدمي (PWA) فائق الخفة والسرعة، أو معرفة طريقة بناء وتصدير كود تطبيق الأندرويد الأصلي المتكامل مع Firebase.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-slate-800/60 flex flex-col lg:flex-row items-center justify-between gap-4">
+                      <div className="text-zinc-400 text-xs text-center lg:text-right">
+                        💡 <span className="text-zinc-200 font-bold">الحل الموصى به:</span> تثبيت التطبيق الفوري كـ PWA يعمل 100% مع Firebase ولا يحتاج لتنزيل ملفات خارجية!
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2.5 w-full lg:w-auto shrink-0 z-10">
+                        <button
+                          onClick={() => setIsApkGuideOpen(true)}
+                          className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3.5 text-xs active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center animate-pulse"
+                          id="view-apk-guide-action"
+                        >
+                          <Smartphone className="h-4 w-4 text-slate-950 stroke-[2.5]" />
+                          <span>تثبيت وتنزيل التطبيق للهواتف</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Storefront Navigation / Filtering Control Bar */}
+                <section className="bg-white border-b border-slate-200 sticky top-18 z-30 shadow-sm mt-8">
+                  <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    
+                    {/* 1. Filter by Product Type */}
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => setIsAuthModalOpen(true)}
-                        className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
+                        onClick={() => { setSelectedType('all'); setSelectedCategory('all'); }}
+                        className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                          selectedType === 'all'
+                            ? 'bg-slate-950 text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                       >
-                        تسجيل الدخول / إنشاء حساب 👑
+                        كل المعروض
+                      </button>
+                      <button
+                        onClick={() => { setSelectedType('physical'); setSelectedCategory('all'); }}
+                        className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          selectedType === 'physical'
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Package className="h-4 w-4" />
+                        <span>المنتجات الملموسة</span>
+                      </button>
+                      <button
+                        onClick={() => { setSelectedType('digital'); setSelectedCategory('all'); }}
+                        className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          selectedType === 'digital'
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/10'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Zap className="h-4 w-4" />
+                        <span>المنتجات الرقمية</span>
+                      </button>
+                    </div>
+
+                    {/* 2. Filter by Category */}
+                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                      <span className="text-xs text-slate-400 font-bold flex items-center gap-1 shrink-0">
+                        <Filter className="h-3.5 w-3.5" />
+                        <span>الفئة:</span>
+                      </span>
+                      
+                      <button
+                        onClick={() => setSelectedCategory('all')}
+                        className={`rounded-lg px-3 py-1 text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
+                          selectedCategory === 'all'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        الكل
+                      </button>
+                      
+                      {categories.map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(cat)}
+                          className={`rounded-lg px-3 py-1 text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
+                            selectedCategory === cat
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                  </div>
+                </section>
+
+                {/* Products Grid & Results */}
+                <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+                  
+                  {/* Search Result Headers */}
+                  {(searchQuery || selectedType !== 'all' || selectedCategory !== 'all') && (
+                    <div className="mb-6 flex items-center justify-between text-xs sm:text-sm text-slate-500 font-bold bg-white px-5 py-3 rounded-xl border border-slate-200">
+                      <span>
+                        نتائج البحث والتصفية: تم العثور على{' '}
+                        <strong className="text-amber-600 font-extrabold">{filteredProducts.length}</strong> منتج
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedType('all');
+                          setSelectedCategory('all');
+                        }}
+                        className="text-amber-600 hover:underline flex items-center gap-1"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>تصفير الفلاتر</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {filteredProducts.length === 0 ? (
+                    <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 space-y-4">
+                      <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto" />
+                      <h3 className="text-lg font-bold text-slate-700">لم نجد أي منتجات تطابق اختيارك!</h3>
+                      <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                        قد تكون الكلمة المكتوبة غير صحيحة، أو لا تتوفر منتجات في هذه الفئة حالياً. تصفح بقية المعروضات أو قم بتصفير الفلاتر.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedType('all');
+                          setSelectedCategory('all');
+                        }}
+                        className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-all cursor-pointer"
+                      >
+                        عرض كل المعروضات
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                      {filteredProducts.map((product) => (
+                        <ProductCard
+                          key={product.id}
+                          product={product}
+                          onAddToCart={handleAddToCart}
+                          onViewDetails={(prod) => setSelectedProduct(prod)}
+                          globalDiscount={globalDiscount}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {currentTab === 'categories' && (
+              <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <Grid className="h-4 w-4" />
+                    <span>تصفح حسب الأقسام الحصرية 👑</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900">أقسام منتجات KING STORE</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    اختر القسم المفضل لديك لتصفح مئات السلع الفاخرة الملموسة والخدمات والتراخيص الرقمية المتاحة.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                  {/* Default All */}
+                  <div 
+                    onClick={() => { setSelectedCategory('all'); setCurrentTab('home'); }}
+                    className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md hover:border-amber-500/30 transition-all duration-300 cursor-pointer text-right"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="p-4 rounded-xl bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform">
+                        <ShoppingBag className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-slate-950">كل المعروضات</h4>
+                        <p className="text-xs text-slate-500 mt-1">تصفح كافة منتجات المتجر بدون تصنيف</p>
+                      </div>
+                    </div>
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
+                      {products.length} منتج
+                    </span>
+                  </div>
+
+                  {categories.map((cat, index) => {
+                    const colors = [
+                      { bg: 'bg-blue-500/10 text-blue-600', border: 'hover:border-blue-500/30' },
+                      { bg: 'bg-emerald-500/10 text-emerald-600', border: 'hover:border-emerald-500/30' },
+                      { bg: 'bg-purple-500/10 text-purple-600', border: 'hover:border-purple-500/30' },
+                      { bg: 'bg-pink-500/10 text-pink-600', border: 'hover:border-pink-500/30' },
+                      { bg: 'bg-indigo-500/10 text-indigo-600', border: 'hover:border-indigo-500/30' },
+                    ];
+                    const design = colors[index % colors.length];
+                    const catProducts = products.filter(p => p.category === cat);
+
+                    return (
+                      <div 
+                        key={cat}
+                        onClick={() => { setSelectedCategory(cat); setCurrentTab('home'); }}
+                        className={`group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md ${design.border} transition-all duration-300 cursor-pointer text-right`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`p-4 rounded-xl ${design.bg} group-hover:scale-110 transition-transform`}>
+                            <Sparkles className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <h4 className="text-base font-bold text-slate-950">{cat}</h4>
+                            <p className="text-xs text-slate-500 mt-1">منتجات مخصصة واشتراكات فاخرة</p>
+                          </div>
+                        </div>
+                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-150">
+                          {catProducts.length} منتج
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {currentTab === 'cart' && (
+              <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span>حقيبة التسوق الحالية 🛒</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900">سلة مشترياتك الملكية</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    قم بإجراء مراجعة نهائية على السلع المحددة واستكمل عملية الدفع بأمان.
+                  </p>
+                </div>
+
+                {cartItems.length === 0 ? (
+                  <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 shadow-sm">
+                    <div className="h-16 w-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto">
+                      <ShoppingCart className="h-8 w-8" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">سلة التسوق فارغة تماماً!</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      أنت لم تقم بإضافة أي منتج أو اشتراك رقمي إلى السلة حتى الآن. توجه إلى الصفحة الرئيسية وتصفح المنتجات لاختيار ما يعجبك!
+                    </p>
+                    <button 
+                      onClick={() => setCurrentTab('home')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3 text-xs shadow-lg shadow-amber-500/15 cursor-pointer"
+                    >
+                      العودة للتسوق واكتشاف المنتجات 👑
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Cart Items List */}
+                    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm divide-y divide-slate-100">
+                      {cartItems.map((item) => (
+                        <div key={item.product.id} className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 text-right">
+                          <img 
+                            src={item.product.imageUrl || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=150"} 
+                            alt={item.product.name} 
+                            className="h-16 w-16 object-cover rounded-xl border border-slate-100 shrink-0 bg-slate-50"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="flex-1 space-y-1">
+                            <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {item.product.category}
+                            </span>
+                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{item.product.name}</h4>
+                            <p className="text-xs font-black text-amber-500">{item.product.price} ل.س</p>
+                          </div>
+
+                          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
+                            {/* Quantity Controls */}
+                            <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50/50">
+                              <button 
+                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
+                                className="px-3 py-1.5 text-slate-500 hover:text-red-600 transition-colors cursor-pointer font-bold text-xs"
+                              >
+                                -
+                              </button>
+                              <span className="px-3 py-1 text-xs font-black text-slate-800 bg-white border-x border-slate-200">
+                                {item.quantity}
+                              </span>
+                              <button 
+                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
+                                className="px-3 py-1.5 text-slate-500 hover:text-amber-600 transition-colors cursor-pointer font-bold text-xs"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <button 
+                              onClick={() => handleRemoveItem(item.product.id)}
+                              className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-xl transition-colors cursor-pointer"
+                              title="حذف السلعة"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Inline checkout summary */}
+                    <div className="bg-slate-900 text-white rounded-3xl p-6 border border-amber-500/20 shadow-xl space-y-6">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                        <span className="text-zinc-400 font-bold text-xs">مجموع المنتجات:</span>
+                        <span className="text-lg font-black text-white">
+                          {cartItems.reduce((acc, i) => acc + (i.product.price * i.quantity), 0)} ل.س
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-amber-400/90 bg-amber-500/5 p-4 rounded-2xl border border-amber-500/10 leading-relaxed font-bold">
+                        💡 تذكير: المنتجات الرقمية سيتم إرسالها آلياً وتفعيلها على بريدك الإلكتروني فور تأكيد الدفع، بينما المنتجات الملموسة يتم شحنها فورياً ومتابعتها من قسم الطلبات.
+                      </div>
+
+                      {/* Checkout button redirecting to main Cart drawer for processing with gateways */}
+                      <button
+                        onClick={() => setIsCartOpen(true)}
+                        className="w-full rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-4 text-xs sm:text-sm shadow-xl shadow-amber-500/15 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        <span>متابعة إتمام الدفع والشحن الملكي 👑</span>
                       </button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900 p-6 text-zinc-100 shadow-xl">
-                  <div className="absolute inset-0 bg-gradient-to-l from-emerald-500/10 via-transparent to-transparent" />
-                  <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="text-right space-y-2">
-                      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-400 border border-emerald-500/20">
-                        <Crown className="h-3.5 w-3.5 text-emerald-400" />
-                        <span>مرحباً بك مجدداً في قصرك! 👑</span>
-                      </div>
-                      <h3 className="text-xl font-extrabold text-white">أهلاً بك يا {currentUser.name}! ✨</h3>
-                      <p className="text-xs text-zinc-300 max-w-3xl leading-relaxed">
-                        لقد تم تسجيل دخولك بنجاح بصفتك <span className="text-amber-400 font-bold">{currentUser.role === 'admin' ? 'مدير النظام الفاخر' : currentUser.role === 'agent' ? 'الوكيل المعتمد الفخم' : 'عضو تسوق متميز'}</span>. حسابك نشط وجاهز للعمل والتسوق وإنجاز المبيعات الملكية.
-                      </p>
-                    </div>
-                    {currentUser.role === 'admin' && (
-                      <div className="flex gap-3 shrink-0">
-                        <button
-                          onClick={() => { setIsAdminMode(true); setIsAgentMode(false); }}
-                          className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
-                        >
-                          لوحة تحكم الإدارة ⚙️
-                        </button>
-                      </div>
-                    )}
-                    {currentUser.role === 'agent' && (
-                      <div className="flex gap-3 shrink-0">
-                        <button
-                          onClick={() => { setIsAgentMode(true); setIsAdminMode(false); }}
-                          className="rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-5 py-3 text-xs sm:text-sm active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/10"
-                        >
-                          لوحة تحكم الوكيل 👥
-                        </button>
-                      </div>
-                    )}
+                )}
+              </section>
+            )}
+
+            {currentTab === 'agents' && (
+              <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <Users className="h-4 w-4" />
+                    <span>فريق الوكلاء المعتمدين 🤝</span>
                   </div>
-                </div>
-              )}
-            </section>
-
-            {/* Android APK & PWA installation guidance section */}
-            <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6" id="apk-download-section">
-              <div className="relative overflow-hidden rounded-3xl border border-amber-500/10 bg-gradient-to-br from-slate-900 via-slate-950 to-zinc-900 p-6 sm:p-8 text-zinc-100 shadow-xl flex flex-col justify-between">
-                <div className="absolute inset-0 bg-gradient-to-l from-amber-500/5 via-transparent to-transparent pointer-events-none" />
-                <div className="absolute -top-12 -left-12 h-32 w-32 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
-                
-                <div className="space-y-4">
-                  <div className="flex flex-col md:flex-row items-start gap-4 text-right">
-                    <div className="p-4 bg-amber-500/10 text-amber-400 rounded-2xl border border-amber-500/20 shrink-0 mx-auto md:mx-0">
-                      <Smartphone className="h-8 w-8 text-amber-400 stroke-[2]" />
-                    </div>
-                    <div className="space-y-2 text-center md:text-right flex-1">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-400 bg-amber-400/10 px-3 py-1 rounded-full border border-amber-400/20">
-                        <Sparkles className="h-3 w-3 text-amber-400" />
-                        <span>تطبيق الهواتف الذكية لـ KING STORE 📲</span>
-                      </div>
-                      <h4 className="text-xl font-black text-white">
-                        <span>تثبيت وتشغيل متجر KING STORE على جهازك المحمول</span>
-                      </h4>
-                      <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed max-w-4xl">
-                        استمتع بتجربة تسوق ملكية فائقة السرعة مع دعم كامل لقواعد البيانات والتحقق من الطلبات! يمكنك تثبيت متجرنا فورا كـ تطبيق ويب تقدمي (PWA) فائق الخفة والسرعة، أو معرفة طريقة بناء وتصدير كود تطبيق الأندرويد الأصلي المتكامل مع Firebase.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-800/60 flex flex-col lg:flex-row items-center justify-between gap-4">
-                  <div className="text-zinc-400 text-xs text-center lg:text-right">
-                    💡 <span className="text-zinc-200 font-bold">الحل الموصى به:</span> تثبيت التطبيق الفوري كـ PWA يعمل 100% مع Firebase ولا يحتاج لتنزيل ملفات خارجية!
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2.5 w-full lg:w-auto shrink-0 z-10">
-                    <button
-                      onClick={() => setIsApkGuideOpen(true)}
-                      className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3.5 text-xs active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center animate-pulse"
-                      id="view-apk-guide-action"
-                    >
-                      <Smartphone className="h-4 w-4 text-slate-950 stroke-[2.5]" />
-                      <span>تثبيت وتنزيل التطبيق للهواتف</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Storefront Navigation / Filtering Control Bar */}
-            <section className="bg-white border-b border-slate-200 sticky top-18 z-30 shadow-sm mt-8">
-              <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                
-                {/* 1. Filter by Product Type */}
-                <div className="flex flex-col sm:flex-row gap-3 w-full">
-                  <button
-                    onClick={() => { setSelectedType('all'); setSelectedCategory('all'); }}
-                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                      selectedType === 'all'
-                        ? 'bg-slate-950 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    كل المعروض
-                  </button>
-                  <button
-                    onClick={() => { setSelectedType('physical'); setSelectedCategory('all'); }}
-                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      selectedType === 'physical'
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    <Package className="h-4 w-4" />
-                    <span>المنتجات الملموسة</span>
-                  </button>
-                  <button
-                    onClick={() => { setSelectedType('digital'); setSelectedCategory('all'); }}
-                    className={`w-full sm:w-auto rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      selectedType === 'digital'
-                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/10'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    <Zap className="h-4 w-4" />
-                    <span>المنتجات الرقمية</span>
-                  </button>
-                </div>
-
-                {/* 2. Filter by Category */}
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                  <span className="text-xs text-slate-400 font-bold flex items-center gap-1 shrink-0">
-                    <Filter className="h-3.5 w-3.5" />
-                    <span>الفئة:</span>
-                  </span>
-                  
-                  <button
-                    onClick={() => setSelectedCategory('all')}
-                    className={`rounded-lg px-3 py-1 text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
-                      selectedCategory === 'all'
-                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
-                  >
-                    الكل
-                  </button>
-                  
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`rounded-lg px-3 py-1 text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
-                        selectedCategory === cat
-                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-              </div>
-            </section>
-
-            {/* Products Grid & Results */}
-            <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-              
-              {/* Search Result Headers */}
-              {(searchQuery || selectedType !== 'all' || selectedCategory !== 'all') && (
-                <div className="mb-6 flex items-center justify-between text-xs sm:text-sm text-slate-500 font-bold bg-white px-5 py-3 rounded-xl border border-slate-200">
-                  <span>
-                    نتائج البحث والتصفية: تم العثور على{' '}
-                    <strong className="text-amber-600 font-extrabold">{filteredProducts.length}</strong> منتج
-                  </span>
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedType('all');
-                      setSelectedCategory('all');
-                    }}
-                    className="text-amber-600 hover:underline flex items-center gap-1"
-                  >
-                    <X className="h-3 w-3" />
-                    <span>تصفير الفلاتر</span>
-                  </button>
-                </div>
-              )}
-
-              {filteredProducts.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 space-y-4">
-                  <ShoppingBag className="h-12 w-12 text-slate-300 mx-auto" />
-                  <h3 className="text-lg font-bold text-slate-700">لم نجد أي منتجات تطابق اختيارك!</h3>
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                    قد تكون الكلمة المكتوبة غير صحيحة، أو لا تتوفر منتجات في هذه الفئة حالياً. تصفح بقية المعروضات أو قم بتصفير الفلاتر.
+                  <h3 className="text-2xl font-black text-slate-900">لوحة الوكلاء والموزعين المعتمدين</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    تصفح وتواصل مع وكلائنا المعتمدين لتسهيل عمليات الدفع المحلّي والحصول على بطاقات التعبئة الفورية لـ KING STORE.
                   </p>
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedType('all');
-                      setSelectedCategory('all');
-                    }}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-all cursor-pointer"
-                  >
-                    عرض كل المعروضات
-                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                  {filteredProducts.map((product) => (
-                    <ProductCard
-                      key={product.id}
-                      product={product}
-                      onAddToCart={handleAddToCart}
-                      onViewDetails={(prod) => setSelectedProduct(prod)}
-                    />
-                  ))}
+                <AgentDashboard isAdminMode={isAdminMode} />
+              </section>
+            )}
+
+            {currentTab === 'messaging' && (
+              <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <MessageSquare className="h-4 w-4" />
+                    <span>المحادثة المباشرة الفورية 💬</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900">نظام الدعم الفني الملكي</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    راسل الإدارة وطاقم الدعم الفني مباشرة وبكل أمان لحل أي استفسار أو مشكلة تتعلق بطلباتك.
+                  </p>
                 </div>
-              )}
-            </section>
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
+                  <MessagingSystem />
+                </div>
+              </section>
+            )}
+
+            {currentTab === 'profile' && (
+              <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <UserIcon className="h-4 w-4" />
+                    <span>الملف الشخصي الفاخر 👑</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900">ركن العضوية الملكية</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    تابع مشترياتك، وحالة طلباتك، والرسائل والاتصال المباشر مع الدعم الفني لـ KING STORE.
+                  </p>
+                </div>
+
+                {!currentUser ? (
+                  <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center space-y-5 shadow-sm">
+                    <div className="h-16 w-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mx-auto">
+                      <Crown className="h-8 w-8 animate-bounce" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">سجل دخولك لتفعيل الميزات الملكية!</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      تابع طلباتك، وتواصل مع الإدارة، واحصل على مميزات تفعيل المنتجات الرقمية الفورية بمجرد إنشاء حسابك الفوري المباشر.
+                    </p>
+                    <button 
+                      onClick={() => setIsAuthModalOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3.5 text-xs shadow-lg shadow-amber-500/15 cursor-pointer"
+                    >
+                      تسجيل الدخول / إنشاء حساب جديد الآن 👑
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* User profile info card */}
+                    <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 border border-amber-500/20 shadow-xl relative overflow-hidden text-right">
+                      <div className="absolute inset-0 bg-gradient-to-l from-amber-500/5 to-transparent pointer-events-none" />
+                      <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[10px] font-bold text-amber-400 border border-amber-500/20">
+                            <Crown className="h-3.5 w-3.5 text-amber-400" />
+                            <span>عضوية ملكية ذهبية نشطة</span>
+                          </span>
+                          <h4 className="text-lg font-black text-white">{currentUser.name}</h4>
+                          <p className="text-xs font-mono text-zinc-400">{currentUser.email}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setIsSettingsModalOpen(true)}
+                            className="rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-4 py-2 text-xs font-bold border border-slate-700 transition-all cursor-pointer"
+                          >
+                            تعديل الحساب ⚙️
+                          </button>
+                          <button 
+                            onClick={handleLogoutUser}
+                            className="rounded-xl bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-xs font-bold transition-all cursor-pointer"
+                          >
+                            تسجيل خروج 📤
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order History */}
+                    <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+                      <h4 className="text-sm font-black text-slate-950 flex items-center gap-2 pb-3 border-b border-slate-100">
+                        <Package className="h-4 w-4 text-amber-500" />
+                        <span>طلباتي ومشترياتي الأخيرة ({orders.filter(o => o.customerEmail.toLowerCase() === currentUser.email.toLowerCase()).length})</span>
+                      </h4>
+
+                      {orders.filter(o => o.customerEmail.toLowerCase() === currentUser.email.toLowerCase()).length === 0 ? (
+                        <p className="text-xs text-slate-500 py-6 text-center font-semibold">
+                          لا توجد أي طلبات مسجلة باسمك حتى الآن.
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {orders.filter(o => o.customerEmail.toLowerCase() === currentUser.email.toLowerCase()).map((order) => (
+                            <div key={order.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right">
+                              <div>
+                                <span className="text-[10px] font-mono text-slate-400 block">رقم الطلب: {order.id}</span>
+                                <h5 className="text-xs font-black text-slate-900 mt-1">
+                                  بإجمالي <strong className="text-amber-600">{order.totalAmount} ل.س</strong>
+                                </h5>
+                                <p className="text-[10px] text-slate-500 mt-0.5">تاريخ الطلب: {order.date}</p>
+                              </div>
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
+                                order.status === 'completed' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
+                                order.status === 'cancelled' ? 'text-red-700 bg-red-50 border-red-100' :
+                                'text-amber-700 bg-amber-50 border-amber-100'
+                              }`}>
+                                {order.status === 'completed' ? '✓ تم التسليم وبأمان' :
+                                 order.status === 'cancelled' ? '✗ تم إلغاء الطلب' :
+                                 '⌛ قيد المراجعة والتحقق'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
           </>
         )}
       </div>
 
-      {/* 3. Global Shopping Cart Drawer */}
-      <Cart
+      {/* 4. Footer */}
+      <footer className="bg-slate-950 text-white border-t border-amber-500/10 py-10 mt-auto">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500">
+              <Crown className="h-5 w-5 text-slate-950" />
+            </div>
+            <span className="text-base font-extrabold tracking-wider">KING STORE</span>
+          </div>
+          
+          <p className="text-center md:text-right text-[11px] sm:text-xs text-slate-400 max-w-md leading-relaxed">
+            منصة ملوك التجارة لبيع المنتجات الملموسة وغير الملموسة. حقوق النشر © 2026. كل الحقوق محفوظة لـ KING STORE. مصمم بأعلى مستويات الاحترافية والأمان الفائق.
+          </p>
+
+          <div className="flex gap-4 text-xs text-slate-400 font-bold">
+            <span className="hover:text-amber-400 cursor-pointer transition-colors">الشروط والأحكام</span>
+            <span>•</span>
+            <span className="hover:text-amber-400 cursor-pointer transition-colors">سياسة الخصوصية</span>
+            <span>•</span>
+            <span className="hover:text-amber-400 cursor-pointer transition-colors">الدعم الفني والشكاوى</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    {/* 3. Global Shopping Cart Drawer */}
+    <Cart
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cartItems={cartItems}
@@ -1388,6 +1720,7 @@ export default function App() {
         onPlaceOrder={handlePlaceOrder}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        globalDiscount={globalDiscount}
       />
 
       {/* 5. Product Details Modal */}
@@ -1399,6 +1732,7 @@ export default function App() {
           orders={orders}
           onAddReview={handleAddReview}
           onAddToCart={handleAddToCart}
+          globalDiscount={globalDiscount}
         />
       )}
 
@@ -1428,7 +1762,7 @@ export default function App() {
 
       {/* 7. Mobile App Installation & Generation Guide Modal */}
       {isApkGuideOpen && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-md" dir="rtl">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
           <div 
             className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
             onClick={(e) => e.stopPropagation()}
@@ -1508,35 +1842,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* 4. Footer */}
-      <footer className="bg-slate-950 text-white border-t border-amber-500/10 py-10 mt-auto">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500">
-              <Crown className="h-5 w-5 text-slate-950" />
-            </div>
-            <span className="text-base font-extrabold tracking-wider">KING STORE</span>
-          </div>
-          
-          <p className="text-center md:text-right text-[11px] sm:text-xs text-slate-400 max-w-md leading-relaxed">
-            منصة ملوك التجارة لبيع المنتجات الملموسة وغير الملموسة. حقوق النشر © 2026. كل الحقوق محفوظة لـ KING STORE. مصمم بأعلى مستويات الاحترافية والأمان الفائق.
-          </p>
-
-          <div className="flex gap-4 text-xs text-slate-400 font-bold">
-            <span className="hover:text-amber-400 cursor-pointer transition-colors">الشروط والأحكام</span>
-            <span>•</span>
-            <span className="hover:text-amber-400 cursor-pointer transition-colors">سياسة الخصوصية</span>
-            <span>•</span>
-            <span className="hover:text-amber-400 cursor-pointer transition-colors">الدعم الفني والشكاوى</span>
-          </div>
-        </div>
-      </footer>
-
-
-
-      {/* Floating Active Toast Notification Overlay */}
+      )}      {/* Floating Active Toast Notification Overlay */}
       <div className="fixed top-24 left-6 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none" dir="rtl">
         {toasts.map((toast) => (
           <div
@@ -1563,6 +1869,52 @@ export default function App() {
         ))}
       </div>
 
-    </div>
+      {/* 8. Mobile Floating Bottom Navigation Bar (Visible on All Screens) */}
+      <div className="fixed bottom-0 left-0 right-0 z-[9999] w-full bg-slate-900/95 backdrop-blur-md p-4 shadow-2xl flex justify-around items-center text-slate-400 border-t border-amber-500/20">
+        <button
+          onClick={() => {
+            setIsAdminMode(false);
+            setCurrentTab('home');
+          }}
+          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'home' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <Home className="h-5 w-5" />
+          <span>الرئيسية</span>
+        </button>
+        <button
+          onClick={() => setCurrentTab('agents')}
+          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'agents' ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <Users className="h-5 w-5" />
+          <span>الوكلاء</span>
+        </button>
+        <button
+          onClick={() => {
+            setIsAdminMode(false);
+            setCurrentTab('messaging');
+          }}
+          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'messaging' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <MessageSquare className="h-5 w-5" />
+          <span>المحادثة</span>
+        </button>
+        <button
+          onClick={() => {
+            setIsAdminMode(false);
+            setCurrentTab('cart');
+          }}
+          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all relative cursor-pointer ${currentTab === 'cart' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+        >
+          <ShoppingCart className="h-5 w-5" />
+          <span>السلة</span>
+          {cartItems?.length > 0 && (
+            <span className="absolute -top-2 -right-3 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-extrabold text-slate-950 animate-bounce shadow-sm">
+              {cartItems.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+    </>
   );
 }

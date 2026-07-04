@@ -11,10 +11,11 @@ interface ProductCardProps {
   product: Product;
   onAddToCart: (product: Product) => void;
   onViewDetails: (product: Product) => void;
+  globalDiscount?: number;
   key?: string | number;
 }
 
-export default function ProductCard({ product, onAddToCart, onViewDetails }: ProductCardProps) {
+export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0 }: ProductCardProps) {
   const isPhysical = product.type === 'physical';
   const outOfStock = isPhysical && (product.stock === undefined || product.stock <= 0);
 
@@ -22,6 +23,11 @@ export default function ProductCard({ product, onAddToCart, onViewDetails }: Pro
   const averageRating = reviews.length > 0
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
     : null;
+
+  const hasDiscount = globalDiscount > 0;
+  const discountedPrice = hasDiscount
+    ? Math.round(product.price * (1 - globalDiscount / 100))
+    : product.price;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800/60 bg-[#0d0d0d] hover:border-amber-500/40 transition-all duration-300">
@@ -40,7 +46,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails }: Pro
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         
         {/* Type Badge (Physical vs Digital) */}
-        <div className="absolute top-3 right-3 flex gap-1.5">
+        <div className="absolute top-3 right-3 flex flex-col gap-1.5 items-end">
           {isPhysical ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/90 px-2.5 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20 shadow-sm">
               <Package className="h-3 w-3 text-amber-500" />
@@ -50,6 +56,11 @@ export default function ProductCard({ product, onAddToCart, onViewDetails }: Pro
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/90 px-2.5 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20 shadow-sm">
               <Zap className="h-3 w-3 text-emerald-400" />
               <span>تسليم رقمي فوري</span>
+            </span>
+          )}
+          {hasDiscount && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white shadow-md animate-pulse">
+              <span>خصم {globalDiscount}% 🔥</span>
             </span>
           )}
         </div>
@@ -87,9 +98,16 @@ export default function ProductCard({ product, onAddToCart, onViewDetails }: Pro
         <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-4">
           <div className="flex flex-col">
             <span className="text-[10px] text-zinc-500 font-semibold">السعر</span>
-            <span className="text-xl font-black text-amber-400">
-              ${product.price.toLocaleString()}
-            </span>
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-xl font-black text-amber-400">
+                ${discountedPrice.toLocaleString()}
+              </span>
+              {hasDiscount && (
+                <span className="text-xs text-zinc-500 line-through">
+                  ${product.price.toLocaleString()}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="text-right">

@@ -1,67 +1,99 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(email) {
+      return isSignedIn() && request.auth.token.email.lower() == email.lower();
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email.lower() == 'khdersy808@gmail.com' || (
+          exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && 
+          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'admin'
+        )
+      );
+    }
+
     // Rules for products
-    match /products/{document} {
+    match /products/{productId} {
       allow read: if true;
-      allow write: if true; // In production this would be admin-only
+      allow write: if isAdmin();
     }
-    
+
+    // Rules for settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Rules for orders
-    match /orders/{document} {
-      allow read: if true;
-      allow write: if true;
+    match /orders/{orderId} {
+      allow create: if true; // Anyone can place an order
+      allow read, update, delete: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.customerEmail.lower() == request.auth.token.email.lower() ||
+          (request.resource != null && request.resource.data.customerEmail.lower() == request.auth.token.email.lower())
+        )
+      );
     }
-    
+
     // Rules for notifications
-    match /notifications/{document} {
-      allow read: if true;
-      allow write: if true;
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.customerEmail.lower() == request.auth.token.email.lower() || 
+        isAdmin()
+      );
+      allow write: if isAdmin();
     }
-    
+
     // Rules for users
-    match /users/{userId} {
-      allow read, write: if request.auth != null && (
-        request.auth.uid == userId ||
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin'
+    match /users/{email} {
+      allow read: if isSignedIn() && (isOwner(email) || isAdmin());
+      allow create: if true; // Allow user signup
+      allow update: if isSignedIn() && (
+        (isOwner(email) && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == resource.data.role)) || 
+        isAdmin()
       );
+      allow delete: if isAdmin();
     }
-    
+
     // Rules for categories
-    match /categories/{document} {
+    match /categories/{categoryId} {
       allow read: if true;
-      allow write: if request.auth != null && (
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin'
-      );
+      allow write: if isAdmin();
     }
 
     // Rules for messages
-    match /messages/{document} {
-      allow create, delete, update: if request.auth != null && (
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin'
-      );
-      allow read: if request.auth != null && (
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin' ||
-        resource.data.receiverId == request.auth.token.email || 
-        resource.data.receiverId == 'all'
+    match /messages/{messageId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid || 
+        isAdmin()
       );
     }
 
+    // Rules for coupons
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Rules for agents
-    match /agents/{document} {
-      allow read: if request.auth != null && (
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin' ||
-        resource.data.email.toLowerCase() == request.auth.token.email.toLowerCase()
-      );
-      allow write: if request.auth != null && (
-        request.auth.token.email == 'khdersy808@gmail.com' || 
-        request.auth.token.role == 'admin'
-      );
+    match /agents/{agentId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

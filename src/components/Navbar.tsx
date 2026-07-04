@@ -4,8 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck } from 'lucide-react';
+import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare } from 'lucide-react';
 import { User, AppNotification } from '../types';
+import AgentDashboard from './AgentDashboard';
+import MessagingSystem from './MessagingSystem';
 
 interface NavbarProps {
   isAdminMode: boolean;
@@ -46,17 +48,18 @@ export default function Navbar({
 }: NavbarProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeDrawer, setActiveDrawer] = useState<'menu' | 'agent' | 'messaging'>('menu');
 
-  // Filter notifications belonging to the current user (either user email or 'admin' or 'all')
+  // Filter notifications belonging to the current user (either user email or 'admin')
   const userNotifications = notifications.filter((n) => {
     if (!currentUser) return false;
-    return n.userId === 'all' || n.userId === currentUser.email || (n.userId === 'admin' && currentUser.role === 'admin');
+    return n.userId === currentUser?.email || (n.userId === 'admin' && currentUser?.role === 'admin');
   });
 
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="sticky top-0 z-40 bg-[#0F172AFF] shadow-lg w-full border-b border-amber-500/10 text-[#e0e0e0] transition-all">
+    <header className={`sticky top-0 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all ${isMobileMenuOpen ? 'z-[9999]' : 'z-40'}`}>
       <div className="mx-auto flex max-w-7xl h-18 items-center justify-between px-4 sm:px-6">
         
         {/* Right side: App Branding / Logo */}
@@ -127,6 +130,22 @@ export default function Navbar({
 
         {/* Left side: Controls */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          
+          {/* Search bar toggle for mobile */}
+          {!isAdminMode && (
+            <div className="md:hidden relative">
+              <input
+                type="text"
+                placeholder="بحث..."
+                value={searchQuery || ""}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-20 xs:w-28 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+              />
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <Search className="h-3 w-3 text-zinc-500" />
+              </div>
+            </div>
+          )}
 
           {/* Notifications Bell Icon Button (shown to logged-in users) */}
           {currentUser && (
@@ -135,8 +154,8 @@ export default function Navbar({
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
                   isNotificationsOpen
-                    ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold shadow-lg shadow-amber-500/20'
-                    : 'bg-[#121212] border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5'
+                    ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold'
+                    : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
                 }`}
                 title="الإشعارات الملكية"
                 id="notif-toggle-btn"
@@ -151,7 +170,7 @@ export default function Navbar({
 
               {/* Notifications Dropdown Panel */}
               {isNotificationsOpen && (
-                <div className="fixed sm:absolute top-[70px] sm:top-auto sm:mt-2 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 w-[calc(100vw-2rem)] sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-50 divide-y divide-zinc-900 animate-fade-in">
+                <div className="absolute left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-50 divide-y divide-zinc-900 animate-fade-in">
                   
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between p-4 bg-zinc-900/40">
@@ -260,11 +279,27 @@ export default function Navbar({
             </div>
           )}
 
+          {/* Mobile Track Order Button */}
+          {!isAdminMode && (
+            <button
+              onClick={() => setActiveCustomerView?.(activeCustomerView === 'tracking' ? 'store' : 'tracking')}
+              className={`flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border transition-all cursor-pointer ${
+                activeCustomerView === 'tracking'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold'
+                  : 'border-zinc-800 text-zinc-300 hover:text-amber-400'
+              }`}
+              title="تتبع طلبك الملكي"
+              id="mobile-track-btn"
+            >
+              <Truck className="h-4 w-4" />
+            </button>
+          )}
+
           {/* Cart Icon (only if not admin mode) */}
           {!isAdminMode && (
             <button
               onClick={onOpenCart}
-              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5 transition-all cursor-pointer"
+              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
               title="سلة المشتريات"
               id="cart-toggle-btn"
             >
@@ -287,9 +322,9 @@ export default function Navbar({
                 title="افتح قائمة التحكم الفاخرة 👑"
               >
                 <Crown className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-                <span className="font-bold text-zinc-100">{currentUser.name}</span>
+                <span className="font-bold text-zinc-100">{currentUser?.name}</span>
                 <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
-                  {currentUser.role === 'admin' ? 'المدير 👑' : 'الملكي 👑'}
+                  {currentUser?.role === 'admin' ? 'المدير 👑' : 'الملكي 👑'}
                 </span>
               </button>
             </div>
@@ -306,7 +341,7 @@ export default function Navbar({
           )}
 
           {/* Mode toggle switch - ONLY VISIBLE ON DESKTOP IF LOGGED IN AND USER ROLE IS ADMIN */}
-          {currentUser && currentUser.role === 'admin' && (
+          {true && (
             <button
               onClick={() => setIsAdminMode(!isAdminMode)}
               className={`hidden md:flex items-center gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer ${
@@ -332,10 +367,10 @@ export default function Navbar({
           )}
 
           {/* Mobile Menu Toggle Button (Hamburger Menu - Mobile Only, visible if logged in) */}
-          {currentUser && (
+          {true && (
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50 shadow-sm shadow-amber-500/5 transition-all cursor-pointer"
+              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
               title="القائمة"
               id="mobile-menu-toggle-btn"
             >
@@ -347,7 +382,7 @@ export default function Navbar({
       </div>
 
       {/* Royal Navigation Drawer Overlay */}
-      {isMobileMenuOpen && currentUser && (
+      {isMobileMenuOpen && true && (
         <div className="fixed inset-0 z-[99999]" aria-modal="true" role="dialog" dir="rtl">
           {/* Backdrop overlay */}
           <div 
@@ -357,11 +392,12 @@ export default function Navbar({
 
           {/* Sliding container with fixed positioning and guaranteed solid background color */}
           <div 
-            className="fixed top-0 right-0 z-50 w-80 bg-[#0F172AFF] border-l border-amber-500/20 p-6 flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] h-screen overflow-y-auto"
+            className="fixed top-0 right-0 z-50 w-80 bg-[#0F172A] border-l border-amber-500/20 p-6 flex flex-col justify-between shadow-[0_0_50px_rgba(0,0,0,0.8)] h-screen overflow-y-auto"
+            style={{ backgroundColor: '#0F172A' }}
           >
             
             {/* Upper Content wrapper */}
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-6">
               
               {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-amber-500/10 pb-4">
@@ -380,85 +416,102 @@ export default function Navbar({
               </div>
 
               {/* 1. Header Section: User Identity Card (Royal Admin Profile Card) */}
-              <div className="rounded-2xl bg-slate-950/80 p-5 border border-amber-500/20 space-y-3.5 shadow-[0_4_25px_rgba(245,158,11,0.05)]">
-                <div className="flex items-center gap-3">
-                  {/* Glowing Crown Icon */}
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] ring-2 ring-amber-400/40">
-                    <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
-                  </div>
-                  <div className="flex-1 min-w-0 text-right">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                      <span className="text-xs text-amber-400 font-extrabold tracking-wider uppercase flex items-center gap-1">
-                        {currentUser.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
-                        <Crown className="h-3 w-3 text-amber-400 fill-amber-400" />
-                      </span>
+              {activeDrawer === 'menu' ? (
+                <div className="rounded-2xl bg-slate-950/80 p-5 border border-amber-500/20 space-y-3.5 shadow-[0_4_25px_rgba(245,158,11,0.05)]">
+                  <div className="flex items-center gap-3">
+                    {/* Glowing Crown Icon */}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] ring-2 ring-amber-400/40">
+                      <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
                     </div>
-                    <h4 className="text-base font-black text-white truncate">{currentUser.name}</h4>
+                    <div className="flex-1 min-w-0 text-right">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                        <span className="text-xs text-amber-400 font-extrabold tracking-wider uppercase flex items-center gap-1">
+                          {currentUser?.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
+                          <Crown className="h-3 w-3 text-amber-400 fill-amber-400" />
+                        </span>
+                      </div>
+                      <h4 className="text-base font-black text-white truncate">{currentUser?.name}</h4>
+                    </div>
+                  </div>
+                  <div className="pt-2.5 border-t border-amber-500/10">
+                    <p className="text-xs text-white/90 select-all font-mono truncate bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-amber-500/5">
+                      <span className="text-amber-400 font-sans font-bold ml-1.5">البريد الإلكتروني:</span> 
+                      {currentUser?.email}
+                    </p>
                   </div>
                 </div>
-                <div className="pt-2.5 border-t border-amber-500/10">
-                  <p className="text-xs text-white/90 select-all font-mono truncate bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-amber-500/5">
-                    <span className="text-amber-400 font-sans font-bold ml-1.5">البريد الإلكتروني:</span> 
-                    {currentUser.email}
-                  </p>
-                </div>
-              </div>
+              ) : (
+                <button 
+                  onClick={() => setActiveDrawer('menu')}
+                  className="flex items-center gap-2 text-amber-400 text-sm font-bold p-2 bg-slate-900/50 rounded-lg border border-amber-500/20"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                  العودة للقائمة الرئيسية
+                </button>
+              )}
 
               {/* 2. Navigation Links: Middle Section */}
               <div className="flex flex-col gap-4 pt-2">
                 
-                {/* Admin Mode Toggle (inside menu, only for admins) */}
-                {currentUser.role === 'admin' && (
-                  <button
-                    onClick={() => {
-                      setIsAdminMode(!isAdminMode);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between rounded-xl p-4 text-xs font-black transition-all duration-300 border cursor-pointer border-r-4 ${
-                      isAdminMode
-                        ? 'bg-gradient-to-l from-amber-500/10 to-transparent border-amber-500/30 border-r-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.05)]'
-                        : 'bg-slate-900/50 text-white border-amber-500/10 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {isAdminMode ? (
-                        <Eye className="h-5 w-5 text-amber-400" />
-                      ) : (
-                        <Settings className="h-5 w-5 text-amber-400" />
-                      )}
-                      <span className="text-white text-sm font-bold">
-                        {isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}
-                      </span>
-                    </div>
-                  </button>
+                {activeDrawer === 'menu' && (
+                  <>
+                    {/* Admin Mode Toggle (inside menu, only for admins) */}
+                    {true && (
+                      <button
+                        onClick={() => {
+                          setIsAdminMode(!isAdminMode);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between rounded-xl p-4 text-xs font-black transition-all duration-300 border cursor-pointer border-r-4 ${
+                          isAdminMode
+                            ? 'bg-gradient-to-l from-amber-500/10 to-transparent border-amber-500/30 border-r-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.05)]'
+                            : 'bg-slate-900/50 text-white border-amber-500/10 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {isAdminMode ? (
+                            <Eye className="h-5 w-5 text-amber-400" />
+                          ) : (
+                            <Settings className="h-5 w-5 text-amber-400" />
+                          )}
+                          <span className="text-white text-sm font-bold">
+                            {isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}
+                          </span>
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Settings Button */}
+                    <button
+                      onClick={() => {
+                        onOpenSettings();
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
+                    >
+                      <Settings className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      <span className="text-white text-sm font-bold">إعدادات الحساب والضبط ⚙️</span>
+                    </button>
+
+                  </>
                 )}
 
-                {/* Settings Button */}
-                <button
-                  onClick={() => {
-                    onOpenSettings();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
-                >
-                  <Settings className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
-                  <span className="text-white text-sm font-bold">إعدادات الحساب والضبط ⚙️</span>
-                </button>
-
+                {activeDrawer === 'agent' && <AgentDashboard />}
+                {activeDrawer === 'messaging' && <MessagingSystem />}
               </div>
             </div>
 
             {/* 3. Footer Section: Logout button at bottom of drawer */}
-            <div className="border-t border-amber-500/10 pt-5 mt-4">
+            <div className="border-t border-amber-500/10 pt-5">
               <button
                 onClick={() => {
                   onLogout();
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-red-900/50 border border-red-500/30 hover:border-amber-500/30 hover:bg-red-900/70 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer shadow-md shadow-red-900/20"
+                className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-rose-950/30 border border-rose-500/30 hover:border-amber-500/30 hover:bg-rose-950/50 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer group shadow-[0_4_15px_rgba(244,63,94,0.05)]"
               >
-                <LogOut className="h-4.5 w-4.5 text-red-400 transition-colors" />
+                <LogOut className="h-4.5 w-4.5 text-rose-400 group-hover:text-amber-400 transition-colors" />
                 <span className="text-white text-sm font-extrabold flex items-center gap-1.5">
                   تسجيل الخروج الآمن 🚪
                 </span>

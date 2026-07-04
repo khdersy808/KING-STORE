@@ -16,25 +16,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 👑 تفعيل التسريع العتادي وتأمين رندرة مستقرة خالية من الاهتزاز والتشويش البصري */
+/* 👑 تحسينات الخطوط وتأمين رندرة مستقرة */
 *, *::before, *::after {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* تطبيق استقرار الرندرة على الصور والبطاقات والأزرار والعناصر التي تحتوي على حركات وتأثيرات حركية */
-img, 
-button, 
-a, 
-.card, 
-.stable-render,
-[class*="transition-"], 
-[class*="hover:"],
-[class*="animate-"] {
-  -webkit-backface-visibility: hidden;
+/* 🚀 تفعيل تسريع الرندرة لمنع الاهتزاز والبطء على الهواتف */
+.main-store-container {
+  transform: translateZ(0);
   backface-visibility: hidden;
-  -webkit-transform: translate3d(0, 0, 0);
-  transform: translate3d(0, 0, 0);
+  perspective: 1000px;
 }
+
 

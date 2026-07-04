@@ -72,7 +72,6 @@ export interface Order {
   date: string;
   senderName?: string;
   transactionId?: string;
-  agentId?: string; // معرف الوكيل الذي تمت العملية عن طريقه
 }
 
 export interface CartItem {
@@ -89,16 +88,22 @@ export interface User {
 }
 
 export interface Agent {
-  id: string; // Document ID in Firestore
-  agentId: string; // Identical to email usually
+  id: string;
   name: string;
-  email: string;
-  walletLink: string;
-  assignedProducts: string[]; // Array of product IDs
-  assignedCategories?: string[]; // Array of category names/IDs allowed for this agent
-  totalSales: number;
-  pendingDues: number; // المبالغ المستحقة
-  status: 'active' | 'blocked';
+  phone: string;
+  profitPercentage: number;
+  ordersCount: number;
+  commissionStatus: 'pending' | 'paid';
+  userId: string;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  text: string;
+  date: string;
+  isRead: boolean;
 }
 
 export interface AppNotification {
@@ -110,5 +115,17 @@ export interface AppNotification {
   isRead: boolean;
   type: 'order_created' | 'order_status_updated' | 'system';
   orderId?: string;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  minAmount: number;
+  isActive: boolean;
+  expiryDate: string;
+  usageCount: number;
+  createdAt: string;
 }
 

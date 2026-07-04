@@ -46,34 +46,32 @@
         "password": "string"
       }
     },
-    "messages": {
-      "fields": {
-        "id": "string",
-        "senderId": "string",
-        "receiverId": "string",
-        "title": "string",
-        "body": "string",
-        "timestamp": "string",
-        "isRead": "boolean"
-      }
-    },
     "categories": {
       "fields": {
         "name": "string"
       }
     },
-    "agents": {
+    "messages": {
       "fields": {
         "id": "string",
-        "agentId": "string",
-        "name": "string",
-        "email": "string",
-        "walletLink": "string",
-        "assignedProducts": "array",
-        "assignedCategories": "array",
-        "totalSales": "number",
-        "pendingDues": "number",
-        "status": "string"
+        "senderId": "string",
+        "receiverId": "string",
+        "text": "string",
+        "date": "string",
+        "isRead": "boolean"
+      }
+    },
+    "coupons": {
+      "fields": {
+        "id": "string",
+        "code": "string",
+        "type": "string",
+        "value": "number",
+        "minAmount": "number",
+        "isActive": "boolean",
+        "expiryDate": "string",
+        "usageCount": "number",
+        "createdAt": "string"
       }
     }
   }

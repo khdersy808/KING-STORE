@@ -1,6 +1,6 @@
 {
-  "name": "KING STORE",
-  "description": "متجر ملوك التجارة الإلكترونية لبيع المنتجات الملموسة والرقمية مع لوحة تحكم كاملة لإدارة المنتجات وبوابات الدفع.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+   "name": "KING STORE",
+   "description": "منصة KING STORE للتجارة الإلكترونية",
+   "requestFramePermissions": [],
+   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -26,6 +26,7 @@ interface ProductDetailsModalProps {
   orders: Order[];
   onAddReview: (productId: string, review: ProductReview) => void;
   onAddToCart: (product: Product) => void;
+  globalDiscount?: number;
 }
 
 export default function ProductDetailsModal({
@@ -35,6 +36,7 @@ export default function ProductDetailsModal({
   orders,
   onAddReview,
   onAddToCart,
+  globalDiscount = 0,
 }: ProductDetailsModalProps) {
   const [reviewerName, setReviewerName] = useState('');
   const [reviewerEmail, setReviewerEmail] = useState('');
@@ -45,6 +47,11 @@ export default function ProductDetailsModal({
   const [successMsg, setSuccessMsg] = useState('');
 
   if (!isOpen) return null;
+
+  const hasDiscount = globalDiscount > 0;
+  const discountedPrice = hasDiscount
+    ? Math.round(product.price * (1 - globalDiscount / 100))
+    : product.price;
 
   // Calculate average rating
   const reviews = product.reviews || [];
@@ -113,7 +120,7 @@ export default function ProductDetailsModal({
   const isOutOfStock = product.type === 'physical' && (product.stock === undefined || product.stock <= 0);
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 px-4 backdrop-blur-sm animate-fade-in" dir="rtl">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" dir="rtl">
       <div 
         className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl flex flex-col md:flex-row"
         id={`product-modal-${product.id}`}
@@ -160,7 +167,12 @@ export default function ProductDetailsModal({
             <div className="mt-4 flex items-center justify-between bg-zinc-900/40 p-4 rounded-xl border border-zinc-900">
               <div>
                 <span className="text-[10px] text-zinc-500 font-bold block">السعر الملكي</span>
-                <span className="text-2xl font-black text-amber-400">${product.price.toLocaleString()}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-amber-400">${discountedPrice.toLocaleString()}</span>
+                  {hasDiscount && (
+                    <span className="text-xs text-zinc-500 line-through">${product.price.toLocaleString()}</span>
+                  )}
+                </div>
               </div>
               <div className="text-left">
                 {product.type === 'physical' ? (

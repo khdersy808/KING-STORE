@@ -6,7 +6,6 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User as UserIcon, Shield, CheckCircle2, AlertCircle, Eye, EyeOff, Check } from 'lucide-react';
 import { User } from '../types';
-import { useLanguage } from '../LanguageContext';
 import { 
   auth, 
   db, 
@@ -19,7 +18,10 @@ import {
   setDoc,
   getDoc,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from '../lib/firebase';
 
 interface AuthModalProps {
@@ -41,7 +43,6 @@ export default function AuthModal({
   adminInviteEmail,
   onClearInvite
 }: AuthModalProps) {
-  const { language, setLanguage, t, isRtl } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
@@ -76,24 +77,19 @@ export default function AuthModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("AuthModal: handleSubmit triggered, isLogin:", isLogin, "auth defined:", !!auth);
     setErrorMsg('');
     setSuccessMsg('');
     setIsLoading(true);
 
     if (isForgotPassword) {
       if (!resetEmail.trim()) {
-        setErrorMsg(t('auth.errorEmailRequired'));
+        setErrorMsg('يرجى إدخال البريد الإلكتروني الخاص بك.');
         setIsLoading(false);
         return;
       }
       try {
-        console.log("AuthModal: Sending password reset email");
         await sendPasswordResetEmail(auth, resetEmail.trim().toLowerCase());
-        setSuccessMsg(language === 'ar' 
-          ? '📬 تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح! يرجى التحقق من صندوق الوارد (أو مجلد الرسائل غير المرغوب فيها Spam).'
-          : '📬 Password reset link sent to your email successfully! Please check your inbox or spam folder.'
-        );
+        setSuccessMsg('📬 تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح! يرجى التحقق من صندوق الوارد (أو مجلد الرسائل غير المرغوب فيها Spam).');
         setTimeout(() => {
           setIsForgotPassword(false);
           setErrorMsg('');
@@ -102,15 +98,11 @@ export default function AuthModal({
         }, 6000);
       } catch (err: any) {
         console.error("Password reset error: ", err);
-        let errorMsgAr = language === 'ar' 
-          ? 'حدث خطأ أثناء إرسال البريد. يرجى التأكد من كتابة البريد بشكل صحيح.'
-          : 'An error occurred while sending the email. Please make sure the email is written correctly.';
+        let errorMsgAr = 'حدث خطأ أثناء إرسال البريد. يرجى التأكد من كتابة البريد بشكل صحيح.';
         if (err.code === 'auth/user-not-found') {
-          errorMsgAr = language === 'ar' 
-            ? 'هذا البريد الإلكتروني غير مسجل لدينا في KING STORE.'
-            : 'This email is not registered with us at KING STORE.';
+          errorMsgAr = 'هذا البريد الإلكتروني غير مسجل لدينا في KING STORE.';
         } else if (err.code === 'auth/invalid-email') {
-          errorMsgAr = t('auth.errorEmailInvalid');
+          errorMsgAr = 'البريد الإلكتروني المكتوب غير صالح.';
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -120,13 +112,13 @@ export default function AuthModal({
     }
 
     if (!email.trim() || !password.trim()) {
-      setErrorMsg(t('auth.errorFieldsRequired'));
+      setErrorMsg('يرجى ملء جميع الحقول المطلوبة.');
       setIsLoading(false);
       return;
     }
 
     if (!isLogin && !name.trim()) {
-      setErrorMsg(t('auth.errorNameRequired'));
+      setErrorMsg('يرجى إدخال اسمك الكريم لإنشاء الحساب.');
       setIsLoading(false);
       return;
     }
@@ -137,15 +129,14 @@ export default function AuthModal({
     if (isLogin) {
       // Login flow with Firebase Auth & Firestore
       try {
-        console.log("AuthModal: Attempting signInWithEmailAndPassword (persistence skipped)");
+        // Set persistence dynamically based on Remember Me checkbox
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         
         let userCredential;
 
         try {
           // Direct sign in using Firebase Console credentials (Firebase Auth)
-          console.log("AuthModal: Attempting signInWithEmailAndPassword");
           userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-          console.log("AuthModal: SignIn successful");
         } catch (signInErr: any) {
           // If the login is for the admin email and it failed due to not found or invalid credential,
           // automatically register the account to avoid manual registration friction!
@@ -169,10 +160,7 @@ export default function AuthModal({
 
         // Check if email is verified
         if (!fbUser.emailVerified && normalizedEmail !== adminEmail.toLowerCase()) {
-          setErrorMsg(language === 'ar'
-            ? '⚠️ لم يتم التحقق من بريدك الإلكتروني بعد! يرجى فتح الرسالة المرسلة لبريدك وتفعيله أولاً لتتمكن من تسجيل الدخول بنجاح.'
-            : '⚠️ Your email is not verified yet! Please check the email sent to you and activate it first to login successfully.'
-          );
+          setErrorMsg('⚠️ لم يتم التحقق من بريدك الإلكتروني بعد! يرجى فتح الرسالة المرسلة لبريدك وتفعيله أولاً لتتمكن من تسجيل الدخول بنجاح.');
           setIsLoading(false);
           return;
         }
@@ -215,11 +203,11 @@ export default function AuthModal({
           name: nameVal,
           email: normalizedEmail,
           password: password,
-          role: role as 'admin' | 'customer' | 'agent'
+          role: role as 'admin' | 'customer'
         };
 
         onLogin(foundUser, rememberMe);
-        setSuccessMsg(t('auth.welcomeBack', { name: nameVal }));
+        setSuccessMsg(`أهلاً بك مجدداً، ${nameVal}! تم تسجيل الدخول بنجاح.`);
         
         setTimeout(() => {
           onClose();
@@ -231,33 +219,19 @@ export default function AuthModal({
       } catch (error: any) {
         console.log(error);
         console.error(error.code, error.message);
-        let errorMsgAr = language === 'ar' 
-          ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.'
-          : 'Incorrect email or password. Please try again.';
+        let errorMsgAr = 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
         if (error.code === 'auth/invalid-credential') {
-          errorMsgAr = language === 'ar'
-            ? '⚠️ البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التحقق من المدخلات والمحاولة مجدداً.'
-            : '⚠️ Incorrect email or password. Please verify your inputs and try again.';
+          errorMsgAr = '⚠️ البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التحقق من المدخلات والمحاولة مجدداً.';
         } else if (error.code === 'auth/user-not-found') {
-          errorMsgAr = language === 'ar'
-            ? '⚠️ هذا الحساب غير مسجل لدينا. يرجى التأكد من البريد الإلكتروني أو إنشاء حساب جديد.'
-            : '⚠️ This account is not registered. Please check the email or create a new account.';
+          errorMsgAr = '⚠️ هذا الحساب غير مسجل لدينا. يرجى التأكد من البريد الإلكتروني أو إنشاء حساب جديد.';
         } else if (error.code === 'auth/wrong-password') {
-          errorMsgAr = language === 'ar'
-            ? '⚠️ كلمة المرور المكتوبة غير صحيحة. يرجى المحاولة مرة أخرى.'
-            : '⚠️ The password entered is incorrect. Please try again.';
+          errorMsgAr = '⚠️ كلمة المرور المكتوبة غير صحيحة. يرجى المحاولة مرة أخرى.';
         } else if (error.code === 'auth/user-disabled') {
-          errorMsgAr = language === 'ar'
-            ? '⚠️ تم تعطيل هذا الحساب من قبل الإدارة.'
-            : '⚠️ This account has been disabled by administration.';
+          errorMsgAr = '⚠️ تم تعطيل هذا الحساب من قبل الإدارة.';
         } else if (error.code === 'auth/too-many-requests') {
-          errorMsgAr = language === 'ar'
-            ? '⚠️ تم إدخال الكثير من المحاولات الخاطئة. تم قفل الحساب مؤقتاً، يرجى المحاولة لاحقاً.'
-            : '⚠️ Too many incorrect attempts. The account has been temporarily locked, please try again later.';
+          errorMsgAr = '⚠️ تم إدخال الكثير من المحاولات الخاطئة. تم قفل الحساب مؤقتاً، يرجى المحاولة لاحقاً.';
         } else if (error.message) {
-          errorMsgAr = language === 'ar'
-            ? `⚠️ خطأ: ${error.message}`
-            : `⚠️ Error: ${error.message}`;
+          errorMsgAr = `⚠️ خطأ: ${error.message}`;
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -297,10 +271,7 @@ export default function AuthModal({
         });
 
         onRegister(newUser);
-        setSuccessMsg(language === 'ar'
-          ? '🎉 تهانينا! تم إنشاء حسابك الملكي بنجاح. لقد أرسلنا رسالة تفعيل إلى بريدك الإلكتروني لتأكيد ملكيته. يرجى تفعيله ثم تسجيل الدخول.'
-          : '🎉 Congratulations! Your royal account was successfully created. We have sent an activation link to your email. Please verify it and then sign in.'
-        );
+        setSuccessMsg('🎉 تهانينا! تم إنشاء حسابك الملكي بنجاح. لقد أرسلنا رسالة تفعيل إلى بريدك الإلكتروني لتأكيد ملكيته. يرجى تفعيله ثم تسجيل الدخول.');
         onClearInvite?.();
         
         setTimeout(() => {
@@ -312,19 +283,13 @@ export default function AuthModal({
 
       } catch (err: any) {
         console.error("Register error: ", err);
-        let errorMsgAr = language === 'ar'
-          ? 'حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.'
-          : 'An error occurred while creating the account. Please try again.';
+        let errorMsgAr = 'حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.';
         if (err.code === 'auth/email-already-in-use') {
-          errorMsgAr = language === 'ar'
-            ? 'هذا البريد الإلكتروني مسجل بالفعل مسبقاً. حاول تسجيل الدخول.'
-            : 'This email is already registered. Try signing in.';
+          errorMsgAr = 'هذا البريد الإلكتروني مسجل بالفعل مسبقاً. حاول تسجيل الدخول.';
         } else if (err.code === 'auth/weak-password') {
-          errorMsgAr = language === 'ar'
-            ? 'كلمة المرور ضعيفة للغاية. يجب أن تتكون من 6 أحرف أو أكثر.'
-            : 'The password is too weak. It must be at least 6 characters.';
+          errorMsgAr = 'كلمة المرور ضعيفة للغاية. يجب أن تتكون من 6 أحرف أو أكثر.';
         } else if (err.code === 'auth/invalid-email') {
-          errorMsgAr = t('auth.errorEmailInvalid');
+          errorMsgAr = 'البريد الإلكتروني المكتوب غير صالح.';
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -338,7 +303,8 @@ export default function AuthModal({
     setSuccessMsg('');
     setIsLoading(true);
     try {
-      console.log("AuthModal: Attempting Google SignIn (persistence skipped)");
+      // Set persistence dynamically based on Remember Me checkbox
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
@@ -387,11 +353,11 @@ export default function AuthModal({
         name: nameVal,
         email: normalizedEmail,
         password: '',
-        role: role as 'admin' | 'customer' | 'agent'
+        role: role as 'admin' | 'customer'
       };
       
       onLogin(loggedUser, rememberMe);
-      setSuccessMsg(t('auth.welcomeGoogle', { name: nameVal }));
+      setSuccessMsg(`أهلاً بك، ${nameVal}! تم تسجيل دخولك بنجاح عبر Google.`);
       setTimeout(() => {
         onClose();
         setEmail('');
@@ -400,21 +366,13 @@ export default function AuthModal({
       
     } catch (err: any) {
       console.error("Google sign in error: ", err);
-      let errorMsgAr = language === 'ar'
-        ? 'حدث خطأ أثناء تسجيل الدخول باستخدام Google.'
-        : 'An error occurred during Google sign in.';
+      let errorMsgAr = 'حدث خطأ أثناء تسجيل الدخول باستخدام Google.';
       if (err.code === 'auth/popup-blocked') {
-        errorMsgAr = language === 'ar'
-          ? '⚠️ تم حظر النافذة المنبثقة من قبل متصفحك. يرجى السماح بالنوافذ المنبثقة لمتجرنا الفاخر والمحاولة مجدداً.'
-          : '⚠️ Popup blocked by your browser. Please allow popups for our luxury store and try again.';
+        errorMsgAr = '⚠️ تم حظر النافذة المنبثقة من قبل متصفحك. يرجى السماح بالنوافذ المنبثقة لمتجرنا الفاخر والمحاولة مجدداً.';
       } else if (err.code === 'auth/popup-closed-by-user') {
-        errorMsgAr = language === 'ar'
-          ? 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.'
-          : 'The sign-in popup was closed before completion.';
+        errorMsgAr = 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.';
       } else if (err.code === 'auth/cancelled-popup-request') {
-        errorMsgAr = language === 'ar'
-          ? 'تم إلغاء طلب تسجيل الدخول.'
-          : 'The sign-in request was cancelled.';
+        errorMsgAr = 'تم إلغاء طلب تسجيل الدخول.';
       }
       setErrorMsg(errorMsgAr);
     } finally {
@@ -423,9 +381,9 @@ export default function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" dir="rtl">
       <div 
-        className="relative w-full max-w-md mx-auto overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl p-6"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl p-6"
         id="auth-modal-container"
       >
         {/* Close Button */}
@@ -436,15 +394,6 @@ export default function AuthModal({
           <X className="h-4 w-4" />
         </button>
 
-        {/* Language Switcher */}
-        <button
-          type="button"
-          onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-          className="absolute top-4 right-4 z-10 flex h-8 px-3 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-black text-amber-400 hover:text-white hover:border-amber-400/40 transition-all cursor-pointer"
-        >
-          {language === 'ar' ? 'EN' : 'AR'}
-        </button>
-
         {/* Title */}
         <div className="text-center mb-6 mt-2">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 shadow-lg shadow-amber-500/10 mb-3">
@@ -452,18 +401,18 @@ export default function AuthModal({
           </div>
           <h3 className="text-xl font-black text-white">
             {isForgotPassword 
-              ? t('auth.resetPassword') 
+              ? 'إستعادة كلمة المرور' 
               : isLogin 
-                ? t('auth.royalLogin') 
-                : t('auth.newRoyalAccount')
+                ? 'تسجيل الدخول إلى بوابتك الملكية' 
+                : 'إنشاء حساب ملكي جديد'
             }
           </h3>
           <p className="text-xs text-zinc-400 mt-1.5">
             {isForgotPassword
-              ? t('auth.resetPasswordDesc')
+              ? 'أدخل بريدك الإلكتروني لإرسال رابط إعادة تعيين كلمة المرور'
               : isLogin 
-                ? t('auth.loginDesc') 
-                : t('auth.registerDesc')
+                ? 'سجل دخولك لمتابعة طلباتك وتقييم مشترياتك الفاخرة' 
+                : 'انضم إلينا واستمتع بتجربة تسوق رقمية وملموسة فريدة'
             }
           </p>
         </div>
@@ -472,7 +421,7 @@ export default function AuthModal({
           /* FORGOT PASSWORD FORM */
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('auth.accountEmail')}</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">البريد الإلكتروني لحسابك</label>
               <div className="relative">
                 <input
                   type="email"
@@ -480,9 +429,9 @@ export default function AuthModal({
                   placeholder="example@kingstore.com"
                   value={resetEmail || ""}
                   onChange={(e) => setResetEmail(e.target.value)}
-                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />
-                <Mail className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                <Mail className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
               </div>
             </div>
 
@@ -507,7 +456,7 @@ export default function AuthModal({
               disabled={isLoading}
               className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 py-3 text-xs font-black hover:from-amber-400 hover:to-amber-500 active:scale-98 transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isLoading ? t('auth.sending') : t('auth.sendResetBtn')}
+              {isLoading ? 'جاري الإرسال...' : 'إرسال رابط التحقق وإعادة التعيين 📨'}
             </button>
 
             {/* Return to Login */}
@@ -521,7 +470,7 @@ export default function AuthModal({
                 }}
                 className="text-xs text-amber-400 font-extrabold hover:underline cursor-pointer"
               >
-                {t('auth.returnToLogin')}
+                العودة لتسجيل الدخول ⏎
               </button>
             </div>
           </form>
@@ -532,24 +481,24 @@ export default function AuthModal({
             {/* Name (Register only) */}
             {!isLogin && (
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('auth.fullName')}</label>
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">الاسم الكريم بالكامل</label>
                 <div className="relative">
                   <input
                     type="text"
                     required
-                    placeholder={t('auth.fullNamePlaceholder')}
+                    placeholder="أحمد العتيبي"
                     value={name || ""}
                     onChange={(e) => setName(e.target.value)}
-                    className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                    className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                   />
-                  <UserIcon className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  <UserIcon className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
                 </div>
               </div>
             )}
 
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('auth.email')}</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">البريد الإلكتروني</label>
               <div className="relative">
                 <input
                   type="email"
@@ -557,16 +506,16 @@ export default function AuthModal({
                   placeholder="example@kingstore.com"
                   value={email || ""}
                   onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${isRtl ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />
-                <Mail className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                <Mail className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
               </div>
             </div>
 
             {/* Password */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold text-zinc-400">{t('auth.password')}</label>
+                <label className="block text-xs font-bold text-zinc-400">كلمة المرور</label>
                 {isLogin && (
                   <button
                     type="button"
@@ -578,7 +527,7 @@ export default function AuthModal({
                     }}
                     className="text-[11px] text-amber-500/80 hover:text-amber-400 cursor-pointer"
                   >
-                    {t('auth.forgotPassword')}
+                    نسيت كلمة المرور؟ 🔑
                   </button>
                 )}
               </div>
@@ -589,13 +538,13 @@ export default function AuthModal({
                   placeholder="••••••••"
                   value={password || ""}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${isRtl ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-10 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
                 />
-                <Lock className={`absolute ${isRtl ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                <Lock className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-2.5 p-0.5 rounded text-zinc-500 hover:text-zinc-300 focus:outline-none`}
+                  className="absolute left-3 top-2.5 p-0.5 rounded text-zinc-500 hover:text-zinc-300 focus:outline-none"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -604,12 +553,12 @@ export default function AuthModal({
 
             {/* Admin Invitation Notice Banner */}
             {isAdminRole && adminInviteEmail && (
-              <div className={`p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 ${isRtl ? 'text-right' : 'text-left'} space-y-1`}>
+              <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-right space-y-1">
                 <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider block">
-                  {t('auth.inviteBannerTitle')}
+                  👑 رابط دعوة مفعّل ومصدق:
                 </span>
                 <p className="text-xs text-zinc-300">
-                  {t('auth.inviteBannerDesc')}
+                  أنت تسجل الآن كمسؤول نظام معتمد. سيتم منحك صلاحيات لوحة التحكم بالكامل فور إتمام إنشاء هذا الحساب الفاخر.
                 </p>
               </div>
             )}
@@ -644,7 +593,7 @@ export default function AuthModal({
                       <Check className={`h-3.5 w-3.5 text-amber-400 transition-transform duration-200 ${rememberMe ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`} />
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">{t('auth.rememberMe')}</span>
+                  <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">تذكرني على هذا الجهاز</span>
                 </label>
               </div>
             )}
@@ -655,13 +604,13 @@ export default function AuthModal({
               disabled={isLoading}
               className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 py-3 text-xs font-black hover:from-amber-400 hover:to-amber-500 active:scale-98 transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isLoading ? t('auth.loading') : isLogin ? t('auth.loginBtn') : t('auth.registerBtn')}
+              {isLoading ? 'جاري التحميل...' : isLogin ? 'تسجيل الدخول الفوري' : 'إتمام إنشاء الحساب وإرسال رابط التفعيل'}
             </button>
 
             {/* Separator / Divider */}
             <div className="flex items-center my-4">
               <div className="flex-1 border-t border-zinc-800"></div>
-              <span className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('auth.or')}</span>
+              <span className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">أو المتابعة باستخدام</span>
               <div className="flex-1 border-t border-zinc-800"></div>
             </div>
 
@@ -678,7 +627,7 @@ export default function AuthModal({
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
               </svg>
-              <span>{isLogin ? t('auth.googleLogin') : t('auth.googleRegister')}</span>
+              <span>{isLogin ? 'تسجيل الدخول باستخدام Google' : 'التسجيل السريع عبر حساب Google'}</span>
             </button>
           </form>
         )}
@@ -687,7 +636,7 @@ export default function AuthModal({
         {!isForgotPassword && (
           <div className="mt-5 pt-4 border-t border-zinc-900 text-center text-xs">
             <span className="text-zinc-500">
-              {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
+              {isLogin ? 'ليس لديك حساب معنا بعد؟' : 'لديك حساب بالفعل؟'}
             </span>
             <button
               type="button"
@@ -696,9 +645,9 @@ export default function AuthModal({
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className={`text-amber-400 font-extrabold ${isRtl ? 'mr-1' : 'ml-1'} hover:underline cursor-pointer`}
+              className="text-amber-400 font-extrabold mr-1 hover:underline cursor-pointer"
             >
-              {isLogin ? t('auth.registerNow') : t('auth.loginHere')}
+              {isLogin ? 'سجل حسابك الفاخر الآن' : 'سجل دخولك هنا'}
             </button>
           </div>
         )}

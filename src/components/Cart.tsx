@@ -39,6 +39,7 @@ interface CartProps {
   onPlaceOrder: (order: Order) => void;
   currentUser: User | null;
   onOpenAuth: () => void;
+  globalDiscount?: number;
 }
 
 export default function Cart({
@@ -52,7 +53,16 @@ export default function Cart({
   onPlaceOrder,
   currentUser,
   onOpenAuth,
+  globalDiscount = 0,
 }: CartProps) {
+  // Helper to get active product price with global discount
+  const getProductPrice = (product: Product) => {
+    if (globalDiscount && globalDiscount > 0) {
+      return Math.round(product.price * (1 - globalDiscount / 100));
+    }
+    return product.price;
+  };
+
   // Checkout states
   const [step, setStep] = useState<'cart' | 'checkout' | 'success'>('cart');
   const [customerName, setCustomerName] = useState('');
@@ -90,7 +100,7 @@ export default function Cart({
 
   if (!isOpen) return null;
 
-  const totalAmount = cartItems.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+  const totalAmount = cartItems.reduce((acc, item) => acc + getProductPrice(item.product) * item.quantity, 0);
   const hasPhysicalProducts = cartItems.some(item => item.product.type === 'physical');
   const hasDigitalProducts = cartItems.some(item => item.product.type === 'digital');
 
@@ -218,7 +228,7 @@ export default function Cart({
     const orderItems: OrderItem[] = cartItems.map(item => ({
       productId: item.product.id,
       productName: item.product.name,
-      price: item.product.price,
+      price: getProductPrice(item.product),
       quantity: item.quantity,
       type: item.product.type
     }));
@@ -294,11 +304,11 @@ export default function Cart({
     <div className="fixed inset-0 z-50 overflow-hidden" aria-modal="true" role="dialog" dir="rtl">
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md h-[100dvh] overflow-hidden">
-        <div className="w-full h-full transform bg-[#0F172AFF] text-white shadow-2xl transition-all flex flex-col overflow-hidden sm:rounded-l-2xl border-l border-amber-500/20">
+      <div className="absolute inset-y-0 left-0 flex max-w-full pr-0 md:pr-10">
+        <div className="w-screen max-w-lg transform bg-[#0F172AFF] text-white shadow-2xl transition-all flex flex-col h-full rounded-r-2xl border-r border-amber-500/20">
           
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-amber-500/10 px-4 py-4 sm:px-6 sm:py-5 shrink-0">
+          <div className="flex items-center justify-between border-b border-amber-500/10 px-6 py-5">
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               {step === 'cart' && 'سلة المشتريات 🛒'}
               {step === 'checkout' && 'إتمام الدفع والطلب 💳'}
@@ -313,7 +323,7 @@ export default function Cart({
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="flex-1 overflow-y-auto p-6">
             
             {/* Step 1: Cart Items */}
             {step === 'cart' && (
@@ -366,7 +376,10 @@ export default function Cart({
                               {item.product.name}
                             </h4>
                             <span className="text-xs text-amber-400 font-extrabold block mt-0.5">
-                              ${item.product.price}
+                              ${getProductPrice(item.product)}
+                              {globalDiscount > 0 && (
+                                <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price}</span>
+                              )}
                             </span>
                             <span className="text-[10px] text-amber-200/50 font-medium block">
                               {item.product.type === 'physical' ? '📦 منتج ملموس' : '⚡ تسليم رقمي'}
@@ -854,7 +867,7 @@ export default function Cart({
 
           {/* Footer of Drawer (Cart checkout summary) */}
           {step !== 'success' && cartItems.length > 0 && (
-            <div className="border-t border-amber-500/10 p-4 sm:p-6 bg-slate-950/40 shrink-0">
+            <div className="border-t border-amber-500/10 p-6 bg-slate-950/40">
               <div className="flex items-center justify-between text-base font-bold text-slate-300 mb-4">
                 <span>المجموع الكلي:</span>
                 <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>
@@ -891,18 +904,18 @@ export default function Cart({
                   </button>
                 )
               ) : (
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setStep('cart')}
-                    className="w-full sm:w-auto flex-1 rounded-xl border border-slate-200 bg-white py-3.5 text-xs sm:text-sm font-bold text-amber-200/60 hover:bg-slate-50 transition-all cursor-pointer"
+                    className="rounded-xl border border-slate-200 bg-white py-3.5 text-xs sm:text-sm font-bold text-amber-200/60 hover:bg-slate-50 transition-all"
                   >
                     العودة للسلة
                   </button>
                   <button
                     type="button"
                     onClick={handleSubmitCheckout}
-                    className="w-full sm:w-auto flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 py-3.5 text-xs sm:text-sm font-black text-slate-950 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15 cursor-pointer"
+                    className="rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 py-3.5 text-xs sm:text-sm font-black text-slate-950 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15 cursor-pointer"
                   >
                     <span>تأكيد الإرسال والدفع</span>
                     <CheckCircle2 className="h-4 w-4" />
@@ -916,7 +929,7 @@ export default function Cart({
       </div>
 
       {zoomedQrUrl && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/50 px-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
           <div className="relative max-w-lg w-full bg-[#0F172AFF] border border-amber-500/20 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4 text-center text-right" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"

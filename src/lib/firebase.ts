@@ -1,21 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { 
-  initializeFirestore, 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc,
-  type Firestore
-} from 'firebase/firestore';
+import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -32,34 +16,24 @@ import {
   browserSessionPersistence,
   type User as FirebaseUser
 } from 'firebase/auth';
-import firebaseConfigFromJson from '../../firebase-applet-config.json';
-
-// Safe configuration initialization with absolute fallbacks
 const firebaseConfig = {
-  projectId: firebaseConfigFromJson?.projectId || "kingstore-42539",
-  appId: firebaseConfigFromJson?.appId || "1:260775608180:web:3f38686efd8f1716c7f621",
-  apiKey: firebaseConfigFromJson?.apiKey || "AIzaSyD9oKYlMhlN67s6yEBxzF0c15q9VgwXHy0",
-  authDomain: firebaseConfigFromJson?.authDomain || "kingstore-42539.firebaseapp.com",
-  firestoreDatabaseId: firebaseConfigFromJson?.firestoreDatabaseId || "ai-studio-kingstore-0de88264-2a21-4322-9cdf-9f3e734cb912",
-  storageBucket: firebaseConfigFromJson?.storageBucket || "kingstore-42539.firebasestorage.app",
-  messagingSenderId: firebaseConfigFromJson?.messagingSenderId || "260775608180",
-  measurementId: firebaseConfigFromJson?.measurementId || ""
+  apiKey: "AIzaSyD9oKYlMhlN67s6yEBxzF0c15q9VgwXHy0",
+  authDomain: "kingstore-42539.firebaseapp.com",
+  databaseURL: "https://kingstore-42539-default-rtdb.firebaseio.com",
+  projectId: "kingstore-42539",
+  storageBucket: "kingstore-42539.firebasestorage.app",
+  messagingSenderId: "260775608180",
+  appId: "1:260775608180:web:ac2b7f0f319c5650c7f621",
+  firestoreDatabaseId: "(default)"
 };
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore safely using a typed immediate expression
-export const db: Firestore = (() => {
-  try {
-    return initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-    });
-  } catch (error: any) {
-    console.warn("Firestore already initialized, falling back to getFirestore:", error);
-    return getFirestore(app);
-  }
-})();
+// Initialize Firestore with custom database ID and long polling to bypass network/sandbox constraints
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId);
 
 // Initialize and export Auth
 export const auth = getAuth(app);
