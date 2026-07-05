@@ -499,8 +499,6 @@ export default function App() {
       }
       return [...prevItems, { product, quantity: 1 }];
     });
-    // Open cart drawer immediately for premium user experience
-    setIsCartOpen(true);
   };
 
   const handleUpdateQuantity = (productId: string, quantity: number) => {
@@ -978,7 +976,7 @@ export default function App() {
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1">
+      <div className="flex-1 min-h-screen w-full overflow-y-auto transition-all duration-200 ease-in-out" style={{ contain: 'content' }}>
         {currentTab === 'agents' ? (
           <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
             <div className="mb-8 space-y-2">
@@ -1870,50 +1868,14 @@ export default function App() {
       </div>
 
       {/* 8. Mobile Floating Bottom Navigation Bar (Visible on All Screens) */}
-      <div className="fixed bottom-0 left-0 right-0 z-[9999] w-full bg-slate-900/95 backdrop-blur-md p-4 shadow-2xl flex justify-around items-center text-slate-400 border-t border-amber-500/20">
-        <button
-          onClick={() => {
-            setIsAdminMode(false);
-            setCurrentTab('home');
-          }}
-          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'home' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <Home className="h-5 w-5" />
-          <span>الرئيسية</span>
-        </button>
-        <button
-          onClick={() => setCurrentTab('agents')}
-          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'agents' ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <Users className="h-5 w-5" />
-          <span>الوكلاء</span>
-        </button>
-        <button
-          onClick={() => {
-            setIsAdminMode(false);
-            setCurrentTab('messaging');
-          }}
-          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all cursor-pointer ${currentTab === 'messaging' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <MessageSquare className="h-5 w-5" />
-          <span>المحادثة</span>
-        </button>
-        <button
-          onClick={() => {
-            setIsAdminMode(false);
-            setCurrentTab('cart');
-          }}
-          className={`flex flex-col items-center gap-1.5 text-xs font-black transition-all relative cursor-pointer ${currentTab === 'cart' && !isAdminMode ? 'text-amber-400 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-        >
-          <ShoppingCart className="h-5 w-5" />
-          <span>السلة</span>
-          {cartItems?.length > 0 && (
-            <span className="absolute -top-2 -right-3 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-extrabold text-slate-950 animate-bounce shadow-sm">
-              {cartItems.length}
-            </span>
-          )}
-        </button>
-      </div>
+      <BottomNav 
+        currentTab={currentTab} 
+        setCurrentTab={(tab) => {
+          setIsAdminMode(false);
+          setCurrentTab(tab);
+        }} 
+        cartCount={cartItems?.length || 0} 
+      />
 
     </>
   );

@@ -55,10 +55,14 @@ export default function Cart({
   onOpenAuth,
   globalDiscount = 0,
 }: CartProps) {
-  // Helper to get active product price with global discount
+  // Helper to get active product price with global and product-specific discounts
   const getProductPrice = (product: Product) => {
-    if (globalDiscount && globalDiscount > 0) {
-      return Math.round(product.price * (1 - globalDiscount / 100));
+    const pSpecific = product.discountPercentage || 0;
+    const gDiscount = globalDiscount || 0;
+    const totalDiscount = Math.max(gDiscount, pSpecific);
+    
+    if (totalDiscount > 0) {
+      return Math.round(product.price * (1 - totalDiscount / 100));
     }
     return product.price;
   };
@@ -301,7 +305,7 @@ export default function Cart({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden" aria-modal="true" role="dialog" dir="rtl">
+    <div className="fixed inset-0 z-[10001] overflow-hidden" aria-modal="true" role="dialog" dir="rtl">
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
       <div className="absolute inset-y-0 left-0 flex max-w-full pr-0 md:pr-10">
@@ -376,9 +380,9 @@ export default function Cart({
                               {item.product.name}
                             </h4>
                             <span className="text-xs text-amber-400 font-extrabold block mt-0.5">
-                              ${getProductPrice(item.product)}
-                              {globalDiscount > 0 && (
-                                <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price}</span>
+                              ${getProductPrice(item.product).toLocaleString()}
+                              {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
+                                <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price.toLocaleString()}</span>
                               )}
                             </span>
                             <span className="text-[10px] text-amber-200/50 font-medium block">
@@ -867,7 +871,7 @@ export default function Cart({
 
           {/* Footer of Drawer (Cart checkout summary) */}
           {step !== 'success' && cartItems.length > 0 && (
-            <div className="border-t border-amber-500/10 p-6 bg-slate-950/40">
+            <div className="border-t border-amber-500/10 p-6 bg-slate-950/40 pb-28 md:pb-8">
               <div className="flex items-center justify-between text-base font-bold text-slate-300 mb-4">
                 <span>المجموع الكلي:</span>
                 <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>

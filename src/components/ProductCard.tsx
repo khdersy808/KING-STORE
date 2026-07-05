@@ -24,9 +24,13 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
     ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
     : null;
 
-  const hasDiscount = globalDiscount > 0;
+  const hasGlobalDiscount = globalDiscount > 0;
+  const productSpecificDiscount = product.discountPercentage || 0;
+  const totalDiscount = Math.max(globalDiscount, productSpecificDiscount);
+  const hasDiscount = totalDiscount > 0;
+
   const discountedPrice = hasDiscount
-    ? Math.round(product.price * (1 - globalDiscount / 100))
+    ? Math.round(product.price * (1 - totalDiscount / 100))
     : product.price;
 
   return (
@@ -58,10 +62,15 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
               <span>تسليم رقمي فوري</span>
             </span>
           )}
+          
+          {/* Coupon Badge 🔥 */}
           {hasDiscount && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white shadow-md animate-pulse">
-              <span>خصم {globalDiscount}% 🔥</span>
-            </span>
+            <div className="animate-slide-up">
+              <span className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 px-3 py-1 text-[10px] font-black text-white shadow-xl shadow-red-600/20 ring-1 ring-white/20">
+                <Star className="h-3 w-3 fill-white" />
+                <span>خصم {totalDiscount}% 🔥</span>
+              </span>
+            </div>
           )}
         </div>
 

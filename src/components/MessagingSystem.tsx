@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Message } from '../types';
-import { getFirestore, collection, onSnapshot, query, addDoc, serverTimestamp } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { db, auth, collection, onSnapshot, query, addDoc, doc, setDoc, onAuthStateChanged } from '../lib/firebase';
+import { serverTimestamp } from 'firebase/firestore';
+import { MessageSquare, Phone, Send, Sparkles, MessageCircle, ArrowLeftRight } from 'lucide-react';
 
 export default function MessagingSystem() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  
+  // WhatsApp Settings
+  const [whatsappLink, setWhatsappLink] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
 
   useEffect(() => {
-    const auth = getAuth();
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -19,12 +23,20 @@ export default function MessagingSystem() {
   }, []);
 
   useEffect(() => {
-    if (loading || !user) return;
+    // Sync WhatsApp Settings
+    const settingsRef = doc(db, 'settings', 'whatsapp');
+    const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.whatsappLink) setWhatsappLink(data.whatsappLink);
+        if (data.whatsappMessage) setWhatsappMessage(data.whatsappMessage);
+      }
+    });
 
-    const db = getFirestore();
+    if (loading || !user) return () => unsubscribeSettings();
+
     const q = query(collection(db, 'messages'));
-
-    const unsubscribe = onSnapshot(q, 
+    const unsubscribeMessages = onSnapshot(q, 
       (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
         setMessages(data);
@@ -34,13 +46,15 @@ export default function MessagingSystem() {
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeSettings();
+      unsubscribeMessages();
+    };
   }, [loading, user]);
 
   const handleSendMessage = async () => {
     if (!text.trim() || !user) return;
     try {
-      const db = getFirestore();
       await addDoc(collection(db, 'messages'), {
         senderId: user.uid,
         text,
@@ -53,30 +67,133 @@ export default function MessagingSystem() {
     }
   };
 
+  const handleOpenWhatsapp = () => {
+    if (!whatsappLink) {
+      alert("رابط الدعم الفني غير متاح حالياً، يرجى المحاولة لاحقاً.");
+      return;
+    }
+    // If it's a full URL, open it. If it's just a number, format it.
+    let finalLink = whatsappLink;
+    if (!whatsappLink.startsWith('http')) {
+      const cleanNumber = whatsappLink.replace(/\+/g, '').replace(/\s/g, '');
+      const encodedMessage = encodeURIComponent(whatsappMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
+      finalLink = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
+    } else {
+      // If it's already a link but has no message, we might want to append it if it's a wa.me link
+      if (whatsappLink.includes('wa.me') && !whatsappLink.includes('text=') && whatsappMessage) {
+        const separator = whatsappLink.includes('?') ? '&' : '?';
+        finalLink = `${whatsappLink}${separator}text=${encodeURIComponent(whatsappMessage)}`;
+      }
+    }
+    window.open(finalLink, '_blank');
+  };
+
   return (
-    <div className="p-6 flex flex-col h-[500px]" dir="rtl">
-      <h2 className="text-2xl font-black text-white mb-4">الرسائل</h2>
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-        {messages.map((msg) => (
-          <div key={msg.id} className={`p-3 rounded-lg ${msg.senderId === user?.uid ? 'bg-amber-500/20 text-right' : 'bg-slate-800 text-left'}`}>
-            <p className="text-sm text-white">{msg.text}</p>
+    <div className="flex flex-col h-full min-h-[500px]" dir="rtl">
+      {/* Luxury Header */}
+      <div className="p-6 bg-gradient-to-r from-slate-900 to-slate-800 border-b border-zinc-800 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500">
+            <MessageSquare className="h-6 w-6" />
           </div>
-        ))}
+          <div>
+            <h2 className="text-xl font-black text-white leading-tight">الدعم الفني المباشر</h2>
+            <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mt-1">متواجدون دائماً لخدمتك بأعلى جودة</p>
+          </div>
+        </div>
       </div>
-      <div className="flex gap-2">
-        <input 
-          type="text" 
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="flex-1 bg-slate-950 p-2 rounded-lg border border-zinc-800 text-white" 
-          placeholder="اكتب رسالة..." 
-        />
-        <button 
-          onClick={handleSendMessage}
-          className="bg-amber-500 text-slate-950 font-bold p-2 rounded-lg"
-        >
-          إرسال
-        </button>
+
+      <div className="flex-1 flex flex-col p-6 space-y-8 bg-slate-50/30">
+        
+        {/* Luxury WhatsApp Section */}
+        <div className="rounded-3xl border-2 border-emerald-500/20 bg-white p-8 shadow-xl shadow-emerald-500/5 relative overflow-hidden group text-center animate-slide-up">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+          
+          <div className="relative z-10 space-y-6">
+            <div className="flex justify-center">
+              <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-20 scale-150" />
+                <div className="relative h-20 w-20 bg-emerald-500 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-emerald-500/30 transform group-hover:rotate-12 transition-transform duration-500">
+                  <Phone className="h-10 w-10 stroke-[2.5]" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-slate-900">اتصل بنا عبر الواتساب</h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto font-medium leading-relaxed">
+                اضغط على الزر أدناه ليتم تحويلك مباشرة لمحادثة الدعم الفني الخاصة بـ <span className="text-amber-600 font-bold">KING STORE</span> وحل مشكلتك في ثوانٍ!
+              </p>
+            </div>
+
+            <button
+              onClick={handleOpenWhatsapp}
+              className="group/btn relative w-full max-w-xs mx-auto py-5 px-8 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-lg shadow-2xl shadow-emerald-500/25 transition-all flex items-center justify-center gap-4 cursor-pointer overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
+              <MessageCircle className="h-7 w-7" />
+              <span>تحدث معنا الآن</span>
+              <div className="absolute right-4 opacity-0 group-hover/btn:opacity-100 group-hover/btn:translate-x-2 transition-all">
+                <Sparkles className="h-5 w-5 fill-white" />
+              </div>
+            </button>
+
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">متاح الآن - رد فوري</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Alternative Internal Chat Preview (Optional / Luxury Divider) */}
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-slate-200"></div>
+          </div>
+          <div className="relative flex justify-center text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+            <span className="bg-[#fcfcfc] px-4">أو استخدم نظام المحادثة المدمج</span>
+          </div>
+        </div>
+
+        {/* Simple Internal Messages List (Legacy View kept clean) */}
+        <div className="flex-1 overflow-y-auto space-y-4 max-h-[300px] pr-2 custom-scrollbar">
+          {messages.length === 0 ? (
+            <div className="text-center py-12 text-slate-300 font-bold text-xs italic">لا توجد رسائل سابقة في النظام المدمج...</div>
+          ) : (
+            messages.map((msg) => (
+              <div 
+                key={msg.id} 
+                className={`flex ${msg.senderId === user?.uid ? 'justify-start' : 'justify-end'}`}
+              >
+                <div className={`max-w-[80%] p-4 rounded-2xl text-sm font-medium shadow-sm transition-all ${
+                  msg.senderId === user?.uid 
+                    ? 'bg-amber-500 text-slate-950 rounded-br-none' 
+                    : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'
+                }`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Input Area */}
+        <div className="relative group">
+          <input 
+            type="text" 
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+            className="w-full bg-white border-2 border-slate-100 rounded-2xl py-4 pr-5 pl-16 text-sm font-medium focus:border-amber-500 focus:outline-none transition-all shadow-sm" 
+            placeholder="اكتب رسالتك هنا..." 
+          />
+          <button 
+            onClick={handleSendMessage}
+            className="absolute left-2 top-2 bottom-2 px-4 rounded-xl bg-slate-950 text-amber-500 font-bold hover:bg-slate-900 transition-all flex items-center justify-center cursor-pointer shadow-lg"
+          >
+            <Send className="h-5 w-5" />
+          </button>
+        </div>
       </div>
     </div>
   );

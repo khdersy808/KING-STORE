@@ -58,7 +58,8 @@ import {
   Tags,
   Crown,
   MessageSquare,
-  Percent
+  Percent,
+  Link as LinkIcon
 } from 'lucide-react';
 import { User } from '../types';
 import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from '../lib/firebase';
@@ -260,6 +261,18 @@ export default function AdminPanel({
   const [globalDiscountPercentage, setGlobalDiscountPercentage] = useState<number>(0);
   const [savingGlobalDiscount, setSavingGlobalDiscount] = useState(false);
   const [globalDiscountSuccess, setGlobalDiscountSuccess] = useState('');
+  
+  // Per-Product Discount States
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [productDiscountPercentage, setProductDiscountPercentage] = useState<number>(0);
+  const [isUpdatingProductDiscount, setIsUpdatingProductDiscount] = useState(false);
+  const [productDiscountSuccess, setProductDiscountSuccess] = useState('');
+  
+  // WhatsApp Support States
+  const [whatsappLink, setWhatsappLink] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [isUpdatingWhatsapp, setIsUpdatingWhatsapp] = useState(false);
+  const [whatsappSuccess, setWhatsappSuccess] = useState('');
 
   // Synchronize Coupons from Firestore
   useEffect(() => {
@@ -300,7 +313,21 @@ export default function AdminPanel({
       }, (error) => {
         console.warn("Error loading global discount setting:", error);
       });
-      return () => unsubscribe();
+
+      // Sync WhatsApp Settings
+      const whatsappRef = doc(db, 'settings', 'whatsapp');
+      const unsubscribeWhatsapp = onSnapshot(whatsappRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.whatsappLink) setWhatsappLink(data.whatsappLink);
+          if (data.whatsappMessage) setWhatsappMessage(data.whatsappMessage);
+        }
+      });
+
+      return () => {
+        unsubscribe();
+        unsubscribeWhatsapp();
+      };
     } catch (e) {
       console.warn("Firebase settings sync not active.", e);
     }
@@ -319,6 +346,49 @@ export default function AdminPanel({
       console.error("Error saving global discount:", err);
     } finally {
       setSavingGlobalDiscount(false);
+    }
+  };
+
+  // Save Product-specific Discount
+  const handleSaveProductDiscount = async () => {
+    if (!selectedProductId) return;
+    setIsUpdatingProductDiscount(true);
+    setProductDiscountSuccess('');
+    
+    try {
+      const product = products.find(p => p.id === selectedProductId);
+      if (product) {
+        const updatedProduct = {
+          ...product,
+          discountPercentage: productDiscountPercentage
+        };
+        await onUpdateProduct(updatedProduct);
+        setProductDiscountSuccess('تم تحديث خصم المنتج بنجاح! ✨');
+        setTimeout(() => setProductDiscountSuccess(''), 3000);
+      }
+    } catch (err) {
+      console.error("Error saving product discount:", err);
+    } finally {
+      setIsUpdatingProductDiscount(false);
+    }
+  };
+
+  // Save WhatsApp Settings
+  const handleSaveWhatsapp = async () => {
+    setIsUpdatingWhatsapp(true);
+    setWhatsappSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'whatsapp');
+      await setDoc(docRef, {
+        whatsappLink,
+        whatsappMessage
+      }, { merge: true });
+      setWhatsappSuccess('تم تحديث إعدادات الدعم بنجاح! ✅');
+      setTimeout(() => setWhatsappSuccess(''), 3000);
+    } catch (err) {
+      console.error("Error saving WhatsApp settings:", err);
+    } finally {
+      setIsUpdatingWhatsapp(false);
     }
   };
 
@@ -1171,8 +1241,87 @@ export default function AdminPanel({
 
       {/* TAB: MESSAGES (نظام الرسائل والمحادثات) */}
       {activeTab === 'messages' && (
-        <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl">
-          <MessagingSystem />
+        <div className="space-y-8 animate-fade-in">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* WhatsApp Support Settings Form */}
+            <div className="lg:col-span-5">
+              <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+                
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="p-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
+                    <Phone className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 leading-tight">إعدادات الدعم الفني (واتساب)</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">تخصيص رابط التواصل المباشر للزبائن</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* WhatsApp Link */}
+                  <div className="space-y-3">
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest px-1">رابط الواتساب المباشر</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="مثال: https://wa.me/9639xxxxxxxx"
+                        value={whatsappLink}
+                        onChange={(e) => setWhatsappLink(e.target.value)}
+                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 pr-12 pl-5 text-slate-950 font-black text-sm focus:border-emerald-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-5">
+                        <LinkIcon className="h-5 w-5 text-emerald-600" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Welcome Message */}
+                  <div className="space-y-3">
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest px-1">رسالة الترحيب الافتراضية</label>
+                    <textarea
+                      rows={4}
+                      placeholder="اكتب الرسالة التي تظهر للزبون عند فتح المحادثة..."
+                      value={whatsappMessage}
+                      onChange={(e) => setWhatsappMessage(e.target.value)}
+                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-5 text-slate-950 font-medium text-sm focus:border-emerald-500 focus:bg-white focus:outline-none transition-all text-right"
+                    />
+                  </div>
+
+                  {whatsappSuccess && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-xs font-black flex items-center gap-3 animate-bounce">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>{whatsappSuccess}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={isUpdatingWhatsapp}
+                    onClick={handleSaveWhatsapp}
+                    className="w-full py-4 rounded-2xl bg-slate-950 hover:bg-slate-900 text-emerald-400 font-black text-sm shadow-xl transition-all flex items-center justify-center gap-3 cursor-pointer group/btn"
+                  >
+                    {isUpdatingWhatsapp ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-5 w-5" />
+                    )}
+                    <span>{isUpdatingWhatsapp ? 'جاري الحفظ...' : 'حفظ إعدادات الدعم'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Messaging System Interface */}
+            <div className="lg:col-span-7">
+              <div className="rounded-3xl border border-zinc-800/80 bg-[#0d0d0d] shadow-2xl overflow-hidden h-full">
+                <MessagingSystem />
+              </div>
+            </div>
+
+          </div>
         </div>
       )}
 
@@ -3073,186 +3222,330 @@ export default function AdminPanel({
       {/* TAB: DISCOUNTS & COUPONS MANAGEMENT */}
       {activeTab === 'discounts' && (
         <div className="space-y-8 animate-fade-in" dir="rtl">
-          {/* Header Card */}
-          <div className="rounded-3xl bg-slate-900 border border-slate-800 p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="bg-amber-500/20 p-2.5 rounded-2xl text-amber-500">
-                    <Percent className="h-6 w-6" />
+          {/* Royal Header Card */}
+          <div className="rounded-[2.5rem] bg-slate-950 border border-slate-800 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+            
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-4 rounded-3xl text-slate-950 shadow-lg shadow-amber-500/20">
+                    <Percent className="h-8 w-8 stroke-[2.5]" />
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">إدارة وتخصيص الخصومات والقسائم</h2>
+                  <div>
+                    <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-200 to-amber-500">
+                      نظام الخصومات والولاء الملكي
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      <p className="text-slate-400 text-xs sm:text-sm font-bold tracking-wide uppercase">
+                        Discounts & Loyalty Management Engine
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-slate-400 text-xs sm:text-sm leading-relaxed max-w-2xl font-medium">
-                  تحكم بنسب الخصم المباشرة على مستوى المتجر كامل أو قم بإنشاء وتعديل أكواد الخصم الترويجية (قسائم التخفيض) لجذب المزيد من المشترين وتنشيط المبيعات.
+                <p className="text-slate-300/80 text-sm sm:text-base leading-relaxed max-w-2xl font-medium">
+                  صمم عروضك الحصرية وقم بتوليد قسائم تخفيض ذكية لجذب العملاء المتميزين. تحكم بالخصومات المباشرة أو أنشئ أكواد ترويجية مخصصة لزيادة المبيعات في متجر الملوك.
                 </p>
               </div>
-              <div>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
                 <button
                   type="button"
                   onClick={() => {
                     setIsAddingCoupon(!isAddingCoupon);
                     if (editingCoupon) setEditingCoupon(null);
                   }}
-                  className="px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 cursor-pointer"
+                  className={`px-8 py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl ${
+                    isAddingCoupon 
+                      ? 'bg-slate-800 text-white hover:bg-slate-700' 
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 hover:scale-105 active:scale-95 shadow-amber-500/20'
+                  }`}
                 >
-                  <Plus className="h-4.5 w-4.5" />
-                  <span>{isAddingCoupon ? 'إلغاء الأمر' : 'إنشاء كود خصم جديد'}</span>
+                  {isAddingCoupon ? <X className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+                  <span>{isAddingCoupon ? 'إلغاء العملية' : 'إنشاء كود خصم جديد'}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Global Store Discount Card */}
-            <div className="lg:col-span-1 space-y-6">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                  <Sparkles className="h-5 w-5 text-amber-500" />
-                  <h3 className="text-base font-bold text-slate-900">الخصم العام للمتجر (Direct Storewide)</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Control Center: Left Side (Forms) */}
+            <div className="lg:col-span-4 space-y-6">
+              
+              {/* Luxury Product-Specific Discount Form */}
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
+                    <Tags className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">خصم مخصص لمنتج معين</h3>
                 </div>
 
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  سيتم تطبيق هذه النسبة من الخصم مباشرة وتلقائياً على أسعار المنتجات المعروضة في المتجر للزبائن. حدد النسبة لتطبيق خصم مباشر فوري.
-                </p>
+                <div className="space-y-6">
+                  {/* Product Selection Dropdown */}
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">اختر المنتج من القائمة</label>
+                    <select
+                      value={selectedProductId}
+                      onChange={(e) => {
+                        const pid = e.target.value;
+                        setSelectedProductId(pid);
+                        const p = products.find(prod => prod.id === pid);
+                        if (p) {
+                          setProductDiscountPercentage(p.discountPercentage || 0);
+                        }
+                      }}
+                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-4 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer appearance-none"
+                    >
+                      <option value="">-- اختر منتجاً لتعديل خصمه --</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="space-y-3 pt-2">
-                  <label className="block text-xs font-bold text-slate-700">نسبة الخصم العام (%)</label>
-                  <div className="relative rounded-2xl shadow-sm">
-                    <input
-                      type="number"
-                      min="0"
-                      max="90"
-                      value={globalDiscountPercentage}
-                      onChange={(e) => setGlobalDiscountPercentage(Math.max(0, Math.min(90, Number(e.target.value))))}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pr-4 pl-12 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-colors"
-                    />
-                    <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                      <span className="text-slate-400 font-bold text-sm">%</span>
+                  {selectedProductId && (
+                    <div className="space-y-6 animate-slide-up">
+                      {/* Discount Percentage Input */}
+                      <div className="space-y-3">
+                        <label className="flex items-center justify-between text-xs font-black text-slate-500 uppercase tracking-widest px-1">
+                          <span>نسبة الخصم للمنتج</span>
+                          <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">{productDiscountPercentage}%</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={productDiscountPercentage}
+                            onChange={(e) => setProductDiscountPercentage(Math.max(0, Math.min(100, Number(e.target.value))))}
+                            className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 pr-5 pl-12 text-slate-950 font-black text-lg focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                          />
+                          <div className="absolute inset-y-0 left-0 flex items-center pl-5">
+                            <span className="text-amber-600 font-black text-xl">%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Price Preview */}
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <div className="flex justify-between items-center text-xs font-bold">
+                          <span className="text-slate-400">السعر الأصلي:</span>
+                          <span className="text-slate-600 line-through">${products.find(p => p.id === selectedProductId)?.price}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm font-black">
+                          <span className="text-slate-900">السعر بعد الخصم:</span>
+                          <span className="text-amber-600 text-lg">
+                            ${(products.find(p => p.id === selectedProductId)?.price || 0) * (1 - (productDiscountPercentage / 100))}
+                          </span>
+                        </div>
+                      </div>
+
+                      {productDiscountSuccess && (
+                        <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-xs font-black flex items-center gap-3 animate-bounce">
+                          <Check className="h-4 w-4" />
+                          <span>{productDiscountSuccess}</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isUpdatingProductDiscount}
+                        onClick={handleSaveProductDiscount}
+                        className="w-full py-4 rounded-2xl bg-slate-950 hover:bg-slate-900 text-amber-500 font-black text-sm shadow-xl transition-all flex items-center justify-center gap-3 cursor-pointer group/btn"
+                      >
+                        {isUpdatingProductDiscount ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-5 w-5" />
+                        )}
+                        <span>{isUpdatingProductDiscount ? 'جاري التحديث...' : 'تطبيق الخصم المخصص'}</span>
+                      </button>
                     </div>
-                  </div>
-                </div>
-
-                {globalDiscountSuccess && (
-                  <div className="p-3 bg-emerald-50 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-1.5 animate-pulse">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>{globalDiscountSuccess}</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={savingGlobalDiscount}
-                  onClick={() => handleSaveGlobalDiscount(globalDiscountPercentage)}
-                  className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {savingGlobalDiscount ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="h-4 w-4 text-amber-500" />
                   )}
-                  <span>{savingGlobalDiscount ? 'جاري الحفظ...' : 'تطبيق وحفظ الخصم العام'}</span>
-                </button>
+                </div>
               </div>
 
-              {/* Form to Add / Edit Coupon */}
+              {/* Luxury Global Discount Form */}
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 rounded-2xl bg-slate-950 text-amber-500">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">الخصم العام للمتجر</h3>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-between text-xs font-black text-slate-500 uppercase tracking-widest px-1">
+                      <span>نسبة الخصم الحالي</span>
+                      <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">{globalDiscountPercentage}%</span>
+                    </label>
+                    <div className="relative group/input">
+                      <input
+                        type="number"
+                        min="0"
+                        max="90"
+                        value={globalDiscountPercentage}
+                        onChange={(e) => setGlobalDiscountPercentage(Math.max(0, Math.min(90, Number(e.target.value))))}
+                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 pr-5 pl-12 text-slate-950 font-black text-lg focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-5">
+                        <span className="text-amber-600 font-black text-xl">%</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold leading-relaxed px-1">
+                      * هذا الخصم يتم تطبيقه تلقائياً على كافة المنتجات المعروضة للزبائن.
+                    </p>
+                  </div>
+
+                  {globalDiscountSuccess && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-xs font-black flex items-center gap-3 animate-bounce">
+                      <div className="bg-emerald-500 p-1 rounded-full text-white">
+                        <Check className="h-3 w-3" />
+                      </div>
+                      <span>{globalDiscountSuccess}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={savingGlobalDiscount}
+                    onClick={() => handleSaveGlobalDiscount(globalDiscountPercentage)}
+                    className="w-full py-4 rounded-2xl bg-slate-950 hover:bg-slate-900 text-amber-500 font-black text-sm shadow-xl shadow-slate-900/10 hover:shadow-slate-900/20 transition-all flex items-center justify-center gap-3 cursor-pointer group/btn"
+                  >
+                    {savingGlobalDiscount ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <div className="bg-amber-500 p-1 rounded-full text-slate-950 group-hover/btn:scale-110 transition-transform">
+                        <Check className="h-3 w-3" />
+                      </div>
+                    )}
+                    <span>{savingGlobalDiscount ? 'جاري الحفظ الملكي...' : 'تثبيت الخصم العام'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Luxury Coupon Form */}
               {isAddingCoupon && (
-                <form onSubmit={handleSaveCoupon} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4 animate-fade-in">
-                  <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                    <Plus className="h-5 w-5 text-amber-600" />
-                    <h3 className="text-base font-bold text-slate-900">
-                      {editingCoupon ? 'تعديل كود الخصم الحالي' : 'توليد كود خصم جديد'}
+                <form onSubmit={handleSaveCoupon} className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-2xl space-y-6 animate-slide-up relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -ml-16 -mt-16 blur-2xl" />
+                  
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20">
+                      <Tags className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900">
+                      {editingCoupon ? 'تعديل بيانات القسيمة' : 'توليد قسيمة ملكية'}
                     </h3>
                   </div>
 
                   {couponFormError && (
-                    <div className="p-3 bg-red-50 text-red-800 rounded-2xl text-xs font-bold flex items-center gap-1.5">
-                      <AlertCircle className="h-4 w-4" />
+                    <div className="p-4 bg-red-50 border border-red-100 text-red-800 rounded-2xl text-xs font-black flex items-center gap-3">
+                      <AlertCircle className="h-5 w-5 flex-shrink-0" />
                       <span>{couponFormError}</span>
                     </div>
                   )}
 
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">كود الخصم (Promo Code)</label>
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">كود الخصم (Promo Code)</label>
                       <input
                         type="text"
-                        placeholder="مثال: KINGSTORE20"
+                        placeholder="مثال: ROYAL_SUMMER"
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-5 text-slate-950 font-black text-sm tracking-widest focus:border-amber-500 focus:bg-white focus:outline-none transition-all placeholder:text-slate-300"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-bold text-slate-700">نوع الخصم</label>
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">نوع الخصم</label>
                         <select
                           value={couponType}
                           onChange={(e) => setCouponType(e.target.value as 'percentage' | 'fixed')}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-xs sm:text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer"
+                          className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-4 text-slate-950 font-black text-xs sm:text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer appearance-none"
                         >
-                          <option value="percentage">نسبة مئوية (%)</option>
-                          <option value="fixed">مبلغ ثابت ($ / ل.س)</option>
+                          <option value="percentage">٪ نسبة مئوية</option>
+                          <option value="fixed">مبلغ ثابت ($)</option>
                         </select>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-bold text-slate-700">قيمة التخفيض</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={couponValue}
-                          onChange={(e) => setCouponValue(Number(e.target.value))}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
-                        />
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">قيمة التخفيض</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            value={couponValue}
+                            onChange={(e) => setCouponValue(Number(e.target.value))}
+                            className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-5 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                          />
+                          <div className="absolute inset-y-0 left-4 flex items-center">
+                            <span className="text-amber-600 font-black text-sm">{couponType === 'percentage' ? '%' : '$'}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">الحد الأدنى لقيمة الطلب (للتفعيل)</label>
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">الحد الأدنى للطلب</label>
                       <input
                         type="number"
                         min="0"
                         placeholder="0 (بدون حد أدنى)"
                         value={couponMinAmount}
                         onChange={(e) => setCouponMinAmount(Number(e.target.value))}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-5 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold text-slate-700">تاريخ انتهاء الصلاحية</label>
-                      <input
-                        type="date"
-                        value={couponExpiryDate}
-                        onChange={(e) => setCouponExpiryDate(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 px-4 text-slate-900 font-bold text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
-                      />
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">تاريخ انتهاء الصلاحية</label>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={couponExpiryDate}
+                          onChange={(e) => setCouponExpiryDate(e.target.value)}
+                          className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-5 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer"
+                        />
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 pt-2">
-                      <input
-                        type="checkbox"
-                        id="couponIsActive"
-                        checked={couponIsActive}
-                        onChange={(e) => setCouponIsActive(e.target.checked)}
-                        className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300 cursor-pointer"
-                      />
-                      <label htmlFor="couponIsActive" className="text-xs font-bold text-slate-700 cursor-pointer">
-                        تفعيل الكود فوراً للاستخدام
+                    <div className="flex items-center gap-3 pt-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div className="relative flex items-center">
+                        <input
+                          type="checkbox"
+                          id="couponIsActive"
+                          checked={couponIsActive}
+                          onChange={(e) => setCouponIsActive(e.target.checked)}
+                          className="peer h-6 w-6 rounded-lg opacity-0 absolute cursor-pointer z-10"
+                        />
+                        <div className="h-6 w-6 rounded-lg border-2 border-slate-200 bg-white flex items-center justify-center transition-all peer-checked:bg-amber-500 peer-checked:border-amber-500">
+                          <Check className="h-4 w-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                      <label htmlFor="couponIsActive" className="text-xs font-black text-slate-700 cursor-pointer select-none">
+                        تفعيل القسيمة فوراً للاستخدام الملكي
                       </label>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 pt-2">
+                  <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
                     <button
                       type="submit"
-                      className="flex-1 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/10 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <Check className="h-4 w-4" />
-                      <span>{editingCoupon ? 'حفظ التعديلات' : 'إنشاء القسيمة'}</span>
+                      <CheckCircle2 className="h-5 w-5" />
+                      <span>{editingCoupon ? 'حفظ التعديلات الملكية' : 'توليد القسيمة الآن'}</span>
                     </button>
                     <button
                       type="button"
@@ -3260,7 +3553,7 @@ export default function AdminPanel({
                         setIsAddingCoupon(false);
                         setEditingCoupon(null);
                       }}
-                      className="px-4 py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                      className="w-full sm:w-auto px-6 py-4 rounded-2xl border-2 border-slate-100 hover:bg-slate-50 text-slate-500 font-bold text-sm transition-all cursor-pointer"
                     >
                       إلغاء
                     </button>
@@ -3269,100 +3562,119 @@ export default function AdminPanel({
               )}
             </div>
 
-            {/* Coupons List Table */}
-            <div className="lg:col-span-2">
-              <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Settings className="h-5 w-5 text-slate-700" />
-                    <h3 className="text-base font-bold text-slate-900">سجل قسائم التخفيض المفعلة ({coupons.length})</h3>
+            {/* List: Right Side (Table) */}
+            <div className="lg:col-span-8">
+              <div className="rounded-[2.5rem] border border-slate-200 bg-white shadow-2xl overflow-hidden min-h-[600px] flex flex-col">
+                <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-50/50">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                      <h3 className="text-xl font-black text-slate-950 tracking-tight">سجل القسائم النشطة</h3>
+                    </div>
+                    <p className="text-xs text-slate-400 font-bold">إجمالي القسائم المتاحة: {coupons.length} قسيمة ترويجية</p>
                   </div>
+                  
+                  {couponFormSuccess && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-[10px] font-black flex items-center gap-2 animate-bounce">
+                      <Sparkles className="h-4 w-4" />
+                      <span>{couponFormSuccess}</span>
+                    </div>
+                  )}
                 </div>
 
-                {couponFormSuccess && (
-                  <div className="mx-6 mt-4 p-3 bg-emerald-50 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-1.5">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>{couponFormSuccess}</span>
-                  </div>
-                )}
-
                 {coupons.length === 0 ? (
-                  <div className="p-12 text-center text-slate-400 space-y-3">
-                    <Percent className="h-12 w-12 mx-auto text-slate-300" />
-                    <p className="text-sm font-bold">لا يوجد أي أكواد تخفيض مضافة حالياً.</p>
-                    <p className="text-xs text-slate-400">انقر على زر "إنشاء كود خصم جديد" بالأعلى للبدء.</p>
+                  <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-6">
+                    <div className="p-8 rounded-[3rem] bg-slate-50 border border-dashed border-slate-200 relative group">
+                      <Percent className="h-16 w-16 text-slate-200 group-hover:text-amber-500/20 transition-colors duration-500" />
+                      <div className="absolute -top-4 -right-4 bg-white p-3 rounded-2xl shadow-xl border border-slate-100 animate-bounce">
+                        <Plus className="h-5 w-5 text-amber-500" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-lg font-black text-slate-900">سجل الخصومات فارغ تماماً</p>
+                      <p className="text-sm text-slate-400 font-medium max-w-xs mx-auto leading-relaxed">
+                        ابدأ بتنشيط المبيعات الآن عبر إنشاء أول كود خصم لعملائك المتميزين.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setIsAddingCoupon(true)}
+                      className="px-8 py-3 rounded-2xl bg-slate-950 text-amber-500 font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-900/10"
+                    >
+                      ابدأ التوليد الآن
+                    </button>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="flex-1 overflow-x-auto">
                     <table className="w-full text-right border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 text-slate-500 text-xs font-extrabold border-b border-slate-100">
-                          <th className="p-4">الكود والرمز</th>
-                          <th className="p-4">نسبة / قيمة الخصم</th>
-                          <th className="p-4">الحد الأدنى</th>
-                          <th className="p-4">الانتهاء</th>
-                          <th className="p-4">الاستخدام</th>
-                          <th className="p-4 text-center">الحالة</th>
-                          <th className="p-4 text-left">التحكم</th>
+                        <tr className="bg-slate-50/80 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+                          <th className="p-6">معلومات القسيمة</th>
+                          <th className="p-6">قيمة العرض</th>
+                          <th className="p-6">الحد الأدنى</th>
+                          <th className="p-6">الانتهاء</th>
+                          <th className="p-6">الحالة</th>
+                          <th className="p-6 text-left">إجراءات</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700 text-xs sm:text-sm font-medium">
+                      <tbody className="divide-y divide-slate-50 text-slate-700">
                         {coupons.map((coupon) => (
-                          <tr key={coupon.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="p-4">
-                              <span className="inline-block px-3 py-1.5 rounded-xl bg-slate-900 text-amber-500 font-mono font-black text-sm tracking-wider shadow-sm">
-                                {coupon.code}
+                          <tr key={coupon.id} className="hover:bg-amber-50/30 transition-all duration-300 group">
+                            <td className="p-6">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="inline-flex w-fit px-4 py-2 rounded-xl bg-slate-950 text-amber-500 font-mono font-black text-sm tracking-widest shadow-xl shadow-slate-950/10 group-hover:scale-105 transition-transform">
+                                  {coupon.code}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold px-1">تم الاستخدام: {coupon.usageCount || 0} مرات</span>
+                              </div>
+                            </td>
+                            <td className="p-6">
+                              <div className="flex items-center gap-2">
+                                <div className="p-2 rounded-lg bg-amber-50 text-amber-600 font-black text-lg">
+                                  {coupon.type === 'percentage' ? `${coupon.value}%` : `$${coupon.value.toLocaleString()}`}
+                                </div>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">خصم ملكي</span>
+                              </div>
+                            </td>
+                            <td className="p-6">
+                              <span className="text-xs font-black text-slate-600">
+                                {coupon.minAmount > 0 ? `$${coupon.minAmount.toLocaleString()}` : 'بدون قيود'}
                               </span>
                             </td>
-                            <td className="p-4 font-bold text-slate-900">
-                              {coupon.type === 'percentage' ? (
-                                <span>{coupon.value}%</span>
-                              ) : (
-                                <span>{coupon.value.toLocaleString()} ل.س</span>
-                              )}
+                            <td className="p-6">
+                              <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>{coupon.expiryDate}</span>
+                              </div>
                             </td>
-                            <td className="p-4 text-slate-500">
-                              {coupon.minAmount > 0 ? (
-                                <span>{coupon.minAmount.toLocaleString()} ل.س</span>
-                              ) : (
-                                <span className="text-slate-400">بدون حد</span>
-                              )}
-                            </td>
-                            <td className="p-4 text-slate-500 font-medium">
-                              {coupon.expiryDate}
-                            </td>
-                            <td className="p-4 font-bold text-slate-600">
-                              {coupon.usageCount || 0} مرات
-                            </td>
-                            <td className="p-4 text-center">
+                            <td className="p-6">
                               <button
                                 type="button"
                                 onClick={() => handleToggleCoupon(coupon)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black cursor-pointer transition-all ${
+                                className={`group/toggle relative flex items-center gap-2 pl-4 pr-3 py-1.5 rounded-full text-[10px] font-black transition-all cursor-pointer ${
                                   coupon.isActive
                                     ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                     : 'bg-red-50 text-red-700 hover:bg-red-100'
                                 }`}
                               >
-                                <span className={`h-2.5 w-2.5 rounded-full ${coupon.isActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-600'}`} />
-                                <span>{coupon.isActive ? 'نشط' : 'معطل'}</span>
+                                <span className={`h-2.5 w-2.5 rounded-full shadow-sm transition-all ${coupon.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                                <span>{coupon.isActive ? 'قسيمة نشطة' : 'قسيمة معطلة'}</span>
                               </button>
                             </td>
-                            <td className="p-4 text-left">
-                              <div className="flex items-center justify-end gap-2">
+                            <td className="p-6 text-left">
+                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   type="button"
                                   onClick={() => handleEditCoupon(coupon)}
-                                  className="p-2 rounded-xl text-slate-600 hover:text-amber-600 hover:bg-amber-50 transition-all cursor-pointer"
-                                  title="تعديل الكود"
+                                  className="p-3 rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-amber-500 hover:border-amber-200 hover:shadow-lg transition-all cursor-pointer"
+                                  title="تعديل"
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteCoupon(coupon.id)}
-                                  className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer"
-                                  title="حذف الكود نهائياً"
+                                  className="p-3 rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-red-500 hover:border-red-200 hover:shadow-lg transition-all cursor-pointer"
+                                  title="حذف"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </button>

@@ -48,9 +48,13 @@ export default function ProductDetailsModal({
 
   if (!isOpen) return null;
 
-  const hasDiscount = globalDiscount > 0;
+  const hasGlobalDiscount = globalDiscount > 0;
+  const productSpecificDiscount = product.discountPercentage || 0;
+  const totalDiscount = Math.max(globalDiscount, productSpecificDiscount);
+  const hasDiscount = totalDiscount > 0;
+
   const discountedPrice = hasDiscount
-    ? Math.round(product.price * (1 - globalDiscount / 100))
+    ? Math.round(product.price * (1 - totalDiscount / 100))
     : product.price;
 
   // Calculate average rating

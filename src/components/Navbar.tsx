@@ -60,22 +60,22 @@ export default function Navbar({
 
   return (
     <header className={`sticky top-0 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all ${isMobileMenuOpen ? 'z-[9999]' : 'z-40'}`}>
-      <div className="mx-auto flex max-w-7xl h-18 items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex max-w-7xl h-16 sm:h-18 items-center justify-between px-2 gap-1 md:px-6 md:gap-4 flex-nowrap overflow-hidden w-full">
         
         {/* Right side: App Branding / Logo */}
         <div 
           onClick={() => window.location.reload()} 
-          className="flex items-center gap-3 shrink-0 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
+          className="flex items-center gap-1.5 sm:gap-3 shrink-0 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
           title="تحديث المتجر"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-lg shadow-amber-500/10 animate-pulse">
-            <Crown className="h-6 w-6 text-slate-950 stroke-[2.5]" />
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-lg shadow-amber-500/10 animate-pulse">
+            <Crown className="h-4 w-4 sm:h-6 sm:w-6 text-slate-950 stroke-[2.5]" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200">
+            <h1 className="text-sm sm:text-xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200 leading-tight">
               KING STORE
             </h1>
-            <span className="text-[10px] text-amber-400 font-extrabold tracking-widest uppercase -mt-1">
+            <span className="text-[8px] sm:text-[10px] text-amber-400 font-extrabold tracking-widest uppercase sm:-mt-1 hidden xs:block">
               عالم المنتجات الفاخرة
             </span>
           </div>
@@ -129,7 +129,7 @@ export default function Navbar({
         )}
 
         {/* Left side: Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           
           {/* Search bar toggle for mobile */}
           {!isAdminMode && (
@@ -139,10 +139,10 @@ export default function Navbar({
                 placeholder="بحث..."
                 value={searchQuery || ""}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-20 xs:w-28 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-8 pl-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                className="w-16 xs:w-24 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-7 pl-2 text-[10px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none transition-all"
               />
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
-                <Search className="h-3 w-3 text-zinc-500" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <Search className="h-2.5 w-2.5 text-zinc-500" />
               </div>
             </div>
           )}

@@ -26,6 +26,7 @@ export interface Product {
   downloadUrl?: string; // للمنتجات غير الملموسة (رقمية)
   licenseKeys?: string[]; // مفاتيح ترخيص أو أكواد للمنتجات الرقمية
   reviews?: ProductReview[]; // تقييمات وآراء العملاء
+  discountPercentage?: number; // نسبة الخصم الخاصة بالمنتج (0-100)
 }
 
 export interface PaymentGatewayField {
