@@ -55,7 +55,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { dir, t, language } = useLanguage();
+  const { dir, t, language, texts } = useLanguage();
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
 
@@ -259,7 +259,7 @@ function AppContent() {
             
             if (fbUser.email.toLowerCase() === adminEmail.toLowerCase()) {
               role = 'admin';
-              nameVal = fbUser.displayName || t.royalAdminName;
+              nameVal = fbUser.displayName || texts.royalAdminName;
               // Merge/force update role to admin in Firestore
               const { setDoc } = await import('./lib/firebase');
               await setDoc(userDocRef, {
@@ -1779,9 +1779,9 @@ function AppContent() {
                   <Smartphone className="h-5 w-5 text-amber-400" />
                 </div>
                 <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
-                  <span className="text-[10px] font-extrabold text-amber-400 block uppercase tracking-wide">{t.apkGuideTitle}</span>
+                  <span className="text-[10px] font-extrabold text-amber-400 block uppercase tracking-wide">{texts.apkGuideTitle}</span>
                   <h4 className="text-sm sm:text-base font-black flex items-center gap-1.5 mt-0.5">
-                    <span>{t.apkGuideSubTitle}</span>
+                    <span>{texts.apkGuideSubTitle}</span>
                   </h4>
                 </div>
               </div>
@@ -1798,38 +1798,38 @@ function AppContent() {
               <div className={`space-y-4 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
                 <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl">
                   <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed font-semibold">
-                    {t.pwaDesc}
+                    {texts.pwaDesc}
                   </p>
                   <ul className="list-disc list-inside mt-2 text-[11px] sm:text-xs text-amber-400 font-bold space-y-1">
-                    <li>{t.pwaBenefit1}</li>
-                    <li>{t.pwaBenefit2}</li>
-                    <li>{t.pwaBenefit3}</li>
+                    <li>{texts.pwaBenefit1}</li>
+                    <li>{texts.pwaBenefit2}</li>
+                    <li>{texts.pwaBenefit3}</li>
                   </ul>
                 </div>
 
                 <div className="space-y-3">
                   <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">1</span>
-                    <span>{t.androidInstallSteps}</span>
+                    <span>{texts.androidInstallSteps}</span>
                   </h5>
                   <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                    <p>{t.androidStep1}</p>
-                    <p>{t.androidStep2}</p>
-                    <p>{t.androidStep3}</p>
-                    <p>{t.androidStep4}</p>
+                    <p>{texts.androidStep1}</p>
+                    <p>{texts.androidStep2}</p>
+                    <p>{texts.androidStep3}</p>
+                    <p>{texts.androidStep4}</p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">2</span>
-                    <span>{t.iosInstallSteps}</span>
+                    <span>{texts.iosInstallSteps}</span>
                   </h5>
                   <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                    <p>{t.iosStep1}</p>
-                    <p>{t.iosStep2}</p>
-                    <p>{t.iosStep3}</p>
-                    <p>{t.iosStep4}</p>
+                    <p>{texts.iosStep1}</p>
+                    <p>{texts.iosStep2}</p>
+                    <p>{texts.iosStep3}</p>
+                    <p>{texts.iosStep4}</p>
                   </div>
                 </div>
               </div>
@@ -1837,12 +1837,12 @@ function AppContent() {
 
             {/* Modal Footer */}
             <div className="p-4 bg-slate-950 border-t border-slate-800/60 flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs text-zinc-400">{t.footerPlatformName}</span>
+              <span className="text-[10px] sm:text-xs text-zinc-400">{texts.footerPlatformName}</span>
               <button
                 onClick={() => setIsApkGuideOpen(false)}
                 className="px-5 py-2 text-xs font-extrabold text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all cursor-pointer"
               >
-                {t.close}
+                {texts.close}
               </button>
             </div>
           </div>

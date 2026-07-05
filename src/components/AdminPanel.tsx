@@ -890,7 +890,7 @@ export default function AdminPanel({
       const dateStr = `${year}-${month}-${day}`; // YYYY-MM-DD
       
       // Format the date label (e.g., "26 June")
-      const monthNames = t.monthNames;
+      const monthNames = texts.monthNames;
       const label = `${d.getDate()} ${monthNames[d.getMonth()]}`;
 
       // Filter completed orders for sales revenue

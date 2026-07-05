@@ -1,12 +1,12 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Language, translations } from '../locales/translations';
+import { Language, translations, TranslationSchema } from '../locales/translations';
 
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: keyof typeof translations['ar']) => any;
-  texts: typeof translations['ar'];
+  t: (key: keyof TranslationSchema) => string;
+  texts: TranslationSchema;
   dir: 'rtl' | 'ltr';
 }
 
@@ -26,7 +26,8 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const texts = translations[language];
 
   const t = (key: keyof typeof translations['ar']) => {
-    return texts[key] || key;
+    const value = texts[key];
+    return (value as string) || key;
   };
 
   const dir = language === 'ar' ? 'rtl' : 'ltr';
