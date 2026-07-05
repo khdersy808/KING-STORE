@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { CartItem, PaymentGateway, Order, OrderItem, Product, User } from '../types';
 import PaymentReceipt from './PaymentReceipt';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   X,
   Minus,
@@ -55,6 +56,7 @@ export default function Cart({
   onOpenAuth,
   globalDiscount = 0,
 }: CartProps) {
+  const { t, language } = useLanguage();
   // Helper to get active product price with global and product-specific discounts
   const getProductPrice = (product: Product) => {
     const pSpecific = product.discountPercentage || 0;
@@ -305,7 +307,7 @@ export default function Cart({
   };
 
   return (
-    <div className="fixed inset-0 z-[10001] overflow-hidden" aria-modal="true" role="dialog" dir="rtl">
+    <div className="fixed inset-0 z-[10001] overflow-hidden" aria-modal="true" role="dialog" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
       <div className="absolute inset-y-0 left-0 flex max-w-full pr-0 md:pr-10">
@@ -314,9 +316,9 @@ export default function Cart({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-amber-500/10 px-6 py-5">
             <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-              {step === 'cart' && 'سلة المشتريات 🛒'}
-              {step === 'checkout' && 'إتمام الدفع والطلب 💳'}
-              {step === 'success' && 'تم الطلب بنجاح! 🎉'}
+              {step === 'cart' && `${t('cartTitle')} 🛒`}
+              {step === 'checkout' && `${t('checkoutTitle')} 💳`}
+              {step === 'success' && `${t('successTitle')} 🎉`}
             </h2>
             <button
               onClick={onClose}
@@ -337,15 +339,15 @@ export default function Cart({
                     <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10 text-amber-400 mb-4 ring-1 ring-amber-500/20">
                       <ShoppingBag className="h-8 w-8 animate-pulse" />
                     </div>
-                    <h3 className="text-base font-bold text-slate-100">سلتك فارغة تماماً</h3>
+                    <h3 className="text-base font-bold text-slate-100">{t('emptyCartTitle')}</h3>
                     <p className="mt-1 text-xs text-amber-100/60 max-w-xs leading-relaxed">
-                      تصفح المنتجات الفاخرة والمميزة المتوفرة في المتجر، وأضف ما يعجبك هنا.
+                      {t('emptyCartDesc')}
                     </p>
                     <button
                       onClick={onClose}
                       className="mt-6 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 px-5 py-2.5 text-xs font-black text-slate-950 shadow-lg shadow-amber-500/10 active:scale-95 transition-all cursor-pointer"
                     >
-                      متابعة التسوق
+                      {t('continueShopping')}
                     </button>
                   </div>
                 ) : (
@@ -354,10 +356,10 @@ export default function Cart({
                       <div className="rounded-xl border border-red-950/40 bg-red-950/20 p-4 text-right">
                         <p className="text-[11px] font-bold text-red-400 flex items-center gap-1.5 justify-start">
                           <Lock className="h-3.5 w-3.5 text-red-400" />
-                          <span>الشراء مغلق للزوار 🔐</span>
+                          <span>{t('loginToPurchase')} 🔐</span>
                         </p>
                         <p className="text-[10px] text-slate-300 leading-relaxed mt-1">
-                          عذراً، لا يمكن إتمام عملية الشراء إلا بعد تسجيل حساب ملكي وتفعيله. يرجى الضغط على الزر بالأسفل لإنشاء حسابك أو تسجيل الدخول.
+                          {t('loginToPurchaseDesc')}
                         </p>
                       </div>
                     )}
@@ -419,7 +421,7 @@ export default function Cart({
                             <button
                               onClick={() => onRemoveItem(item.product.id)}
                               className="text-slate-400 hover:text-rose-400 p-1 transition-colors"
-                              title="حذف من السلة"
+                              title={t('removeFromCart')}
                               id={`remove-item-${item.product.id}`}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -441,15 +443,15 @@ export default function Cart({
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-white border-b border-amber-500/10 pb-1.5 flex items-center gap-2">
                     <UserIcon className="h-4 w-4 text-amber-400" />
-                    <span>بيانات العميل المستلم</span>
+                    <span>{t('customerData')}</span>
                   </h3>
                   
                   <div>
-                    <label className="block text-xs font-semibold text-amber-200/70 mb-1">الاسم الكامل *</label>
+                    <label className="block text-xs font-semibold text-amber-200/70 mb-1">{t('fullName')} *</label>
                     <input
                       type="text"
                       required
-                      placeholder="مثال: محمد أحمد العتيبي"
+                      placeholder={t('fullNamePlaceholder')}
                       value={customerName || ""}
                       onChange={(e) => setCustomerName(e.target.value)}
                       className="w-full rounded-xl border border-amber-500/20 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 focus:outline-none"
@@ -458,18 +460,18 @@ export default function Cart({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">البريد الإلكتروني *</label>
+                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">{t('email')} *</label>
                       <input
                         type="email"
                         required
-                        placeholder="ضروري لإرسال المنتجات الرقمية"
+                        placeholder={t('emailPlaceholder')}
                         value={customerEmail || ""}
                         onChange={(e) => setCustomerEmail(e.target.value)}
                         className="w-full rounded-xl border border-amber-500/20 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">رقم الجوال *</label>
+                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">{t('phone')} *</label>
                       <input
                         type="tel"
                         required
@@ -487,14 +489,14 @@ export default function Cart({
                   <div className="space-y-3">
                     <h3 className="text-sm font-bold text-white border-b border-amber-500/10 pb-1.5 flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-amber-400" />
-                      <span>عنوان شحن المنتجات الملموسة</span>
+                      <span>{t('shippingAddressLabel')}</span>
                     </h3>
                     <div>
-                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">العنوان بالتفصيل *</label>
+                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">{t('addressDetail')} *</label>
                       <textarea
                         required
                         rows={2}
-                        placeholder="الدولة، المدينة، اسم الحي، الشارع، رقم المنزل بالتفصيل لضمان سرعة التوصيل"
+                        placeholder={t('addressPlaceholder')}
                         value={shippingAddress || ""}
                         onChange={(e) => setShippingAddress(e.target.value)}
                         className="w-full rounded-xl border border-amber-500/20 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 focus:outline-none resize-none"
@@ -507,13 +509,13 @@ export default function Cart({
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-white border-b border-amber-500/10 pb-1.5 flex items-center gap-2">
                     <CreditCard className="h-4 w-4 text-amber-400" />
-                    <span>اختر بوابة الدفع المفضلة</span>
+                    <span>{t('chooseGateway')}</span>
                   </h3>
 
                   {applicableGateways.length === 0 ? (
                     <div className="p-4 bg-red-950/20 text-red-400 border border-red-950/40 rounded-xl flex items-center gap-2 text-xs">
                       <AlertCircle className="h-4 w-4" />
-                      <span>لم يقم المدير بتفعيل أي بوابة دفع بعد. يرجى تفعيل بوابات الدفع من لوحة التحكم.</span>
+                      <span>{t('noGateways')}</span>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -561,11 +563,11 @@ export default function Cart({
                                   >
                                     {copiedKeyId === `acc-${gw.id}` ? (
                                       <>
-                                        <CheckCircle2 className="h-3 w-3" /> تم النسخ!
+                                        <CheckCircle2 className="h-3 w-3" /> {t('copied')}
                                       </>
                                     ) : (
                                       <>
-                                        <Copy className="h-3 w-3" /> نسخ
+                                        <Copy className="h-3 w-3" /> {t('copy')}
                                       </>
                                     )}
                                   </button>
@@ -687,13 +689,13 @@ export default function Cart({
                                       {/* اسم المرسل الكامل */}
                                       <div>
                                         <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          اسم المرسل الكامل (إجباري) *
+                                          {t('senderNameLabel')}
                                         </label>
                                         <input
                                           type="text"
                                           value={senderName || ""}
                                           onChange={(e) => setSenderName(e.target.value)}
-                                          placeholder="اكتب اسمك الثلاثي كما هو في حساب الدفع"
+                                          placeholder={t('fullNamePlaceholder')}
                                           className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans"
                                           required
                                         />
@@ -702,13 +704,13 @@ export default function Cart({
                                       {/* معرف العملية / رقم الحوالة */}
                                       <div>
                                         <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          معرف العملية / رقم الحوالة (إجباري) *
+                                          {t('transactionIdLabel')}
                                         </label>
                                         <input
                                           type="text"
                                           value={transactionId || ""}
                                           onChange={(e) => setTransactionId(e.target.value)}
-                                          placeholder="اكتب رقم العملية المكون من أرقام"
+                                          placeholder="12345678"
                                           className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                                           required
                                         />
@@ -719,7 +721,7 @@ export default function Cart({
                                   {/* صورة إيصال التحويل */}
                                   <div>
                                     <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                      صورة إيصال التحويل (إجباري) *
+                                      {t('receiptLabel')}
                                     </label>
                                     <input
                                       type="file"
@@ -763,9 +765,9 @@ export default function Cart({
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-extrabold text-emerald-400">شكراً لطلبك من KING STORE!</h3>
+                  <h3 className="text-lg font-extrabold text-emerald-400">{t('orderSuccessTitle')}</h3>
                   <p className="mt-1 text-xs text-amber-100/60">
-                    رقم الطلب الخاص بك: <strong className="text-white font-extrabold">{createdOrder.id}</strong>
+                    {t('orderNumber')} <strong className="text-white font-extrabold">{createdOrder.id}</strong>
                   </p>
                 </div>
 

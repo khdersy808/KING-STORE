@@ -3,8 +3,10 @@ import { Message } from '../types';
 import { db, auth, collection, onSnapshot, query, addDoc, doc, setDoc, onAuthStateChanged } from '../lib/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { MessageSquare, Phone, Send, Sparkles, MessageCircle, ArrowLeftRight } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function MessagingSystem() {
+  const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [user, setUser] = useState<any>(null);
@@ -97,8 +99,8 @@ export default function MessagingSystem() {
             <MessageSquare className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white leading-tight">الدعم الفني المباشر</h2>
-            <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mt-1">متواجدون دائماً لخدمتك بأعلى جودة</p>
+            <h2 className="text-xl font-black text-white leading-tight">{t('supportTitle')}</h2>
+            <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mt-1">{t('supportTagline')}</p>
           </div>
         </div>
       </div>
@@ -120,9 +122,9 @@ export default function MessagingSystem() {
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-900">اتصل بنا عبر الواتساب</h3>
+              <h3 className="text-2xl font-black text-slate-900">{t('whatsappSupport')}</h3>
               <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto font-medium leading-relaxed">
-                اضغط على الزر أدناه ليتم تحويلك مباشرة لمحادثة الدعم الفني الخاصة بـ <span className="text-amber-600 font-bold">KING STORE</span> وحل مشكلتك في ثوانٍ!
+                {t('whatsappDesc')}
               </p>
             </div>
 
@@ -132,7 +134,7 @@ export default function MessagingSystem() {
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
               <MessageCircle className="h-7 w-7" />
-              <span>تحدث معنا الآن</span>
+              <span>{t('chatNow')}</span>
               <div className="absolute right-4 opacity-0 group-hover/btn:opacity-100 group-hover/btn:translate-x-2 transition-all">
                 <Sparkles className="h-5 w-5 fill-white" />
               </div>
@@ -140,7 +142,7 @@ export default function MessagingSystem() {
 
             <div className="flex items-center justify-center gap-4 pt-2">
               <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">متاح الآن - رد فوري</span>
+              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{t('availableNow')}</span>
             </div>
           </div>
         </div>
@@ -151,7 +153,7 @@ export default function MessagingSystem() {
             <div className="w-full border-t border-slate-200"></div>
           </div>
           <div className="relative flex justify-center text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-            <span className="bg-[#fcfcfc] px-4">أو استخدم نظام المحادثة المدمج</span>
+            <span className="bg-[#fcfcfc] px-4">{t('internalChat')}</span>
           </div>
         </div>
 
@@ -185,7 +187,7 @@ export default function MessagingSystem() {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
             className="w-full bg-white border-2 border-slate-100 rounded-2xl py-4 pr-5 pl-16 text-sm font-medium focus:border-amber-500 focus:outline-none transition-all shadow-sm" 
-            placeholder="اكتب رسالتك هنا..." 
+            placeholder={t('typeMessage')} 
           />
           <button 
             onClick={handleSendMessage}

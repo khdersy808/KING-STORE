@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Users, MessageSquare, ShoppingCart, Settings } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavProps {
   currentTab: string;
@@ -9,14 +10,15 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab, cartCount, isAdmin = false }) => {
+  const { t } = useLanguage();
   const tabs = [
-    { id: 'home', label: 'الرئيسية', icon: Home },
-    { id: 'messaging', label: 'المحادثة', icon: MessageSquare },
-    { id: 'cart', label: 'السلة', icon: ShoppingCart },
+    { id: 'home', label: t('navHome'), icon: Home },
+    { id: 'messaging', label: t('navChat'), icon: MessageSquare },
+    { id: 'cart', label: t('navCart'), icon: ShoppingCart },
   ];
 
   if (isAdmin) {
-    tabs.push({ id: 'admin', label: 'الإدارة', icon: Settings });
+    tabs.push({ id: 'admin', label: t('navAdmin'), icon: Settings });
   }
 
   return (

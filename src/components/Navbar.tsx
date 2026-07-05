@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare } from 'lucide-react';
+import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare, Globe } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 import { User, AppNotification } from '../types';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
@@ -46,6 +47,7 @@ export default function Navbar({
   activeCustomerView = 'store',
   setActiveCustomerView,
 }: NavbarProps) {
+  const { t, language, setLanguage } = useLanguage();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<'menu' | 'agent' | 'messaging'>('menu');
@@ -59,24 +61,24 @@ export default function Navbar({
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className={`sticky top-0 w-full border-b border-zinc-900 bg-[#0a0a0a]/95 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all ${isMobileMenuOpen ? 'z-[9999]' : 'z-40'}`}>
-      <div className="mx-auto flex max-w-7xl h-16 sm:h-18 items-center justify-between px-2 gap-1 md:px-6 md:gap-4 flex-nowrap overflow-hidden w-full">
+    <header className="sticky top-0 w-full border-b border-zinc-900 bg-slate-950 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all z-[999]">
+      <div className="mx-auto flex max-w-7xl h-16 sm:h-18 items-center justify-between px-2 gap-1 md:px-6 md:gap-4 flex-nowrap w-full">
         
         {/* Right side: App Branding / Logo */}
         <div 
           onClick={() => window.location.reload()} 
           className="flex items-center gap-1.5 sm:gap-3 shrink-0 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
-          title="تحديث المتجر"
+          title={t('shopName')}
         >
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-300 shadow-lg shadow-amber-500/10 animate-pulse">
             <Crown className="h-4 w-4 sm:h-6 sm:w-6 text-slate-950 stroke-[2.5]" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-sm sm:text-xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-200 leading-tight">
-              KING STORE
+              {t('shopName')}
             </h1>
             <span className="text-[8px] sm:text-[10px] text-amber-400 font-extrabold tracking-widest uppercase sm:-mt-1 hidden xs:block">
-              عالم المنتجات الفاخرة
+              {t('shopTagline')}
             </span>
           </div>
         </div>
@@ -92,7 +94,7 @@ export default function Navbar({
                   : 'text-zinc-400 hover:text-amber-300'
               }`}
             >
-              المتجر الفاخر 🛍️
+              {t('luxuryStore')} 🛍️
             </button>
             <button
               onClick={() => setActiveCustomerView('tracking')}
@@ -102,7 +104,7 @@ export default function Navbar({
                   : 'text-zinc-400 hover:text-amber-300'
               }`}
             >
-              تتبع طلبك الملكي 🔍
+              {t('trackOrderRoyal')} 🔍
             </button>
           </div>
         )}
@@ -115,7 +117,7 @@ export default function Navbar({
             </div>
             <input
               type="text"
-              placeholder="ابحث عن هاتف، بطاقة ألعاب، كورس، أو سترة..."
+              placeholder={t('searchPlaceholder')}
               value={searchQuery || ""}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-full border border-zinc-800 bg-[#121212] py-2 pr-10 pl-4 text-sm text-zinc-100 placeholder-zinc-500 transition-colors focus:border-amber-400 focus:bg-[#151515] focus:outline-none focus:ring-2 focus:ring-amber-400/10"
@@ -124,7 +126,7 @@ export default function Navbar({
         ) : (
           <div className="hidden md:flex items-center gap-2 text-amber-400 text-sm bg-amber-500/5 px-4 py-1.5 rounded-full border border-amber-500/20">
             <Settings className="h-4 w-4 animate-spin-slow text-amber-400" />
-            <span className="font-extrabold">لوحة الإدارة النشطة</span>
+            <span className="font-extrabold">{t('activeAdminPanel')}</span>
           </div>
         )}
 
@@ -136,7 +138,7 @@ export default function Navbar({
             <div className="md:hidden relative">
               <input
                 type="text"
-                placeholder="بحث..."
+                placeholder={t('searchPlaceholder')}
                 value={searchQuery || ""}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-16 xs:w-24 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-7 pl-2 text-[10px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none transition-all"
@@ -146,6 +148,18 @@ export default function Navbar({
               </div>
             </div>
           )}
+
+          {/* Language Switcher */}
+          <button
+            onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+            className="group relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white cursor-pointer"
+            title={language === 'ar' ? 'English' : 'العربية'}
+          >
+            <Globe className="h-4 w-4 sm:h-5 sm:w-5" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-black text-slate-950 uppercase">
+              {language === 'ar' ? 'EN' : 'AR'}
+            </span>
+          </button>
 
           {/* Notifications Bell Icon Button (shown to logged-in users) */}
           {currentUser && (
@@ -157,7 +171,7 @@ export default function Navbar({
                     ? 'bg-amber-400 text-slate-950 border-amber-400 font-extrabold'
                     : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
                 }`}
-                title="الإشعارات الملكية"
+                title={t('notifications')}
                 id="notif-toggle-btn"
               >
                 <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -170,15 +184,15 @@ export default function Navbar({
 
               {/* Notifications Dropdown Panel */}
               {isNotificationsOpen && (
-                <div className="absolute left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-[99999] divide-y divide-zinc-900 animate-fade-in">
+                <div className="absolute top-full left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-xl bg-slate-900 border border-slate-800 shadow-2xl text-right z-[99999] divide-y divide-zinc-900 animate-fade-in">
                   
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between p-4 bg-zinc-900/40">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-black text-white">مركز الإشعارات</span>
+                      <span className="text-sm font-black text-white">{t('notifCenter')}</span>
                       {unreadCount > 0 && (
                         <span className="rounded-full bg-red-600/10 border border-red-500/20 px-2 py-0.5 text-[9px] font-black text-red-400">
-                          {unreadCount} جديد
+                          {unreadCount} {t('new')}
                         </span>
                       )}
                     </div>
@@ -191,7 +205,7 @@ export default function Navbar({
                         className="text-[10px] font-extrabold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
                       >
                         <Check className="h-3 w-3" />
-                        <span>مقروء الكل</span>
+                        <span>{t('markAllRead')}</span>
                       </button>
                     )}
                   </div>
@@ -201,8 +215,8 @@ export default function Navbar({
                     {userNotifications.length === 0 ? (
                       <div className="p-8 text-center space-y-2">
                         <Bell className="h-8 w-8 text-zinc-600 mx-auto animate-bounce" />
-                        <p className="text-xs text-zinc-400 font-medium">لا توجد إشعارات واردة حتى الآن</p>
-                        <p className="text-[10px] text-zinc-600">سيتم تنبيهك هنا بأي تحديثات على طلباتك فورياً ✨</p>
+                        <p className="text-xs text-zinc-400 font-medium">{t('noNotifsYet')}</p>
+                        <p className="text-[10px] text-zinc-600">{t('notifHint')}</p>
                       </div>
                     ) : (
                       userNotifications.map((notif) => (
@@ -224,7 +238,7 @@ export default function Navbar({
                                 {notif.title}
                               </h5>
                               <span className="text-[9px] font-mono text-zinc-500 shrink-0">
-                                {new Date(notif.date).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(notif.date).toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
                             <p className="text-[11px] text-zinc-300 leading-relaxed font-medium">
@@ -234,7 +248,7 @@ export default function Navbar({
                             <div className="flex items-center justify-between gap-2 pt-1.5">
                               {notif.orderId && (
                                 <span className="text-[9px] bg-zinc-900 border border-zinc-800 text-zinc-400 font-semibold px-1.5 py-0.5 rounded">
-                                  طلب #{notif.orderId}
+                                  {t('orderNumber')}{notif.orderId}
                                 </span>
                               )}
                               
@@ -243,16 +257,16 @@ export default function Navbar({
                                   <button
                                     onClick={() => onMarkAsRead(notif.id)}
                                     className="text-[10px] text-amber-400 hover:text-amber-300 font-extrabold flex items-center gap-0.5 cursor-pointer"
-                                    title="تحديد كمقروء"
+                                    title={t('markAsRead')}
                                   >
                                     <Check className="h-3 w-3" />
-                                    <span>مقروء</span>
+                                    <span>{t('markAsRead')}</span>
                                   </button>
                                 )}
                                 <button
                                   onClick={() => onDeleteNotification(notif.id)}
                                   className="text-[10px] text-zinc-500 hover:text-red-400 cursor-pointer"
-                                  title="حذف الإشعار"
+                                  title={t('deleteNotif')}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -270,7 +284,7 @@ export default function Navbar({
                       onClick={() => setIsNotificationsOpen(false)}
                       className="text-[10px] font-bold text-zinc-400 hover:text-zinc-200 cursor-pointer"
                     >
-                      إغلاق القائمة
+                      {t('close')}
                     </button>
                   </div>
 
@@ -288,7 +302,7 @@ export default function Navbar({
                   ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold'
                   : 'border-zinc-800 text-zinc-300 hover:text-amber-400'
               }`}
-              title="تتبع طلبك الملكي"
+              title={t('trackOrderRoyal')}
               id="mobile-track-btn"
             >
               <Truck className="h-4 w-4" />
@@ -300,7 +314,7 @@ export default function Navbar({
             <button
               onClick={onOpenCart}
               className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
-              title="سلة المشتريات"
+              title={t('navCart')}
               id="cart-toggle-btn"
             >
               <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -319,12 +333,12 @@ export default function Navbar({
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-3.5 py-2 text-xs font-bold transition-all shadow-md shadow-amber-500/5 cursor-pointer"
                 id="navbar-profile-drawer-btn"
-                title="افتح قائمة التحكم الفاخرة 👑"
+                title={t('royalMenu')}
               >
                 <Crown className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
                 <span className="font-bold text-zinc-100">{currentUser?.name}</span>
                 <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
-                  {currentUser?.role === 'admin' ? 'المدير 👑' : 'الملكي 👑'}
+                  {currentUser?.role === 'admin' ? t('royalAdmin') : t('royalMember')}
                 </span>
               </button>
             </div>
@@ -335,8 +349,8 @@ export default function Navbar({
               id="navbar-login-btn"
             >
               <UserIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="hidden xs:inline sm:inline">تسجيل الدخول</span>
-              <span className="xs:hidden">دخول</span>
+              <span className="hidden xs:inline sm:inline">{t('login')}</span>
+              <span className="xs:hidden">{t('login')}</span>
             </button>
           )}
 
@@ -350,17 +364,17 @@ export default function Navbar({
                   : 'bg-[#121212] text-amber-400 border border-amber-500/30 hover:bg-[#181818]'
               }`}
               id="admin-mode-toggle"
-              title={isAdminMode ? "عرض المتجر" : "لوحة التحكم (الآدمن)"}
+              title={isAdminMode ? t('viewStore') : t('adminDashboard')}
             >
               {isAdminMode ? (
                 <>
                   <Eye className="h-4 w-4" />
-                  <span className="hidden xs:inline">عرض المتجر</span>
+                  <span className="hidden xs:inline">{t('viewStore')}</span>
                 </>
               ) : (
                 <>
                   <Settings className="h-4 w-4" />
-                  <span className="hidden xs:inline">لوحة التحكم (الآدمن)</span>
+                  <span className="hidden xs:inline">{t('adminDashboard')}</span>
                 </>
               )}
             </button>
@@ -383,7 +397,7 @@ export default function Navbar({
 
       {/* Royal Navigation Drawer Overlay */}
       {isMobileMenuOpen && true && (
-        <div className="fixed inset-0 z-[99999]" aria-modal="true" role="dialog" dir="rtl">
+        <div className="fixed inset-0 z-[99999]" aria-modal="true" role="dialog" dir={language === 'ar' ? 'rtl' : 'ltr'}>
           {/* Backdrop overlay */}
           <div 
             className="fixed inset-0 bg-slate-950/85 backdrop-blur-md transition-opacity duration-300 ease-in-out cursor-pointer z-40" 
@@ -405,7 +419,7 @@ export default function Navbar({
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_15px_rgba(245,158,11,0.3)] ring-1 ring-amber-400/30 animate-pulse">
                     <Crown className="h-5 w-5 text-slate-950 stroke-[2.5]" />
                   </div>
-                  <span className="text-sm font-black text-white tracking-wide">قائمة التحكم الفاخرة</span>
+                  <span className="text-sm font-black text-white tracking-wide">{t('royalMenu')}</span>
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -427,7 +441,7 @@ export default function Navbar({
                       <div className="flex items-center gap-1.5 mb-1">
                         <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
                         <span className="text-xs text-amber-400 font-extrabold tracking-wider uppercase flex items-center gap-1">
-                          {currentUser?.role === 'admin' ? 'مدير النظام الملكي' : 'عضو ملكي متميز'}
+                          {currentUser?.role === 'admin' ? t('royalAdmin') : t('royalMember')}
                           <Crown className="h-3 w-3 text-amber-400 fill-amber-400" />
                         </span>
                       </div>
@@ -436,7 +450,7 @@ export default function Navbar({
                   </div>
                   <div className="pt-2.5 border-t border-amber-500/10">
                     <p className="text-xs text-white/90 select-all font-mono truncate bg-slate-900/40 px-2.5 py-1.5 rounded-lg border border-amber-500/5">
-                      <span className="text-amber-400 font-sans font-bold ml-1.5">البريد الإلكتروني:</span> 
+                      <span className="text-amber-400 font-sans font-bold ml-1.5">{t('email')}:</span> 
                       {currentUser?.email}
                     </p>
                   </div>
@@ -446,8 +460,8 @@ export default function Navbar({
                   onClick={() => setActiveDrawer('menu')}
                   className="flex items-center gap-2 text-amber-400 text-sm font-bold p-2 bg-slate-900/50 rounded-lg border border-amber-500/20"
                 >
-                  <ChevronRight className="h-4 w-4" />
-                  العودة للقائمة الرئيسية
+                  <ChevronRight className={`h-4 w-4 ${language === 'ar' ? '' : 'rotate-180'}`} />
+                  {t('backToMenu')}
                 </button>
               )}
 
@@ -457,7 +471,7 @@ export default function Navbar({
                 {activeDrawer === 'menu' && (
                   <>
                     {/* Admin Mode Toggle (inside menu, only for admins) */}
-                    {true && (
+                    {currentUser?.role === 'admin' && (
                       <button
                         onClick={() => {
                           setIsAdminMode(!isAdminMode);
@@ -476,12 +490,12 @@ export default function Navbar({
                             <Settings className="h-5 w-5 text-amber-400" />
                           )}
                           <span className="text-white text-sm font-bold">
-                            {isAdminMode ? 'العودة لعرض المتجر 🛒' : 'لوحة تحكم الإدارة ⚙️'}
+                            {isAdminMode ? t('viewStore') : t('adminDashboard')}
                           </span>
                         </div>
                       </button>
                     )}
-
+ 
                     {/* Settings Button */}
                     <button
                       onClick={() => {
@@ -491,7 +505,7 @@ export default function Navbar({
                       className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
                     >
                       <Settings className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
-                      <span className="text-white text-sm font-bold">إعدادات الحساب والضبط ⚙️</span>
+                      <span className="text-white text-sm font-bold">{t('accountSettings')}</span>
                     </button>
 
                   </>
@@ -511,9 +525,9 @@ export default function Navbar({
                 }}
                 className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-rose-950/30 border border-rose-500/30 hover:border-amber-500/30 hover:bg-rose-950/50 text-white py-3.5 text-xs font-black transition-all duration-300 cursor-pointer group shadow-[0_4_15px_rgba(244,63,94,0.05)]"
               >
-                <LogOut className="h-4.5 w-4.5 text-rose-400 group-hover:text-amber-400 transition-colors" />
+                <LogOut className={`h-4.5 w-4.5 text-rose-400 group-hover:text-amber-400 transition-colors ${language === 'ar' ? '' : 'rotate-180'}`} />
                 <span className="text-white text-sm font-extrabold flex items-center gap-1.5">
-                  تسجيل الخروج الآمن 🚪
+                  {t('logout')}
                 </span>
               </button>
             </div>

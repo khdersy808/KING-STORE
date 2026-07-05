@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User as UserIcon, Shield, CheckCircle2, AlertCircle, Eye, EyeOff, Check } from 'lucide-react';
 import { User } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 import { 
   auth, 
   db, 
@@ -43,6 +44,7 @@ export default function AuthModal({
   adminInviteEmail,
   onClearInvite
 }: AuthModalProps) {
+  const { t, dir } = useLanguage();
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
@@ -83,13 +85,13 @@ export default function AuthModal({
 
     if (isForgotPassword) {
       if (!resetEmail.trim()) {
-        setErrorMsg('يرجى إدخال البريد الإلكتروني الخاص بك.');
+        setErrorMsg(t('enterEmailFirst'));
         setIsLoading(false);
         return;
       }
       try {
         await sendPasswordResetEmail(auth, resetEmail.trim().toLowerCase());
-        setSuccessMsg('📬 تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح! يرجى التحقق من صندوق الوارد (أو مجلد الرسائل غير المرغوب فيها Spam).');
+        setSuccessMsg(t('resetLinkSent'));
         setTimeout(() => {
           setIsForgotPassword(false);
           setErrorMsg('');
@@ -98,11 +100,11 @@ export default function AuthModal({
         }, 6000);
       } catch (err: any) {
         console.error("Password reset error: ", err);
-        let errorMsgAr = 'حدث خطأ أثناء إرسال البريد. يرجى التأكد من كتابة البريد بشكل صحيح.';
+        let errorMsgAr = t('errorWithMsg').replace('{message}', err.message);
         if (err.code === 'auth/user-not-found') {
-          errorMsgAr = 'هذا البريد الإلكتروني غير مسجل لدينا في KING STORE.';
+          errorMsgAr = t('emailNotRegistered');
         } else if (err.code === 'auth/invalid-email') {
-          errorMsgAr = 'البريد الإلكتروني المكتوب غير صالح.';
+          errorMsgAr = t('invalidEmail');
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -112,13 +114,13 @@ export default function AuthModal({
     }
 
     if (!email.trim() || !password.trim()) {
-      setErrorMsg('يرجى ملء جميع الحقول المطلوبة.');
+      setErrorMsg(t('fillAllFields'));
       setIsLoading(false);
       return;
     }
 
     if (!isLogin && !name.trim()) {
-      setErrorMsg('يرجى إدخال اسمك الكريم لإنشاء الحساب.');
+      setErrorMsg(t('enterNameFirst'));
       setIsLoading(false);
       return;
     }
@@ -160,7 +162,7 @@ export default function AuthModal({
 
         // Check if email is verified
         if (!fbUser.emailVerified && normalizedEmail !== adminEmail.toLowerCase()) {
-          setErrorMsg('⚠️ لم يتم التحقق من بريدك الإلكتروني بعد! يرجى فتح الرسالة المرسلة لبريدك وتفعيله أولاً لتتمكن من تسجيل الدخول بنجاح.');
+          setErrorMsg(t('emailNotVerified'));
           setIsLoading(false);
           return;
         }
@@ -207,7 +209,7 @@ export default function AuthModal({
         };
 
         onLogin(foundUser, rememberMe);
-        setSuccessMsg(`أهلاً بك مجدداً، ${nameVal}! تم تسجيل الدخول بنجاح.`);
+        setSuccessMsg(t('welcomeBack').replace('{name}', nameVal));
         
         setTimeout(() => {
           onClose();
@@ -219,19 +221,19 @@ export default function AuthModal({
       } catch (error: any) {
         console.log(error);
         console.error(error.code, error.message);
-        let errorMsgAr = 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
+        let errorMsgAr = t('invalidCredentials');
         if (error.code === 'auth/invalid-credential') {
-          errorMsgAr = '⚠️ البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التحقق من المدخلات والمحاولة مجدداً.';
+          errorMsgAr = t('invalidCredentials');
         } else if (error.code === 'auth/user-not-found') {
-          errorMsgAr = '⚠️ هذا الحساب غير مسجل لدينا. يرجى التأكد من البريد الإلكتروني أو إنشاء حساب جديد.';
+          errorMsgAr = t('accountNotRegistered');
         } else if (error.code === 'auth/wrong-password') {
-          errorMsgAr = '⚠️ كلمة المرور المكتوبة غير صحيحة. يرجى المحاولة مرة أخرى.';
+          errorMsgAr = t('wrongPassword');
         } else if (error.code === 'auth/user-disabled') {
-          errorMsgAr = '⚠️ تم تعطيل هذا الحساب من قبل الإدارة.';
+          errorMsgAr = t('accountDisabled');
         } else if (error.code === 'auth/too-many-requests') {
-          errorMsgAr = '⚠️ تم إدخال الكثير من المحاولات الخاطئة. تم قفل الحساب مؤقتاً، يرجى المحاولة لاحقاً.';
+          errorMsgAr = t('tooManyRequests');
         } else if (error.message) {
-          errorMsgAr = `⚠️ خطأ: ${error.message}`;
+          errorMsgAr = t('errorWithMsg').replace('{message}', error.message);
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -271,7 +273,7 @@ export default function AuthModal({
         });
 
         onRegister(newUser);
-        setSuccessMsg('🎉 تهانينا! تم إنشاء حسابك الملكي بنجاح. لقد أرسلنا رسالة تفعيل إلى بريدك الإلكتروني لتأكيد ملكيته. يرجى تفعيله ثم تسجيل الدخول.');
+        setSuccessMsg(t('registrationSuccess'));
         onClearInvite?.();
         
         setTimeout(() => {
@@ -283,13 +285,13 @@ export default function AuthModal({
 
       } catch (err: any) {
         console.error("Register error: ", err);
-        let errorMsgAr = 'حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.';
+        let errorMsgAr = t('errorWithMsg').replace('{message}', err.message);
         if (err.code === 'auth/email-already-in-use') {
-          errorMsgAr = 'هذا البريد الإلكتروني مسجل بالفعل مسبقاً. حاول تسجيل الدخول.';
+          errorMsgAr = t('emailInUse');
         } else if (err.code === 'auth/weak-password') {
-          errorMsgAr = 'كلمة المرور ضعيفة للغاية. يجب أن تتكون من 6 أحرف أو أكثر.';
+          errorMsgAr = t('weakPassword');
         } else if (err.code === 'auth/invalid-email') {
-          errorMsgAr = 'البريد الإلكتروني المكتوب غير صالح.';
+          errorMsgAr = t('invalidEmail');
         }
         setErrorMsg(errorMsgAr);
       } finally {
@@ -357,7 +359,7 @@ export default function AuthModal({
       };
       
       onLogin(loggedUser, rememberMe);
-      setSuccessMsg(`أهلاً بك، ${nameVal}! تم تسجيل دخولك بنجاح عبر Google.`);
+      setSuccessMsg(t('welcomeBack').replace('{name}', nameVal));
       setTimeout(() => {
         onClose();
         setEmail('');
@@ -366,13 +368,13 @@ export default function AuthModal({
       
     } catch (err: any) {
       console.error("Google sign in error: ", err);
-      let errorMsgAr = 'حدث خطأ أثناء تسجيل الدخول باستخدام Google.';
+      let errorMsgAr = t('errorWithMsg').replace('{message}', err.message);
       if (err.code === 'auth/popup-blocked') {
-        errorMsgAr = '⚠️ تم حظر النافذة المنبثقة من قبل متصفحك. يرجى السماح بالنوافذ المنبثقة لمتجرنا الفاخر والمحاولة مجدداً.';
+        errorMsgAr = t('googlePopupBlocked');
       } else if (err.code === 'auth/popup-closed-by-user') {
-        errorMsgAr = 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.';
+        errorMsgAr = t('googlePopupClosed');
       } else if (err.code === 'auth/cancelled-popup-request') {
-        errorMsgAr = 'تم إلغاء طلب تسجيل الدخول.';
+        errorMsgAr = t('googleCancelled');
       }
       setErrorMsg(errorMsgAr);
     } finally {
@@ -381,7 +383,7 @@ export default function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" dir="rtl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in" dir={dir}>
       <div 
         className="relative w-full max-w-md overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl p-6"
         id="auth-modal-container"
@@ -389,7 +391,7 @@ export default function AuthModal({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+          className={`absolute top-4 ${dir === 'rtl' ? 'left-4' : 'right-4'} z-10 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer`}
         >
           <X className="h-4 w-4" />
         </button>
@@ -401,18 +403,18 @@ export default function AuthModal({
           </div>
           <h3 className="text-xl font-black text-white">
             {isForgotPassword 
-              ? 'إستعادة كلمة المرور' 
+              ? t('forgotPasswordTitle')
               : isLogin 
-                ? 'تسجيل الدخول إلى بوابتك الملكية' 
-                : 'إنشاء حساب ملكي جديد'
+                ? t('loginRoyalPortal')
+                : t('createNewAccount')
             }
           </h3>
           <p className="text-xs text-zinc-400 mt-1.5">
             {isForgotPassword
-              ? 'أدخل بريدك الإلكتروني لإرسال رابط إعادة تعيين كلمة المرور'
+              ? t('forgotPasswordDesc')
               : isLogin 
-                ? 'سجل دخولك لمتابعة طلباتك وتقييم مشترياتك الفاخرة' 
-                : 'انضم إلينا واستمتع بتجربة تسوق رقمية وملموسة فريدة'
+                ? t('loginDesc') 
+                : t('registerDesc')
             }
           </p>
         </div>
@@ -421,17 +423,17 @@ export default function AuthModal({
           /* FORGOT PASSWORD FORM */
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">البريد الإلكتروني لحسابك</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('emailLabel')}</label>
               <div className="relative">
                 <input
                   type="email"
                   required
-                  placeholder="example@kingstore.com"
+                  placeholder={t('emailPlaceholderAuth')}
                   value={resetEmail || ""}
                   onChange={(e) => setResetEmail(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
+                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
                 />
-                <Mail className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
+                <Mail className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
               </div>
             </div>
 
@@ -456,7 +458,7 @@ export default function AuthModal({
               disabled={isLoading}
               className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 py-3 text-xs font-black hover:from-amber-400 hover:to-amber-500 active:scale-98 transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isLoading ? 'جاري الإرسال...' : 'إرسال رابط التحقق وإعادة التعيين 📨'}
+              {isLoading ? t('sending') : t('sendResetLink')}
             </button>
 
             {/* Return to Login */}
@@ -470,7 +472,7 @@ export default function AuthModal({
                 }}
                 className="text-xs text-amber-400 font-extrabold hover:underline cursor-pointer"
               >
-                العودة لتسجيل الدخول ⏎
+                {t('backToLogin')}
               </button>
             </div>
           </form>
@@ -481,41 +483,41 @@ export default function AuthModal({
             {/* Name (Register only) */}
             {!isLogin && (
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-1.5">الاسم الكريم بالكامل</label>
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('fullNameLabel')}</label>
                 <div className="relative">
                   <input
                     type="text"
                     required
-                    placeholder="أحمد العتيبي"
+                    placeholder={t('fullNamePlaceholderAuth')}
                     value={name || ""}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
+                    className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
                   />
-                  <UserIcon className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
+                  <UserIcon className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
                 </div>
               </div>
             )}
 
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">البريد الإلكتروني</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">{t('emailLabel')}</label>
               <div className="relative">
                 <input
                   type="email"
                   required
-                  placeholder="example@kingstore.com"
+                  placeholder={t('emailPlaceholderAuth')}
                   value={email || ""}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-3 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
+                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
                 />
-                <Mail className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
+                <Mail className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
               </div>
             </div>
 
             {/* Password */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold text-zinc-400">كلمة المرور</label>
+                <label className="block text-xs font-bold text-zinc-400">{t('passwordLabel')}</label>
                 {isLogin && (
                   <button
                     type="button"
@@ -527,7 +529,7 @@ export default function AuthModal({
                     }}
                     className="text-[11px] text-amber-500/80 hover:text-amber-400 cursor-pointer"
                   >
-                    نسيت كلمة المرور؟ 🔑
+                    {t('forgotPasswordLink')}
                   </button>
                 )}
               </div>
@@ -538,13 +540,13 @@ export default function AuthModal({
                   placeholder="••••••••"
                   value={password || ""}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 pr-9 pl-10 text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none"
+                  className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
                 />
-                <Lock className="absolute right-3 top-3 h-4 w-4 text-zinc-600" />
+                <Lock className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-2.5 p-0.5 rounded text-zinc-500 hover:text-zinc-300 focus:outline-none"
+                  className={`absolute ${dir === 'rtl' ? 'left-3' : 'right-3'} top-2.5 p-0.5 rounded text-zinc-500 hover:text-zinc-300 focus:outline-none`}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -553,12 +555,12 @@ export default function AuthModal({
 
             {/* Admin Invitation Notice Banner */}
             {isAdminRole && adminInviteEmail && (
-              <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-right space-y-1">
+              <div className={`p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 ${dir === 'rtl' ? 'text-right' : 'text-left'} space-y-1`}>
                 <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider block">
-                  👑 رابط دعوة مفعّل ومصدق:
+                  {t('inviteActive')}
                 </span>
                 <p className="text-xs text-zinc-300">
-                  أنت تسجل الآن كمسؤول نظام معتمد. سيتم منحك صلاحيات لوحة التحكم بالكامل فور إتمام إنشاء هذا الحساب الفاخر.
+                  {t('adminInviteNotice')}
                 </p>
               </div>
             )}
@@ -593,7 +595,7 @@ export default function AuthModal({
                       <Check className={`h-3.5 w-3.5 text-amber-400 transition-transform duration-200 ${rememberMe ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`} />
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">تذكرني على هذا الجهاز</span>
+                  <span className="text-xs font-bold text-zinc-400 group-hover:text-zinc-200 transition-colors">{t('rememberMe')}</span>
                 </label>
               </div>
             )}
@@ -604,13 +606,13 @@ export default function AuthModal({
               disabled={isLoading}
               className="w-full rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 py-3 text-xs font-black hover:from-amber-400 hover:to-amber-500 active:scale-98 transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isLoading ? 'جاري التحميل...' : isLogin ? 'تسجيل الدخول الفوري' : 'إتمام إنشاء الحساب وإرسال رابط التفعيل'}
+              {isLoading ? t('loading') : isLogin ? t('loginButtonText') : t('registerButtonText')}
             </button>
 
             {/* Separator / Divider */}
             <div className="flex items-center my-4">
               <div className="flex-1 border-t border-zinc-800"></div>
-              <span className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">أو المتابعة باستخدام</span>
+              <span className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('orContinueWith')}</span>
               <div className="flex-1 border-t border-zinc-800"></div>
             </div>
 
@@ -627,7 +629,7 @@ export default function AuthModal({
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
               </svg>
-              <span>{isLogin ? 'تسجيل الدخول باستخدام Google' : 'التسجيل السريع عبر حساب Google'}</span>
+              <span>{isLogin ? t('googleLogin') : t('googleRegister')}</span>
             </button>
           </form>
         )}
@@ -636,7 +638,7 @@ export default function AuthModal({
         {!isForgotPassword && (
           <div className="mt-5 pt-4 border-t border-zinc-900 text-center text-xs">
             <span className="text-zinc-500">
-              {isLogin ? 'ليس لديك حساب معنا بعد؟' : 'لديك حساب بالفعل؟'}
+              {isLogin ? t('noAccountYet') : t('alreadyHaveAccount')}
             </span>
             <button
               type="button"
@@ -645,9 +647,9 @@ export default function AuthModal({
                 setErrorMsg('');
                 setSuccessMsg('');
               }}
-              className="text-amber-400 font-extrabold mr-1 hover:underline cursor-pointer"
+              className={`text-amber-400 font-extrabold ${dir === 'rtl' ? 'mr-1' : 'ml-1'} hover:underline cursor-pointer`}
             >
-              {isLogin ? 'سجل حسابك الفاخر الآن' : 'سجل دخولك هنا'}
+              {isLogin ? t('registerNow') : t('loginHere')}
             </button>
           </div>
         )}

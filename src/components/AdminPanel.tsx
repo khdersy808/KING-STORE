@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   BarChart,
   Bar,
@@ -105,6 +106,7 @@ export default function AdminPanel({
   onDeleteCategory,
   onUpdateCategory
 }: AdminPanelProps) {
+  const { t, texts, dir } = useLanguage();
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
   const [adminEmail, setAdminEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('king_store_current_user');
@@ -887,11 +889,8 @@ export default function AdminPanel({
       const day = String(d.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`; // YYYY-MM-DD
       
-      // Format the date label in Arabic (e.g., "26 يونيو")
-      const monthNames = [
-        'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-        'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
-      ];
+      // Format the date label (e.g., "26 June")
+      const monthNames = t.monthNames;
       const label = `${d.getDate()} ${monthNames[d.getMonth()]}`;
 
       // Filter completed orders for sales revenue
@@ -935,14 +934,14 @@ export default function AdminPanel({
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6" dir={dir}>
       
       {/* Title & Banner */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">لوحة الإدارة الملكية</h2>
+        <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">{texts.adminPanelTitle}</h2>
           <p className="text-sm text-slate-500 mt-1">
-            إدارة المنتجات الملموسة والرقمية، تهيئة وضبط بوابات الدفع، ومتابعة الطلبات المكتملة والواردة.
+            {texts.adminPanelDesc}
           </p>
         </div>
         
@@ -957,7 +956,7 @@ export default function AdminPanel({
             }`}
           >
             <TrendingUp className="h-4 w-4" />
-            <span>نظرة عامة والتحليلات</span>
+            <span>{texts.analyticsTab}</span>
           </button>
           <button
             onClick={() => { setActiveTab('products'); }}
@@ -968,7 +967,7 @@ export default function AdminPanel({
             }`}
           >
             <Package className="h-4 w-4" />
-            <span>إدارة المنتجات ({products.length})</span>
+            <span>{texts.productsTab.replace('{count}', products.length.toString())}</span>
           </button>
           <button
             onClick={() => { setActiveTab('categories'); resetProductForm(); }}
@@ -979,7 +978,7 @@ export default function AdminPanel({
             }`}
           >
             <Tags className="h-4 w-4" />
-            <span>تخصيص الفئات ({categories.length})</span>
+            <span>{texts.categoriesTab.replace('{count}', categories.length.toString())}</span>
           </button>
           <button
             onClick={() => { setActiveTab('discounts'); resetProductForm(); }}
@@ -990,7 +989,7 @@ export default function AdminPanel({
             }`}
           >
             <Percent className="h-4 w-4 text-amber-500" />
-            <span>تخصيص لوحة الخصومات 🏷️</span>
+            <span>{texts.discountsTab}</span>
           </button>
           <button
             onClick={() => { setActiveTab('gateways'); resetProductForm(); }}
@@ -1001,7 +1000,7 @@ export default function AdminPanel({
             }`}
           >
             <Settings className="h-4 w-4" />
-            <span>بوابات الدفع ({gateways.length})</span>
+            <span>{texts.gatewaysTab.replace('{count}', gateways.length.toString())}</span>
           </button>
           <button
             onClick={() => { setActiveTab('orders'); resetProductForm(); }}
@@ -1012,7 +1011,7 @@ export default function AdminPanel({
             }`}
           >
             <ListOrdered className="h-4 w-4" />
-            <span>الطلبات الواردة ({orders.length})</span>
+            <span>{texts.ordersTab.replace('{count}', orders.length.toString())}</span>
           </button>
           <button
             onClick={() => { setActiveTab('admins'); resetProductForm(); }}
@@ -1023,7 +1022,7 @@ export default function AdminPanel({
             }`}
           >
             <Shield className="h-4 w-4" />
-            <span>المدراء والدعوات ({users.filter(u => u.role === 'admin').length})</span>
+            <span>{texts.usersTab} ({users.filter(u => u.role === 'admin').length})</span>
           </button>
           <button
             onClick={() => { setActiveTab('agents'); resetProductForm(); }}
@@ -1034,7 +1033,7 @@ export default function AdminPanel({
             }`}
           >
             <Crown className="h-4 w-4 text-amber-500" />
-            <span>إدارة الوكلاء والمحافظات 👑</span>
+            <span>{texts.agentsTab} 👑</span>
           </button>
           <button
             onClick={() => { setActiveTab('messages'); resetProductForm(); }}
@@ -1045,7 +1044,7 @@ export default function AdminPanel({
             }`}
           >
             <MessageSquare className="h-4 w-4 text-amber-500" />
-            <span>نظام الرسائل والمحادثات 💬</span>
+            <span>{texts.messagesTab} 💬</span>
           </button>
         </div>
       </div>
@@ -1057,10 +1056,10 @@ export default function AdminPanel({
             
             {/* Total Revenue */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-400">إجمالي الأرباح المكتملة</span>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <span className="text-xs font-bold text-slate-400">{texts.totalRevenueAnalytics}</span>
                 <h3 className="mt-2 text-3xl font-black text-amber-600">${totalRevenue.toLocaleString()}</h3>
-                <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">مكتملة ومؤكدة بالكامل</span>
+                <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">{texts.orderStatusCompleted}</span>
               </div>
               <div className="rounded-xl bg-amber-500/10 p-3.5 text-amber-600">
                 <DollarSign className="h-6 w-6 stroke-[2.5]" />
@@ -1069,11 +1068,11 @@ export default function AdminPanel({
 
             {/* Total Orders */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-400">إجمالي الطلبات</span>
-                <h3 className="mt-2 text-3xl font-black text-slate-900">{orders.length} طلبات</h3>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <span className="text-xs font-bold text-slate-400">{texts.ordersTab.replace('({count})', '')}</span>
+                <h3 className="mt-2 text-3xl font-black text-slate-900">{orders.length} {texts.ordersDone.replace(':', '')}</h3>
                 <span className="text-[10px] text-slate-500 font-medium mt-1 block">
-                  {pendingOrdersCount} قيد المراجعة / {completedOrdersCount} مكتمل
+                  {pendingOrdersCount} {texts.pending} / {completedOrdersCount} {texts.done}
                 </span>
               </div>
               <div className="rounded-xl bg-blue-500/10 p-3.5 text-blue-600">
@@ -1083,10 +1082,10 @@ export default function AdminPanel({
 
             {/* Physical Products */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-400">منتجات ملموسة (شحن)</span>
-                <h3 className="mt-2 text-3xl font-black text-blue-600">{physicalProductsCount} أصناف</h3>
-                <span className="text-[10px] text-slate-500 font-medium mt-1 block">جوالات، ملابس، ساعات...</span>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <span className="text-xs font-bold text-slate-400">{texts.physicalProductsCountAnalytics}</span>
+                <h3 className="mt-2 text-3xl font-black text-blue-600">{physicalProductsCount} {texts.physicalProducts.split(' ')[1]}</h3>
+                <span className="text-[10px] text-slate-500 font-medium mt-1 block">{texts.physicalProduct}</span>
               </div>
               <div className="rounded-xl bg-blue-500/10 p-3.5 text-blue-600">
                 <Package className="h-6 w-6" />
@@ -1095,10 +1094,10 @@ export default function AdminPanel({
 
             {/* Digital Products */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-400">منتجات غير ملموسة (رقمية)</span>
-                <h3 className="mt-2 text-3xl font-black text-emerald-600">{digitalProductsCount} أصناف</h3>
-                <span className="text-[10px] text-slate-500 font-medium mt-1 block">أكواد، مفاتيح تفعيل، كورسات...</span>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <span className="text-xs font-bold text-slate-400">{texts.digitalProductsCountAnalytics}</span>
+                <h3 className="mt-2 text-3xl font-black text-emerald-600">{digitalProductsCount} {texts.digitalProducts.split(' ')[1]}</h3>
+                <span className="text-[10px] text-slate-500 font-medium mt-1 block">{texts.digitalProduct}</span>
               </div>
               <div className="rounded-xl bg-emerald-500/10 p-3.5 text-emerald-600">
                 <Download className="h-6 w-6" />
@@ -1111,9 +1110,9 @@ export default function AdminPanel({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
             {/* Sales Revenue Bar Chart */}
             <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl flex flex-col">
-              <div className="mb-4">
-                <h4 className="text-sm font-bold text-zinc-100">إيرادات المبيعات اليومية (آخر 7 أيام)</h4>
-                <p className="text-[10px] text-zinc-400 mt-1">إجمالي الإيرادات بالدولار للطلبات المكتملة والمؤكدة</p>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <h4 className="text-sm font-bold text-zinc-100">{texts.dailyRevenueTitle}</h4>
+                <p className="text-[10px] text-zinc-400 mt-1">{texts.dailyRevenueDesc}</p>
               </div>
               <div className="h-72 w-full mt-2" dir="ltr">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1137,8 +1136,8 @@ export default function AdminPanel({
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '0.75rem', color: '#f4f4f5' }}
-                      formatter={(value) => [`$${value}`, 'الإيرادات']}
-                      labelFormatter={(label) => `التاريخ: ${label}`}
+                      formatter={(value) => [`$${value}`, texts.revenueLabel]}
+                      labelFormatter={(label) => `${texts.createdAt}: ${label}`}
                     />
                     <Bar 
                       dataKey="revenue" 
@@ -1153,9 +1152,9 @@ export default function AdminPanel({
 
             {/* Order Frequency Line Chart */}
             <div className="rounded-2xl border border-zinc-800/80 bg-[#0d0d0d] p-6 shadow-xl flex flex-col">
-              <div className="mb-4">
-                <h4 className="text-sm font-bold text-zinc-100">تكرار وحجم الطلبات (آخر 7 أيام)</h4>
-                <p className="text-[10px] text-zinc-400 mt-1">عدد الطلبات اليومية الواردة (مكتملة ومراجعة)</p>
+              <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
+                <h4 className="text-sm font-bold text-zinc-100">{texts.orderFrequencyTitle}</h4>
+                <p className="text-[10px] text-zinc-400 mt-1">{texts.orderFrequencyDesc}</p>
               </div>
               <div className="h-72 w-full mt-2" dir="ltr">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1179,8 +1178,8 @@ export default function AdminPanel({
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '0.75rem', color: '#f4f4f5' }}
-                      formatter={(value) => [`${value} طلب`, 'عدد الطلبات']}
-                      labelFormatter={(label) => `التاريخ: ${label}`}
+                      formatter={(value) => [`${value} ${texts.ordersDone.replace(':', '')}`, texts.orderCountLabel]}
+                      labelFormatter={(label) => `${texts.createdAt}: ${label}`}
                     />
                     <Line 
                       type="monotone" 
@@ -3805,26 +3804,26 @@ export default function AdminPanel({
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <Clock className="h-5 w-5 text-amber-500" />
-                    <span>دعوات الإدارة النشطة قيد الانتظار</span>
+                    <span>{texts.activeInvitesPending}</span>
                   </h3>
                   <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
-                    {invitations.length} معلقة
+                    {invitations.length} {texts.pendingLabel}
                   </span>
                 </div>
 
                 {invitations.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 text-xs leading-relaxed">
-                    لا توجد دعوات نشطة معلقة حالياً. جميع الدعوات السابقة تم قبولها أو لم يتم إنشاؤها بعد.
+                  <div className={`p-8 text-center text-slate-400 text-xs leading-relaxed ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
+                    {texts.noPendingInvites}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-right text-xs">
+                    <table className={`w-full text-xs ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
                       <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold">
                         <tr>
-                          <th className="p-4">البريد الإلكتروني المدعو</th>
-                          <th className="p-4">تاريخ الإنشاء</th>
-                          <th className="p-4">حالة الدعوة</th>
-                          <th className="p-4 text-center">الإجراءات</th>
+                          <th className="p-4">{texts.invitedEmail}</th>
+                          <th className="p-4">{texts.createdAt}</th>
+                          <th className="p-4">{texts.inviteStatus}</th>
+                          <th className="p-4 text-center">{texts.actions}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
@@ -3835,7 +3834,7 @@ export default function AdminPanel({
                             <td className="p-4">
                               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100">
                                 <Clock className="h-3 w-3 animate-pulse" />
-                                <span>في الانتظار (Pending)</span>
+                                <span>{texts.waitingPending}</span>
                               </span>
                             </td>
                             <td className="p-4">
@@ -3844,10 +3843,10 @@ export default function AdminPanel({
                                   onClick={() => {
                                     const link = `${window.location.origin}?invite_email=${encodeURIComponent(inv.email)}&invite_role=admin`;
                                     navigator.clipboard.writeText(link);
-                                    alert('تم نسخ الرابط الحصري للدعوة إلى الحافظة!');
+                                    alert(texts.copied);
                                   }}
                                   className="text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg p-1.5 transition-colors cursor-pointer border border-amber-200"
-                                  title="نسخ رابط الدعوة"
+                                  title={texts.copyInviteLink}
                                 >
                                   <Copy className="h-3.5 w-3.5" />
                                 </button>
@@ -3858,7 +3857,7 @@ export default function AdminPanel({
                                     localStorage.setItem('king_store_admin_invitations', JSON.stringify(updated));
                                   }}
                                   className="text-red-600 bg-red-50 hover:bg-red-100 rounded-lg p-1.5 transition-colors cursor-pointer border border-red-200"
-                                  title="إلغاء الدعوة وسحبها"
+                                  title={texts.cancelInvite}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -3877,21 +3876,21 @@ export default function AdminPanel({
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <Users className="h-5 w-5 text-amber-500" />
-                    <span>المدراء الحاليين للنظام (Admins)</span>
+                    <span>{texts.currentAdmins}</span>
                   </h3>
                   <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
-                    {users.filter(u => u.role === 'admin').length} مدراء
+                    {users.filter(u => u.role === 'admin').length} {texts.adminsCount}
                   </span>
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table className={`w-full text-xs ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
                     <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold">
                       <tr>
-                        <th className="p-4">اسم المدير</th>
-                        <th className="p-4">البريد الإلكتروني</th>
-                        <th className="p-4">مرتبة العضوية</th>
-                        <th className="p-4 text-center">التحكم بالصلاحيات</th>
+                        <th className="p-4">{texts.adminName}</th>
+                        <th className="p-4">{texts.adminEmail}</th>
+                        <th className="p-4">{texts.membershipRank}</th>
+                        <th className="p-4 text-center">{texts.permissionsControl}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
@@ -3904,22 +3903,22 @@ export default function AdminPanel({
                             <td className="p-4">
                               <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
                                 <Shield className="h-3 w-3 text-blue-500" />
-                                <span>{isMainAdmin ? 'المدير العام المطور' : 'مدير نظام مساعد'}</span>
+                                <span>{isMainAdmin ? texts.mainAdmin : texts.assistantAdmin}</span>
                               </span>
                             </td>
                             <td className="p-4 text-center">
                               {isMainAdmin ? (
-                                <span className="text-[10px] text-slate-400 font-semibold">غير قابل للحذف</span>
+                                <span className="text-[10px] text-slate-400 font-semibold">{texts.nonDeletable}</span>
                               ) : (
                                 <button
                                   onClick={() => {
-                                    if (confirm(`هل أنت متأكد من سحب صلاحيات الإدارة من ${u.name}؟`)) {
+                                    if (confirm(texts.revokeConfirm.replace('{name}', u.name))) {
                                       onDeleteUser(u.id);
                                     }
                                   }}
                                   className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors cursor-pointer"
                                 >
-                                  سحب الصلاحيات
+                                  {texts.revokePermissions}
                                 </button>
                               )}
                             </td>
@@ -3939,29 +3938,29 @@ export default function AdminPanel({
 
       {/* 6. Delete Gateway Confirmation Modal */}
       {gatewayToDelete && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
           <div 
-            className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
+            className={`relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-red-600 mb-4">
               <div className="bg-red-50 p-3 rounded-full">
                 <Trash2 className="h-6 w-6" />
               </div>
-              <h3 className="text-lg font-black text-slate-900">تأكيد حذف بوابة الدفع</h3>
+              <h3 className="text-lg font-black text-slate-900">{texts.confirmGatewayDelete}</h3>
             </div>
             
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6 font-medium">
-              تنبيه: هل أنت متأكد من حذف بوابة الدفع <span className="font-bold text-slate-900">"{gatewayToDelete.name}"</span> هذه نهائياً من السيستم؟ هذا الإجراء سيقوم بإزالتها تماماً من خيارات الزبائن ولا يمكن التراجع عنه.
+              {texts.deleteGatewayWarning.replace('{name}', gatewayToDelete.name)}
             </p>
             
-            <div className="flex items-center justify-end gap-3">
+            <div className={`flex items-center gap-3 ${dir === 'rtl' ? 'justify-end' : 'justify-start'}`}>
               <button
                 type="button"
                 onClick={() => setGatewayToDelete(null)}
                 className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
-                إلغاء الأمر
+                {texts.cancel}
               </button>
               <button
                 type="button"
@@ -3975,7 +3974,7 @@ export default function AdminPanel({
                 className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
               >
                 <Trash2 className="h-4 w-4" />
-                <span>نعم، احذف نهائياً</span>
+                <span>{texts.confirmDeletePermanent}</span>
               </button>
             </div>
           </div>

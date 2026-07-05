@@ -6,6 +6,7 @@
 import React from 'react';
 import { Product } from '../types';
 import { ShoppingCart, Smartphone, Package, Zap, Star } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ProductCardProps {
   product: Product;
@@ -16,6 +17,7 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0 }: ProductCardProps) {
+  const { t } = useLanguage();
   const isPhysical = product.type === 'physical';
   const outOfStock = isPhysical && (product.stock === undefined || product.stock <= 0);
 
@@ -54,12 +56,12 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
           {isPhysical ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/90 px-2.5 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20 shadow-sm">
               <Package className="h-3 w-3 text-amber-500" />
-              <span>منتج ملموس</span>
+              <span>{t('physicalProduct')}</span>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-zinc-900/90 px-2.5 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/20 shadow-sm">
               <Zap className="h-3 w-3 text-emerald-400" />
-              <span>تسليم رقمي فوري</span>
+              <span>{t('digitalProduct')}</span>
             </span>
           )}
           
@@ -68,7 +70,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
             <div className="animate-slide-up">
               <span className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 px-3 py-1 text-[10px] font-black text-white shadow-xl shadow-red-600/20 ring-1 ring-white/20">
                 <Star className="h-3 w-3 fill-white" />
-                <span>خصم {totalDiscount}% 🔥</span>
+                <span>{t('discountLabel')} {totalDiscount}% 🔥</span>
               </span>
             </div>
           )}
@@ -106,7 +108,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
         {/* Stock / Download status */}
         <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-4">
           <div className="flex flex-col">
-            <span className="text-[10px] text-zinc-500 font-semibold">السعر</span>
+            <span className="text-[10px] text-zinc-500 font-semibold">{t('price')}</span>
             <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className="text-xl font-black text-amber-400">
                 ${discountedPrice.toLocaleString()}
@@ -123,17 +125,17 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
             {isPhysical ? (
               outOfStock ? (
                 <span className="inline-flex items-center text-xs font-bold text-red-400 bg-red-950/40 px-2.5 py-1 rounded-lg border border-red-900/30">
-                  نفد من المخزن
+                  {t('outOfStock')}
                 </span>
               ) : (
                 <span className="text-xs font-medium text-zinc-300 bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800">
-                  المتبقي: <strong className="text-amber-400">{product.stock}</strong> قطعة
+                  {t('remaining')} <strong className="text-amber-400">{product.stock}</strong> {t('piece')}
                 </span>
               )
             ) : (
               <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/30">
                 <Zap className="h-3.5 w-3.5 animate-pulse" />
-                <span>جاهز للتحميل فورا</span>
+                <span>{t('readyToDownload')}</span>
               </span>
             )}
           </div>
@@ -151,7 +153,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
           id={`add-to-cart-${product.id}`}
         >
           <ShoppingCart className="h-4 w-4" />
-          <span>{outOfStock ? 'نفدت الكمية المتاحة' : 'أضف إلى سلة المشتريات'}</span>
+          <span>{outOfStock ? t('soldOut') : t('addToCartLong')}</span>
         </button>
       </div>
     </div>
