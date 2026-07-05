@@ -271,8 +271,8 @@ export default function AdminPanel({
   const [productDiscountSuccess, setProductDiscountSuccess] = useState('');
   
   // WhatsApp Support States
-  const [whatsappLink, setWhatsappLink] = useState('');
-  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [whatsappLink, setWhatsappLink] = useState('https://wa.me/9639827419');
+  const [whatsappMessage, setWhatsappMessage] = useState('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
   const [isUpdatingWhatsapp, setIsUpdatingWhatsapp] = useState(false);
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
 
@@ -326,9 +326,18 @@ export default function AdminPanel({
       const unsubscribeWhatsapp = onSnapshot(whatsappRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data.whatsappLink) setWhatsappLink(data.whatsappLink);
-          if (data.whatsappMessage) setWhatsappMessage(data.whatsappMessage);
+          const link = data.whatsappLink || data.supportUrl || 'https://wa.me/9639827419';
+          const msg = data.whatsappMessage || data.supportMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...';
+          setWhatsappLink(link);
+          setWhatsappMessage(msg);
+        } else {
+          setWhatsappLink('https://wa.me/9639827419');
+          setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
         }
+      }, (error) => {
+        console.warn("Error loading WhatsApp settings in AdminPanel:", error);
+        setWhatsappLink('https://wa.me/9639827419');
+        setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
       });
 
       // Sync Currency Settings
@@ -413,11 +422,37 @@ export default function AdminPanel({
     setIsUpdatingWhatsapp(true);
     setWhatsappSuccess('');
     try {
+      // Clean the whatsappLink if it contains a '+' in the phone number part
+      let cleanedLink = whatsappLink.trim();
+      
+      if (cleanedLink.includes('wa.me/')) {
+        const parts = cleanedLink.split('wa.me/');
+        if (parts[1]) {
+          const numberPart = parts[1].split('?')[0].replace(/[^0-9]/g, '');
+          const queryPart = parts[1].includes('?') ? '?' + parts[1].split('?')[1] : '';
+          cleanedLink = `${parts[0]}wa.me/${numberPart}${queryPart}`;
+        }
+      } else if (cleanedLink.includes('phone=')) {
+        const parts = cleanedLink.split('phone=');
+        if (parts[1]) {
+          const numberPart = parts[1].split('&')[0].replace(/[^0-9]/g, '');
+          const afterNumber = parts[1].includes('&') ? '&' + parts[1].substring(parts[1].indexOf('&') + 1) : '';
+          cleanedLink = `${parts[0]}phone=${numberPart}${afterNumber}`;
+        }
+      } else if (!cleanedLink.startsWith('http')) {
+        // It's just a raw phone number, strip out any + or non-digits
+        cleanedLink = cleanedLink.replace(/[^0-9]/g, '');
+      }
+
       const docRef = doc(db, 'settings', 'whatsapp');
       await setDoc(docRef, {
-        whatsappLink,
-        whatsappMessage
+        whatsappLink: cleanedLink,
+        whatsappMessage,
+        supportUrl: cleanedLink,
+        supportMessage: whatsappMessage
       }, { merge: true });
+      
+      setWhatsappLink(cleanedLink); // Sync state
       setWhatsappSuccess('تم تحديث إعدادات الدعم بنجاح! ✅');
       setTimeout(() => setWhatsappSuccess(''), 3000);
     } catch (err) {

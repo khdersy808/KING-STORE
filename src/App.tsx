@@ -1687,15 +1687,26 @@ function AppContent() {
                                 </h5>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{t('orderDate')} {order.date}</p>
                               </div>
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
-                                order.status === 'completed' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
-                                order.status === 'cancelled' ? 'text-red-700 bg-red-50 border-red-100' :
-                                'text-amber-700 bg-amber-50 border-amber-100'
-                              }`}>
-                                {order.status === 'completed' ? t('orderStatusCompleted') :
-                                 order.status === 'cancelled' ? t('orderStatusCancelled') :
-                                 t('orderStatusPending')}
-                              </span>
+                              <div className="flex flex-col items-end gap-2 shrink-0">
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
+                                  order.status === 'completed' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' :
+                                  order.status === 'cancelled' ? 'text-red-700 bg-red-50 border-red-100' :
+                                  'text-amber-700 bg-amber-50 border-amber-100'
+                                }`}>
+                                  {order.status === 'completed' ? t('orderStatusCompleted') :
+                                   order.status === 'cancelled' ? t('orderStatusCancelled') :
+                                   t('orderStatusPending')}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    localStorage.setItem('temp_search_order_id', order.id);
+                                    setActiveCustomerView('tracking');
+                                  }}
+                                  className="text-[11px] font-black text-amber-500 hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  تتبع طلبك الملكي الخاص 🔍
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

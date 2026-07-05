@@ -13,8 +13,8 @@ export default function MessagingSystem() {
   const [loading, setLoading] = useState<boolean>(true);
   
   // WhatsApp Settings
-  const [whatsappLink, setWhatsappLink] = useState('');
-  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [whatsappLink, setWhatsappLink] = useState('https://wa.me/9639827419');
+  const [whatsappMessage, setWhatsappMessage] = useState('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -30,9 +30,18 @@ export default function MessagingSystem() {
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.whatsappLink) setWhatsappLink(data.whatsappLink);
-        if (data.whatsappMessage) setWhatsappMessage(data.whatsappMessage);
+        const link = data.whatsappLink || data.supportUrl || 'https://wa.me/9639827419';
+        const msg = data.whatsappMessage || data.supportMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...';
+        setWhatsappLink(link);
+        setWhatsappMessage(msg);
+      } else {
+        setWhatsappLink('https://wa.me/9639827419');
+        setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
       }
+    }, (error) => {
+      console.warn("Error loading WhatsApp settings in MessagingSystem:", error);
+      setWhatsappLink('https://wa.me/9639827419');
+      setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
     });
 
     if (loading || !user) return () => unsubscribeSettings();
@@ -70,24 +79,8 @@ export default function MessagingSystem() {
   };
 
   const handleOpenWhatsapp = () => {
-    if (!whatsappLink) {
-      alert("رابط الدعم الفني غير متاح حالياً، يرجى المحاولة لاحقاً.");
-      return;
-    }
-    // If it's a full URL, open it. If it's just a number, format it.
-    let finalLink = whatsappLink;
-    if (!whatsappLink.startsWith('http')) {
-      const cleanNumber = whatsappLink.replace(/\+/g, '').replace(/\s/g, '');
-      const encodedMessage = encodeURIComponent(whatsappMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
-      finalLink = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
-    } else {
-      // If it's already a link but has no message, we might want to append it if it's a wa.me link
-      if (whatsappLink.includes('wa.me') && !whatsappLink.includes('text=') && whatsappMessage) {
-        const separator = whatsappLink.includes('?') ? '&' : '?';
-        finalLink = `${whatsappLink}${separator}text=${encodeURIComponent(whatsappMessage)}`;
-      }
-    }
-    window.open(finalLink, '_blank');
+    const whatsappUrl = "https://wa.me/qr/RPBLK6RPYJCQB1";
+    window.open(whatsappUrl, "_blank");
   };
 
   return (

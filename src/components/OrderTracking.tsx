@@ -17,6 +17,30 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
   const [hasSearched, setHasSearched] = useState(false);
   const [searchError, setSearchError] = useState('');
 
+  React.useEffect(() => {
+    const tempId = localStorage.getItem('temp_search_order_id');
+    if (tempId) {
+      setSearchOrderId(tempId);
+      localStorage.removeItem('temp_search_order_id');
+      setHasSearched(true);
+      const cleanId = tempId.trim().toUpperCase();
+      const cleanNumericId = cleanId.replace('ORD-', '');
+      const foundOrder = orders.find(o => {
+        const orderIdUpper = o.id.toUpperCase();
+        const orderIdNumeric = orderIdUpper.replace('ORD-', '');
+        return orderIdUpper === cleanId || 
+               orderIdUpper === `ORD-${cleanId}` || 
+               orderIdNumeric === cleanId ||
+               orderIdNumeric === cleanNumericId;
+      });
+      if (foundOrder) {
+        setSearchedOrder(foundOrder);
+      } else {
+        setSearchedOrder(null);
+      }
+    }
+  }, [orders]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchError('');
@@ -102,7 +126,15 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
           <span>{t('trackGateways')}</span>
         </div>
         <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-          {t('trackOrderHeroTitle')}
+          {language === 'ar' ? (
+            <>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-500 font-black">تتبع طلبك الملكي الخاص</span> بـ KING STORE
+            </>
+          ) : (
+            <>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-500 font-black">Track Your Royal Order</span> at KING STORE
+            </>
+          )}
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 max-w-lg mx-auto leading-relaxed">
           {t('trackOrderHeroDesc')}
