@@ -99,7 +99,7 @@ export default function MessagingSystem() {
             <MessageSquare className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white leading-tight">{t('supportTitle')}</h2>
+            <h2 className="text-2xl font-black tracking-wide block text-amber-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] leading-tight">{t('supportTitle')}</h2>
             <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mt-1">{t('supportTagline')}</p>
           </div>
         </div>

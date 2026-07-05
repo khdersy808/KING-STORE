@@ -86,7 +86,7 @@ interface AdminPanelProps {
   onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings';
 
 export default function AdminPanel({
   products,
@@ -276,6 +276,11 @@ export default function AdminPanel({
   const [isUpdatingWhatsapp, setIsUpdatingWhatsapp] = useState(false);
   const [whatsappSuccess, setWhatsappSuccess] = useState('');
 
+  // Currency Exchange Rate States
+  const [exchangeRateInput, setExchangeRateInput] = useState<number>(15000);
+  const [savingExchangeRate, setSavingExchangeRate] = useState(false);
+  const [exchangeRateSuccess, setExchangeRateSuccess] = useState('');
+
   // Synchronize Coupons from Firestore
   useEffect(() => {
     try {
@@ -326,14 +331,42 @@ export default function AdminPanel({
         }
       });
 
+      // Sync Currency Settings
+      const currencyRef = doc(db, 'settings', 'currency');
+      const unsubscribeCurrency = onSnapshot(currencyRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.exchangeRate === 'number') {
+            setExchangeRateInput(data.exchangeRate);
+          }
+        }
+      });
+
       return () => {
         unsubscribe();
         unsubscribeWhatsapp();
+        unsubscribeCurrency();
       };
     } catch (e) {
       console.warn("Firebase settings sync not active.", e);
     }
   }, []);
+
+  // Save Currency Exchange Rate Settings
+  const handleSaveExchangeRate = async (value: number) => {
+    setSavingExchangeRate(true);
+    setExchangeRateSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'currency');
+      await setDoc(docRef, { exchangeRate: value }, { merge: true });
+      setExchangeRateSuccess('تم تحديث سعر صرف الدولار الحالي مقابل الليرة السورية بنجاح! 💵');
+      setTimeout(() => setExchangeRateSuccess(''), 3000);
+    } catch (err) {
+      console.error("Error saving exchange rate:", err);
+    } finally {
+      setSavingExchangeRate(false);
+    }
+  };
 
   // Save Global Storewide Discount
   const handleSaveGlobalDiscount = async (value: number) => {
@@ -939,7 +972,7 @@ export default function AdminPanel({
       {/* Title & Banner */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5">
         <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">{texts.adminPanelTitle}</h2>
+          <h2 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{texts.adminPanelTitle}</h2>
           <p className="text-sm text-slate-500 mt-1">
             {texts.adminPanelDesc}
           </p>
@@ -990,6 +1023,17 @@ export default function AdminPanel({
           >
             <Percent className="h-4 w-4 text-amber-500" />
             <span>{texts.discountsTab}</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('settings'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'settings'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <Settings className="h-4 w-4 text-amber-500" />
+            <span>إعدادات المتجر ⚙️</span>
           </button>
           <button
             onClick={() => { setActiveTab('gateways'); resetProductForm(); }}
@@ -3685,6 +3729,104 @@ export default function AdminPanel({
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: STORE SETTINGS */}
+      {activeTab === 'settings' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          {/* Royal Header Card */}
+          <div className="rounded-[2.5rem] bg-slate-950 border border-slate-800 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+            
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-4 rounded-3xl text-slate-950 shadow-lg shadow-amber-500/20">
+                    <Settings className="h-8 w-8 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-200 to-amber-500">
+                      إعدادات المتجر والعملة الملكية
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      <p className="text-slate-400 text-xs sm:text-sm font-bold tracking-wide uppercase">
+                        Store Settings & Currency Exchange Rate
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-slate-300/80 text-sm sm:text-base leading-relaxed max-w-2xl font-medium">
+                  تحكم في إعدادات المتجر وسعر الصرف اليومي للعملة بشكل فوري. يتيح لك هذا النظام تحديث سعر صرف الدولار مقابل الليرة السورية ليعمل النظام المزدوج بتوافق تام وتحديث تلقائي في كروت المنتجات والسلة والفواتير.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="max-w-3xl">
+            {/* Luxury Exchange Rate Setting Form */}
+            <div className="rounded-[2rem] border border-amber-500/30 bg-slate-950 p-8 shadow-xl hover:shadow-2xl hover:border-amber-500/50 transition-all duration-500 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+              
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+                <h3 className="text-lg font-black text-amber-400">سعر الصرف مقابل الليرة (SYP)</h3>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between text-xs font-black text-slate-400 uppercase tracking-widest px-1">
+                    <span>سعر صرف $1 دولار الحالي</span>
+                    <span className="text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20 font-mono">{exchangeRateInput.toLocaleString()} ل.س</span>
+                  </label>
+                  <div className="relative group/input">
+                    <input
+                      type="number"
+                      min="1"
+                      value={exchangeRateInput}
+                      onChange={(e) => setExchangeRateInput(Math.max(1, Number(e.target.value)))}
+                      className="w-full rounded-2xl border-2 border-slate-800 bg-slate-900 py-4 pr-5 pl-16 text-white font-black text-lg focus:border-amber-500 focus:bg-slate-900/90 focus:outline-none transition-all font-mono"
+                    />
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-5">
+                      <span className="text-amber-500 font-bold text-sm">ل.س / $</span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium leading-relaxed px-1">
+                    * تحديث هذا الحقل سيغير أسعار جميع المنتجات والمشتريات والفواتير بشكل فوري وديناميكي في المتجر.
+                  </p>
+                </div>
+
+                {exchangeRateSuccess && (
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl text-xs font-black flex items-center gap-3 animate-bounce">
+                    <div className="bg-emerald-500 p-1 rounded-full text-white">
+                      <Check className="h-3 w-3" />
+                    </div>
+                    <span>{exchangeRateSuccess}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={savingExchangeRate}
+                  onClick={() => handleSaveExchangeRate(exchangeRateInput)}
+                  className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-3 cursor-pointer group/btn"
+                >
+                  {savingExchangeRate ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <div className="bg-slate-950 p-1 rounded-full text-amber-500 group-hover/btn:scale-110 transition-transform">
+                      <Check className="h-3 w-3" />
+                    </div>
+                  )}
+                  <span>{savingExchangeRate ? 'جاري تحديث السعر...' : 'تحديث سعر الصرف'}</span>
+                </button>
               </div>
             </div>
           </div>

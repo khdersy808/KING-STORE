@@ -182,6 +182,7 @@ function AppContent() {
   }, [categories]);
 
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+  const [exchangeRate, setExchangeRate] = useState<number>(15000);
 
   // Synchronize global discount setting from Firestore real-time listener
   useEffect(() => {
@@ -200,6 +201,26 @@ function AppContent() {
       return () => unsubscribe();
     } catch (e) {
       console.warn("Firebase global discount sync not fully active.", e);
+    }
+  }, []);
+
+  // Synchronize exchange rate setting from Firestore real-time listener
+  useEffect(() => {
+    try {
+      const docRef = doc(db, 'settings', 'currency');
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.exchangeRate === 'number') {
+            setExchangeRate(data.exchangeRate);
+          }
+        }
+      }, (error) => {
+        console.warn("Error listening to exchange rate in App:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase exchange rate sync not fully active.", e);
     }
   }, []);
 
@@ -974,7 +995,6 @@ function AppContent() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         currentUser={currentUser}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
         onLogout={handleLogoutUser}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         notifications={notifications}
@@ -994,7 +1014,7 @@ function AppContent() {
                 <Users className="h-4 w-4" />
                 <span>فريق الوكلاء المعتمدين 🤝</span>
               </div>
-              <h3 className="text-2xl font-black text-slate-900">لوحة الوكلاء والموزعين المعتمدين</h3>
+              <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">لوحة الوكلاء والموزعين المعتمدين</h3>
               <p className="text-xs sm:text-sm text-slate-500">
                 تصفح وتواصل مع وكلائنا المعتمدين لتسهيل عمليات الدفع المحلّي والحصول على بطاقات التعبئة الفورية لـ KING STORE.
               </p>
@@ -1008,7 +1028,7 @@ function AppContent() {
                 <MessageSquare className="h-4 w-4" />
                 <span>المحادثة المباشرة الفورية 💬</span>
               </div>
-              <h3 className="text-2xl font-black text-slate-900">نظام الدعم الفني الملكي</h3>
+              <h3 className="text-2xl font-black text-amber-500 tracking-wide block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">نظام الدعم الفني الملكي</h3>
               <p className="text-xs sm:text-sm text-slate-500">
                 راسل الإدارة وطاقم الدعم الفني مباشرة وبكل أمان لحل أي استفسار أو مشكلة تتعلق بطلباتك.
               </p>
@@ -1365,6 +1385,7 @@ function AppContent() {
                           onAddToCart={handleAddToCart}
                           onViewDetails={(prod) => setSelectedProduct(prod)}
                           globalDiscount={globalDiscount}
+                          exchangeRate={exchangeRate}
                         />
                       ))}
                     </div>
@@ -1380,7 +1401,7 @@ function AppContent() {
                     <Grid className="h-4 w-4" />
                     <span>{t('browseExclusiveCategories')}</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900">{t('categoriesTitle')}</h3>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{t('categoriesTitle')}</h3>
                   <p className="text-xs sm:text-sm text-slate-500">
                     {t('categoriesDesc')}
                   </p>
@@ -1449,7 +1470,7 @@ function AppContent() {
                     <ShoppingCart className="h-4 w-4" />
                     <span>{t('shoppingBagCurrent')}</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900">{t('royalCartTitle')}</h3>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{t('royalCartTitle')}</h3>
                   <p className="text-xs sm:text-sm text-slate-500">
                     {t('cartDesc')}
                   </p>
@@ -1557,7 +1578,7 @@ function AppContent() {
                     <Users className="h-4 w-4" />
                     <span>{t('certifiedAgents')}</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900">{t('agentsPanelTitle')}</h3>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{t('agentsPanelTitle')}</h3>
                   <p className="text-xs sm:text-sm text-slate-500">
                     {t('agentsPanelDesc')}
                   </p>
@@ -1573,7 +1594,7 @@ function AppContent() {
                     <MessageSquare className="h-4 w-4" />
                     <span>{t('liveChatInstant')}</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900">{t('supportSystemTitle')}</h3>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{t('supportSystemTitle')}</h3>
                   <p className="text-xs sm:text-sm text-slate-500">
                     {t('supportSystemDesc')}
                   </p>
@@ -1591,7 +1612,7 @@ function AppContent() {
                     <UserIcon className="h-4 w-4" />
                     <span>{t('luxuryProfile')}</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900">{t('memberCornerTitle')}</h3>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">{t('memberCornerTitle')}</h3>
                   <p className="text-xs sm:text-sm text-slate-500">
                     {t('memberCornerDesc')}
                   </p>
@@ -1726,6 +1747,7 @@ function AppContent() {
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         globalDiscount={globalDiscount}
+        exchangeRate={exchangeRate}
       />
 
       {/* 5. Product Details Modal */}
@@ -1738,6 +1760,7 @@ function AppContent() {
           onAddReview={handleAddReview}
           onAddToCart={handleAddToCart}
           globalDiscount={globalDiscount}
+          exchangeRate={exchangeRate}
         />
       )}
 

@@ -73,6 +73,12 @@
         "usageCount": "number",
         "createdAt": "string"
       }
+    },
+    "settings": {
+      "fields": {
+        "exchangeRate": "number",
+        "globalDiscount": "number"
+      }
     }
   }
 }

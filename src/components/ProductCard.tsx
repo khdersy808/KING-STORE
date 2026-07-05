@@ -13,10 +13,11 @@ interface ProductCardProps {
   onAddToCart: (product: Product) => void;
   onViewDetails: (product: Product) => void;
   globalDiscount?: number;
+  exchangeRate?: number;
   key?: string | number;
 }
 
-export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0 }: ProductCardProps) {
+export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0, exchangeRate = 15000 }: ProductCardProps) {
   const { t } = useLanguage();
   const isPhysical = product.type === 'physical';
   const outOfStock = isPhysical && (product.stock === undefined || product.stock <= 0);
@@ -34,6 +35,9 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
   const discountedPrice = hasDiscount
     ? Math.round(product.price * (1 - totalDiscount / 100))
     : product.price;
+
+  const sypPrice = discountedPrice * exchangeRate;
+  const originalSypPrice = product.price * exchangeRate;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800/60 bg-[#0d0d0d] hover:border-amber-500/40 transition-all duration-300">
@@ -109,15 +113,25 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
         <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-4">
           <div className="flex flex-col">
             <span className="text-[10px] text-zinc-500 font-semibold">{t('price')}</span>
-            <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-xl font-black text-amber-400">
-                ${discountedPrice.toLocaleString()}
-              </span>
-              {hasDiscount && (
-                <span className="text-xs text-zinc-500 line-through">
-                  ${product.price.toLocaleString()}
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-xl font-black text-amber-400">
+                  ${discountedPrice.toLocaleString()}
                 </span>
-              )}
+                {hasDiscount && (
+                  <span className="text-xs text-zinc-500 line-through">
+                    ${product.price.toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-1 flex-wrap text-xs text-amber-500/85 font-black">
+                <span>{sypPrice.toLocaleString()} ل.س</span>
+                {hasDiscount && (
+                  <span className="text-[10px] text-zinc-650 line-through font-medium">
+                    {originalSypPrice.toLocaleString()} ل.س
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

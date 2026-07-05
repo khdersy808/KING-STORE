@@ -18,7 +18,6 @@ interface NavbarProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   currentUser: User | null;
-  onOpenAuth: () => void;
   onLogout: () => void;
   onOpenSettings: () => void;
   notifications: AppNotification[];
@@ -37,7 +36,6 @@ export default function Navbar({
   searchQuery,
   setSearchQuery,
   currentUser,
-  onOpenAuth,
   onLogout,
   onOpenSettings,
   notifications = [],
@@ -323,34 +321,6 @@ export default function Navbar({
                   {cartCount}
                 </span>
               )}
-            </button>
-          )}
-
-          {/* User Profile / Auth State (DESKTOP VERSION) */}
-          {currentUser ? (
-            <div className="hidden md:flex items-center gap-2 lg:gap-3">
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-3.5 py-2 text-xs font-bold transition-all shadow-md shadow-amber-500/5 cursor-pointer"
-                id="navbar-profile-drawer-btn"
-                title={t('royalMenu')}
-              >
-                <Crown className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-                <span className="font-bold text-zinc-100">{currentUser?.name}</span>
-                <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/20">
-                  {currentUser?.role === 'admin' ? t('royalAdmin') : t('royalMember')}
-                </span>
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={onOpenAuth}
-              className="flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/20 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-400 border border-amber-500/30 px-2 sm:px-3.5 py-1.5 sm:py-2 text-[11px] sm:text-sm font-bold transition-all shadow-md cursor-pointer"
-              id="navbar-login-btn"
-            >
-              <UserIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="hidden xs:inline sm:inline">{t('login')}</span>
-              <span className="xs:hidden">{t('login')}</span>
             </button>
           )}
 

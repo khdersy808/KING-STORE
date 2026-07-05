@@ -41,6 +41,7 @@ interface CartProps {
   currentUser: User | null;
   onOpenAuth: () => void;
   globalDiscount?: number;
+  exchangeRate?: number;
 }
 
 export default function Cart({
@@ -55,6 +56,7 @@ export default function Cart({
   currentUser,
   onOpenAuth,
   globalDiscount = 0,
+  exchangeRate = 15000,
 }: CartProps) {
   const { t, language } = useLanguage();
   // Helper to get active product price with global and product-specific discounts
@@ -381,12 +383,20 @@ export default function Cart({
                             <h4 className="text-sm font-bold text-slate-100 truncate group-hover:text-amber-200 transition-colors">
                               {item.product.name}
                             </h4>
-                            <span className="text-xs text-amber-400 font-extrabold block mt-0.5">
-                              ${getProductPrice(item.product).toLocaleString()}
-                              {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
-                                <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price.toLocaleString()}</span>
-                              )}
-                            </span>
+                            <div className="flex flex-col mt-0.5">
+                              <span className="text-xs text-amber-400 font-extrabold block">
+                                ${getProductPrice(item.product).toLocaleString()}
+                                {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
+                                  <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price.toLocaleString()}</span>
+                                )}
+                              </span>
+                              <span className="text-[10px] text-amber-500/85 font-black block">
+                                {(getProductPrice(item.product) * exchangeRate).toLocaleString()} ل.س
+                                {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
+                                  <span className="text-[9px] text-zinc-650 line-through font-normal mr-1.5">{(item.product.price * exchangeRate).toLocaleString()} ل.س</span>
+                                )}
+                              </span>
+                            </div>
                             <span className="text-[10px] text-amber-200/50 font-medium block">
                               {item.product.type === 'physical' ? '📦 منتج ملموس' : '⚡ تسليم رقمي'}
                             </span>
@@ -876,7 +886,10 @@ export default function Cart({
             <div className="border-t border-amber-500/10 p-6 bg-slate-950/40 pb-28 md:pb-8">
               <div className="flex items-center justify-between text-base font-bold text-slate-300 mb-4">
                 <span>المجموع الكلي:</span>
-                <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>
+                <div className="flex flex-col items-end">
+                  <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>
+                  <span className="text-xs text-amber-500/85 font-black">{(totalAmount * exchangeRate).toLocaleString()} ل.س</span>
+                </div>
               </div>
 
               {step === 'cart' ? (

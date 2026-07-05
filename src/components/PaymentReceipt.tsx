@@ -7,9 +7,10 @@ interface PaymentReceiptProps {
   order: Order;
   gateway?: PaymentGateway;
   onPrint?: () => void;
+  exchangeRate?: number;
 }
 
-export default function PaymentReceipt({ order, gateway, onPrint }: PaymentReceiptProps) {
+export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate = 15000 }: PaymentReceiptProps) {
   const { t, dir, language } = useLanguage();
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -89,9 +90,15 @@ export default function PaymentReceipt({ order, gateway, onPrint }: PaymentRecei
         <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 text-center relative overflow-hidden">
           <div className={`absolute top-0 ${dir === 'rtl' ? 'left-0' : 'right-0'} w-2 h-full bg-amber-500`}></div>
           <span className="block text-[10px] text-slate-400 font-bold mb-1">{t('netAmount')}</span>
-          <div className="text-2xl font-black text-amber-400 tracking-tight font-mono flex items-center justify-center gap-1.5">
-            <span>${order.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-            <span className="text-xs text-white bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">USD</span>
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="text-2xl font-black text-amber-400 tracking-tight font-mono flex items-center justify-center gap-1.5">
+              <span>${order.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              <span className="text-xs text-white bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">USD</span>
+            </div>
+            <div className="text-base font-extrabold text-amber-500/90 tracking-tight flex items-center justify-center gap-1">
+              <span>{(order.totalAmount * exchangeRate).toLocaleString()}</span>
+              <span className="text-[10px] text-zinc-400">ل.س</span>
+            </div>
           </div>
         </div>
 
@@ -173,7 +180,10 @@ export default function PaymentReceipt({ order, gateway, onPrint }: PaymentRecei
                   </span>
                   <span className="font-bold text-slate-200">{item.productName}</span>
                 </div>
-                <span className="font-mono font-bold text-slate-400">${(item.price * item.quantity).toFixed(2)}</span>
+                <div className="flex flex-col items-end">
+                  <span className="font-mono font-bold text-slate-400">${(item.price * item.quantity).toFixed(2)}</span>
+                  <span className="text-[9px] text-amber-500/80 font-bold">{(item.price * item.quantity * exchangeRate).toLocaleString()} ل.س</span>
+                </div>
               </div>
             ))}
           </div>

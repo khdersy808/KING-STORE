@@ -38,7 +38,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab,
             <div className={`p-2.5 rounded-2xl transition-all duration-300 ${isActive ? 'bg-amber-400/20 shadow-lg shadow-amber-400/10' : 'group-hover:bg-white/5'}`}>
               <Icon className={`h-6 w-6 transition-all duration-300 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
             </div>
-            <span className={`text-[10px] font-black tracking-tight transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-60'}`}>
+            <span className={`text-[10px] font-black tracking-tight transition-all duration-300 ${isActive ? 'text-amber-400 opacity-100' : 'text-amber-500/70 opacity-70'}`}>
               {tab.label}
               {tab.id === 'cart' && cartCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-slate-950 shadow-lg shadow-amber-500/30 animate-bounce">
