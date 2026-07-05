@@ -281,6 +281,14 @@ export default function AdminPanel({
   const [savingExchangeRate, setSavingExchangeRate] = useState(false);
   const [exchangeRateSuccess, setExchangeRateSuccess] = useState('');
 
+  // Exclusive Discounts Section States
+  const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
+  const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+  const [discountsSectionProducts, setDiscountsSectionProducts] = useState<string[]>([]);
+  const [selectedProductIdToAdd, setSelectedProductIdToAdd] = useState('');
+  const [isUpdatingDiscountsSection, setIsUpdatingDiscountsSection] = useState(false);
+  const [discountsSectionSuccess, setDiscountsSectionSuccess] = useState('');
+
   // Synchronize Coupons from Firestore
   useEffect(() => {
     try {
@@ -351,10 +359,28 @@ export default function AdminPanel({
         }
       });
 
+      // Sync Exclusive Discounts Section Settings
+      const discountsSectionRef = doc(db, 'settings', 'discounts_section');
+      const unsubscribeDiscountsSection = onSnapshot(discountsSectionRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
+          setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+          setDiscountsSectionProducts(data.featuredProducts || []);
+        } else {
+          setDiscountsSectionTitle('عروض ملوك الأسبوع الحصرية 👑');
+          setDiscountsSectionDesc('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+          setDiscountsSectionProducts([]);
+        }
+      }, (error) => {
+        console.warn("Error loading discounts section settings in AdminPanel:", error);
+      });
+
       return () => {
         unsubscribe();
         unsubscribeWhatsapp();
         unsubscribeCurrency();
+        unsubscribeDiscountsSection();
       };
     } catch (e) {
       console.warn("Firebase settings sync not active.", e);
@@ -460,6 +486,41 @@ export default function AdminPanel({
     } finally {
       setIsUpdatingWhatsapp(false);
     }
+  };
+
+  const handleSaveDiscountsSection = async () => {
+    setIsUpdatingDiscountsSection(true);
+    setDiscountsSectionSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'discounts_section');
+      await setDoc(docRef, {
+        title: discountsSectionTitle.trim(),
+        description: discountsSectionDesc.trim(),
+        featuredProducts: discountsSectionProducts
+      }, { merge: true });
+      setDiscountsSectionSuccess('تم تحديث إعدادات قسم الخصومات الحصرية بنجاح! 👑');
+      setTimeout(() => setDiscountsSectionSuccess(''), 3000);
+    } catch (err) {
+      console.error("Error updating discounts section settings:", err);
+    } finally {
+      setIsUpdatingDiscountsSection(false);
+    }
+  };
+
+  const handleAddProductToDiscountsSection = () => {
+    if (!selectedProductIdToAdd) return;
+    if (discountsSectionProducts.includes(selectedProductIdToAdd)) {
+      alert("المنتج مضاف بالفعل إلى قائمة الخصومات الحصرية!");
+      return;
+    }
+    const updated = [...discountsSectionProducts, selectedProductIdToAdd];
+    setDiscountsSectionProducts(updated);
+    setSelectedProductIdToAdd('');
+  };
+
+  const handleRemoveProductFromDiscountsSection = (id: string) => {
+    const updated = discountsSectionProducts.filter(pId => pId !== id);
+    setDiscountsSectionProducts(updated);
   };
 
   // Save / Update Coupon
@@ -3506,6 +3567,121 @@ export default function AdminPanel({
                       </div>
                     )}
                     <span>{savingGlobalDiscount ? 'جاري الحفظ الملكي...' : 'تثبيت الخصم العام'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Luxury Exclusive Weekly Offers Settings Form */}
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
+                    <Crown className="h-5 w-5 animate-bounce" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">إعدادات لوحة الخصومات الحصرية</h3>
+                </div>
+
+                <div className="space-y-5">
+                  {/* Title input */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">عنوان لوحة الخصومات</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: عروض ملوك الأسبوع الحصرية 👑"
+                      value={discountsSectionTitle}
+                      onChange={(e) => setDiscountsSectionTitle(e.target.value)}
+                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-3.5 px-5 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Description input */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">وصف لوحة الخصومات</label>
+                    <textarea
+                      placeholder="مثال: خصومات استثنائية تصل إلى 30٪ على أفخم السلع!"
+                      value={discountsSectionDesc}
+                      onChange={(e) => setDiscountsSectionDesc(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-3.5 px-5 text-slate-950 font-medium text-xs sm:text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all resize-none"
+                    />
+                  </div>
+
+                  {/* Product Selection Dropdown for Exclusive Offers */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">إضافة منتج للوحة العروض الحصرية</label>
+                    <div className="space-y-2 text-right">
+                      <select
+                        value={selectedProductIdToAdd}
+                        onChange={(e) => setSelectedProductIdToAdd(e.target.value)}
+                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-3.5 px-4 text-slate-950 font-black text-xs focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer"
+                      >
+                        <option value="">-- اختر منتجاً للإضافة --</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.price} ل.س)</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAddProductToDiscountsSection}
+                        className="w-full mt-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition-all active:scale-95 cursor-pointer text-center block"
+                      >
+                        إضافة المنتج المختار 👑
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Selected products list with delete buttons */}
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">المنتجات المعروضة حالياً في اللوحة ({discountsSectionProducts.length})</label>
+                    {discountsSectionProducts.length === 0 ? (
+                      <div className="p-4 rounded-2xl border-2 border-dashed border-slate-100 text-center text-xs text-slate-400 font-bold">
+                        لم يتم تحديد أي منتجات بعد. سيتم عرض أول منتجين افتراضياً في واجهة المتجر.
+                      </div>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto space-y-2 border border-slate-100 rounded-2xl p-2 bg-slate-50">
+                        {discountsSectionProducts.map(pId => {
+                          const product = products.find(p => p.id === pId);
+                          return (
+                            <div key={pId} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200/60 shadow-sm gap-2">
+                              <span className="text-xs font-bold text-slate-800 line-clamp-1 flex-1">
+                                {product ? product.name : `منتج غير موجود (${pId})`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveProductFromDiscountsSection(pId)}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-all text-[11px] font-black cursor-pointer"
+                              >
+                                حذف
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {discountsSectionSuccess && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-xs font-black flex items-center gap-3 animate-bounce">
+                      <div className="bg-emerald-500 p-1 rounded-full text-white">
+                        <Check className="h-3 w-3" />
+                      </div>
+                      <span>{discountsSectionSuccess}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={isUpdatingDiscountsSection}
+                    onClick={handleSaveDiscountsSection}
+                    className="w-full py-4 rounded-2xl bg-slate-950 hover:bg-slate-900 text-amber-500 font-black text-sm shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-3 cursor-pointer group/btn"
+                  >
+                    {isUpdatingDiscountsSection ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Crown className="h-5 w-5" />
+                    )}
+                    <span>{isUpdatingDiscountsSection ? 'جاري الحفظ الملكي...' : 'حفظ إعدادات لوحة العروض'}</span>
                   </button>
                 </div>
               </div>

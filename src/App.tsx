@@ -184,6 +184,31 @@ function AppContent() {
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
   const [exchangeRate, setExchangeRate] = useState<number>(15000);
 
+  // Exclusive Weekly Offers / Discounts Section States
+  const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
+  const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+  const [discountsSectionFeaturedProductIds, setDiscountsSectionFeaturedProductIds] = useState<string[]>([]);
+
+  // Synchronize exclusive discounts section settings from Firestore
+  useEffect(() => {
+    try {
+      const docRef = doc(db, 'settings', 'discounts_section');
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
+          setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+          setDiscountsSectionFeaturedProductIds(data.featuredProducts || []);
+        }
+      }, (error) => {
+        console.warn("Error listening to discounts section settings in App:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase discounts section settings sync not active.", e);
+    }
+  }, []);
+
   // Synchronize global discount setting from Firestore real-time listener
   useEffect(() => {
     try {
@@ -1120,43 +1145,49 @@ function AppContent() {
                           <span>{t('weeklyOffers')}</span>
                         </div>
                         <h3 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-amber-200 to-amber-400">
-                          {t('weeklyOffersTitle')}
+                          {discountsSectionTitle}
                         </h3>
                         <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-                          {t('offersDesc')}
+                          {discountsSectionDesc}
                         </p>
                       </div>
                       <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full lg:w-auto">
-                        {products.slice(0, 2).map((product) => (
-                          <div 
-                            key={`offer-${product.id}`}
-                            onClick={() => setSelectedProduct(product)}
-                            className="bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3 sm:p-4 text-right transition-all duration-300 cursor-pointer group shadow-lg"
-                          >
-                            <div className="relative overflow-hidden rounded-xl bg-slate-950 h-24 sm:h-28 flex items-center justify-center">
-                              <img 
-                                src={product.imageUrl || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=300"} 
-                                alt={product.name} 
-                                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                              />
-                              <span className="absolute top-2 right-2 bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-md animate-pulse">
-                                {t('royalSpecialOffer')}
-                              </span>
+                        {(() => {
+                          let featured = products.filter(p => discountsSectionFeaturedProductIds.includes(p.id));
+                          if (featured.length === 0) {
+                            featured = products.slice(0, 2);
+                          }
+                          return featured.map((product) => (
+                            <div 
+                              key={`offer-${product.id}`}
+                              onClick={() => setSelectedProduct(product)}
+                              className="bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3 sm:p-4 text-right transition-all duration-300 cursor-pointer group shadow-lg animate-fade-in"
+                            >
+                              <div className="relative overflow-hidden rounded-xl bg-slate-950 h-24 sm:h-28 flex items-center justify-center">
+                                <img 
+                                  src={product.imageUrl || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=300"} 
+                                  alt={product.name} 
+                                  className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <span className="absolute top-2 right-2 bg-red-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full shadow-md animate-pulse">
+                                  {t('royalSpecialOffer')}
+                                </span>
+                              </div>
+                              <h4 className="text-xs sm:text-sm font-bold text-white mt-3 line-clamp-1 group-hover:text-amber-400 transition-colors">
+                                {product.name}
+                              </h4>
+                              <div className="flex items-center justify-between mt-2">
+                                <span className="text-xs sm:text-sm font-black text-amber-400">
+                                  {product.price} {t('syrianPound')}
+                                </span>
+                                <span className="text-[9px] sm:text-[10px] text-zinc-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                                  {product.type === 'digital' ? t('instantDeliverySmall') : t('fastShippingSmall')}
+                                </span>
+                              </div>
                             </div>
-                            <h4 className="text-xs sm:text-sm font-bold text-white mt-3 line-clamp-1 group-hover:text-amber-400 transition-colors">
-                              {product.name}
-                            </h4>
-                            <div className="flex items-center justify-between mt-2">
-                              <span className="text-xs sm:text-sm font-black text-amber-400">
-                                {product.price} {t('syrianPound')}
-                              </span>
-                              <span className="text-[9px] sm:text-[10px] text-zinc-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
-                                {product.type === 'digital' ? t('instantDeliverySmall') : t('fastShippingSmall')}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </div>
                   </div>
