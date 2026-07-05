@@ -929,7 +929,7 @@ export default function App() {
   return (
     <>
       <div 
-        className="min-h-screen bg-slate-50 flex flex-col text-slate-800 relative transition-transform duration-100 ease-out will-change-scroll scroll-smooth transform-gpu backface-hidden main-store-container" 
+        className="min-h-screen w-full bg-slate-950 flex flex-col text-slate-100 relative overflow-x-hidden contain-layout contain-paint main-store-container" 
       dir="rtl"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -976,7 +976,7 @@ export default function App() {
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1 min-h-screen w-full overflow-y-auto transition-all duration-200 ease-in-out" style={{ contain: 'content' }}>
+      <div className="flex-1 min-h-screen w-full overflow-y-auto" style={{ contain: 'content' }}>
         {currentTab === 'agents' ? (
           <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
             <div className="mb-8 space-y-2">
@@ -1869,12 +1869,18 @@ export default function App() {
 
       {/* 8. Mobile Floating Bottom Navigation Bar (Visible on All Screens) */}
       <BottomNav 
-        currentTab={currentTab} 
+        currentTab={isAdminMode ? 'admin' : currentTab} 
         setCurrentTab={(tab) => {
-          setIsAdminMode(false);
-          setCurrentTab(tab);
+          if (tab === 'admin') {
+            setIsAdminMode(true);
+            setCurrentTab('home');
+          } else {
+            setIsAdminMode(false);
+            setCurrentTab(tab);
+          }
         }} 
         cartCount={cartItems?.length || 0} 
+        isAdmin={currentUser?.role === 'admin'}
       />
 
     </>

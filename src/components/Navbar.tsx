@@ -170,7 +170,7 @@ export default function Navbar({
 
               {/* Notifications Dropdown Panel */}
               {isNotificationsOpen && (
-                <div className="absolute left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-50 divide-y divide-zinc-900 animate-fade-in">
+                <div className="absolute left-0 mt-2 w-80 sm:w-96 max-h-[480px] overflow-y-auto rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl text-right z-[99999] divide-y divide-zinc-900 animate-fade-in">
                   
                   {/* Dropdown Header */}
                   <div className="flex items-center justify-between p-4 bg-zinc-900/40">

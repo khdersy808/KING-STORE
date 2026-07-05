@@ -1,21 +1,26 @@
 import React from 'react';
-import { Home, Users, MessageSquare, ShoppingCart } from 'lucide-react';
+import { Home, Users, MessageSquare, ShoppingCart, Settings } from 'lucide-react';
 
 interface BottomNavProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   cartCount: number;
+  isAdmin?: boolean;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab, cartCount }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab, cartCount, isAdmin = false }) => {
   const tabs = [
     { id: 'home', label: 'الرئيسية', icon: Home },
     { id: 'messaging', label: 'المحادثة', icon: MessageSquare },
     { id: 'cart', label: 'السلة', icon: ShoppingCart },
   ];
 
+  if (isAdmin) {
+    tabs.push({ id: 'admin', label: 'الإدارة', icon: Settings });
+  }
+
   return (
-    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] w-[92%] max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/90 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl grid grid-cols-3 items-center animate-fade-in transition-all duration-500">
+    <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] w-[92%] max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/90 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} items-center animate-fade-in transition-all duration-500`}>
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = currentTab === tab.id;
