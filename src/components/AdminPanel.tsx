@@ -874,7 +874,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
     setFormName(product.name);
     setFormDescription(product.description);
     setFormPrice(product.price);
-    setFormType(product.type);
+    setFormType(product.type || 'physical');
     setFormCategory(product.category);
     setFormImageUrl(product.imageUrl);
     setFormStock(product.stock || 0);
@@ -3587,12 +3587,43 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                           )}
                         </div>
 
+                        {selectedOrderForModal.deliveryFee !== undefined && selectedOrderForModal.deliveryFee > 0 && (
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>خدمة التوصيل والشحن الدولي:</span>
+                            <span className="font-mono font-bold text-slate-700">
+                              +${selectedOrderForModal.deliveryFee.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+
+                        {selectedOrderForModal.import_tax !== undefined && selectedOrderForModal.import_tax > 0 && (
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>الرسوم الجمركية وضريبة الاستيراد (10%):</span>
+                            <span className="font-mono font-bold text-amber-600">
+                              +${selectedOrderForModal.import_tax.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                          <span className="text-xs font-bold text-slate-500">مجموع المبلغ المدفوع:</span>
+                          <span className="text-xs font-bold text-slate-900">المجموع الكلي للفاتورة:</span>
                           <span className="text-lg font-black text-amber-600 font-mono">
                             ${selectedOrderForModal.totalAmount}
                           </span>
                         </div>
+
+                        {selectedOrderForModal.payment_type === 'split_50_50' && (
+                          <div className="bg-slate-50 p-2.5 rounded-xl border border-dashed border-slate-200 text-[11px] space-y-1">
+                            <div className="flex justify-between text-emerald-600 font-bold">
+                              <span>العربون المدفوع مقدماً (50% ملموس + 100% غير ملموس):</span>
+                              <span className="font-mono">${selectedOrderForModal.amount_paid_advance?.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-amber-600 font-bold">
+                              <span>المتبقي عند الاستلام COD (50% ملموس):</span>
+                              <span className="font-mono">${selectedOrderForModal.amount_due_on_delivery?.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -104,6 +104,11 @@ export interface Order {
   transactionId?: string;
   deliveryDate?: string; // ISO string
   deliveryFee?: number;
+  import_tax?: number;
+  payment_type?: 'standard' | 'split_50_50';
+  amount_paid_advance?: number;
+  amount_due_on_delivery?: number;
+  payment_status?: 'fully_paid' | 'partially_paid' | 'unpaid';
 }
 
 export interface CartItem {

@@ -97,9 +97,22 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
             </div>
             <div className="text-base font-extrabold text-amber-500/90 tracking-tight flex items-center justify-center gap-1">
               <span>{(order.totalAmount * exchangeRate).toLocaleString()}</span>
-
+              <span>ل.س</span>
             </div>
           </div>
+
+          {order.payment_type === 'split_50_50' && (
+            <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 gap-2 text-right">
+              <div className="bg-slate-900/50 p-2 rounded-lg border border-emerald-500/10">
+                <span className="block text-[8px] text-emerald-400 font-bold">عربون 50% (مدفوع الآن):</span>
+                <span className="text-[11px] font-black text-emerald-400 font-mono">${(order.amount_paid_advance || (order.totalAmount * 0.5)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="bg-slate-900/50 p-2 rounded-lg border border-amber-500/10">
+                <span className="block text-[8px] text-amber-400 font-bold">المتبقي 50% (عند الاستلام):</span>
+                <span className="text-[11px] font-black text-amber-400 font-mono">${(order.amount_due_on_delivery || (order.totalAmount * 0.5)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Details Grid */}
@@ -186,6 +199,18 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
                 </div>
               </div>
             ))}
+            {order.deliveryFee !== undefined && order.deliveryFee > 0 && (
+              <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-white/[0.03]">
+                <span className="text-slate-400">تكلفة خدمة التوصيل والشحن الدولي:</span>
+                <span className="font-mono font-bold text-amber-400">+${order.deliveryFee.toFixed(2)}</span>
+              </div>
+            )}
+            {order.import_tax !== undefined && order.import_tax > 0 && (
+              <div className={`flex items-center justify-between text-[11px] ${!(order.deliveryFee !== undefined && order.deliveryFee > 0) ? 'pt-1.5 border-t border-white/[0.03]' : ''}`}>
+                <span className="text-slate-400">الرسوم الجمركية وضريبة الاستيراد (10%):</span>
+                <span className="font-mono font-bold text-amber-400">+${order.import_tax.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
         </div>

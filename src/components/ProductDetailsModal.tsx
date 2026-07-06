@@ -153,7 +153,8 @@ export default function ProductDetailsModal({
     setRating(5);
   };
 
-  const isOutOfStock = product.type === 'physical' && (product.stock === undefined || product.stock <= 0);
+  const isPhysical = product.type !== 'digital';
+  const isOutOfStock = isPhysical && (product.stock === undefined || product.stock <= 0);
 
   const colorMap: { [key: string]: string } = {
     "أسود": "#000000",
@@ -172,8 +173,8 @@ export default function ProductDetailsModal({
     "فضي": "#C0C0C0"
   };
 
-  const isColorMandatory = product.type === 'physical' && product.colors && product.colors.length > 0;
-  const isSizeMandatory = product.type === 'physical' && product.sizes && product.sizes.length > 0;
+  const isColorMandatory = isPhysical && product.colors && product.colors.length > 0;
+  const isSizeMandatory = isPhysical && product.sizes && product.sizes.length > 0;
   
   const canAddToCart = !isOutOfStock && 
     (!isColorMandatory || selectedColor) && 
@@ -222,7 +223,7 @@ export default function ProductDetailsModal({
             )}
 
             <div className="absolute top-3 right-3">
-              {product.type === 'physical' ? (
+              {isPhysical ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-zinc-950/90 px-2.5 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20 shadow-sm">
                   <Package className="h-3 w-3 text-amber-500" />
                   <span>منتج ملموس</span>
@@ -267,8 +268,8 @@ export default function ProductDetailsModal({
                 </div>
               </div>
               <div className="text-left">
-                {product.type === 'physical' ? (
-                  isOutOfStock ? (
+              {isPhysical ? (
+                isOutOfStock ? (
                     <span className="inline-flex items-center text-xs font-bold text-red-400 bg-red-950/40 px-3 py-1.5 rounded-lg border border-red-900/30">
                       نفد من المخزن
                     </span>
@@ -291,7 +292,7 @@ export default function ProductDetailsModal({
             </p>
 
             {/* Color selection */}
-            {product.type === 'physical' && (
+            {isPhysical && (
               <div className="mt-5 p-4 rounded-xl bg-zinc-900/40 border border-zinc-800">
                 <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 justify-start mb-3">
                   🎨 اللون المطلوب (إجباري):
@@ -324,7 +325,7 @@ export default function ProductDetailsModal({
             )}
 
             {/* Size selection */}
-            {product.type === 'physical' && product.sizes && product.sizes.length > 0 && (
+            {isPhysical && product.sizes && product.sizes.length > 0 && (
               <div className={`mt-5 p-4 rounded-xl border transition-all duration-350 ${
                 sizeError 
                   ? 'bg-red-500/5 border-red-500/30 ring-1 ring-red-500/20' 

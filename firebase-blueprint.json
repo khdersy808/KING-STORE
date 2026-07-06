@@ -26,7 +26,12 @@
         "createdAt": "string",
         "items": "array",
         "deliveryDate": "string",
-        "deliveryFee": "number"
+        "deliveryFee": "number",
+        "import_tax": "number",
+        "payment_type": "string",
+        "amount_paid_advance": "number",
+        "amount_due_on_delivery": "number",
+        "payment_status": "string"
       }
     },
     "notifications": {

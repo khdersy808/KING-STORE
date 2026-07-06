@@ -91,6 +91,7 @@ export default function Cart({
   const [shippingAddress, setShippingAddress] = useState('');
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState<string>('');
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
   const [gatewayFieldValues, setGatewayFieldValues] = useState<Record<string, string>>({});
   const [senderName, setSenderName] = useState('');
   const [transactionId, setTransactionId] = useState('');
@@ -128,7 +129,7 @@ export default function Cart({
   let daysDifference = 0;
   let deliveryFee = 0;
 
-  if (deliveryDate) {
+  if (deliveryDate && hasPhysicalProducts) {
     const today = new Date();
     today.setHours(0,0,0,0);
     const chosenDate = new Date(deliveryDate);
@@ -152,7 +153,32 @@ export default function Cart({
 
   // Charge delivery fee only if there are physical products
   const finalDeliveryFee = hasPhysicalProducts ? deliveryFee : 0;
-  const totalAmount = subTotal + finalDeliveryFee;
+
+  const physicalSubTotal = cartItems
+    .filter(item => item.product.type === 'physical')
+    .reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
+
+  // 10% customs/import tax applied strictly on physical/tangible products
+  const physicalImportTax = hasPhysicalProducts ? (physicalSubTotal * 0.10) : 0;
+
+  const totalAmount = subTotal + finalDeliveryFee + physicalImportTax;
+
+  // Split payment calculations
+  const effectiveIsSplitPayment = hasPhysicalProducts && isSplitPayment;
+  
+  const digitalSubTotal = cartItems
+    .filter(item => item.product.type === 'digital')
+    .reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
+
+  const totalPhysical = physicalSubTotal + finalDeliveryFee + physicalImportTax;
+
+  const amountPaidAdvance = effectiveIsSplitPayment
+    ? digitalSubTotal + (0.50 * totalPhysical)
+    : totalAmount;
+
+  const amountDueOnDelivery = effectiveIsSplitPayment
+    ? 0.50 * totalPhysical
+    : 0;
 
   // Filter out COD if we have ONLY digital items
   const applicableGateways = enabledGateways.filter(gw => {
@@ -217,7 +243,7 @@ export default function Cart({
       return;
     }
 
-    if (!deliveryDate) {
+    if (hasPhysicalProducts && !deliveryDate) {
       setCheckoutError('يرجى اختيار تاريخ التسليم المطلوب لمتابعة الدفع.');
       return;
     }
@@ -326,12 +352,17 @@ export default function Cart({
         gatewayName: selectedGateway?.name || selectedGatewayId
       },
       receiptUrl: receiptBase64 || undefined,
-      deliveryDate: deliveryDate,
+      deliveryDate: deliveryDate || undefined,
       deliveryFee: finalDeliveryFee,
+      import_tax: physicalImportTax,
       status: 'pending', // All new orders are pending verification by Admin
       date: new Date().toISOString(),
       senderName: finalSenderName,
-      transactionId: finalTransactionId
+      transactionId: finalTransactionId,
+      payment_type: effectiveIsSplitPayment ? 'split_50_50' : 'standard',
+      amount_paid_advance: amountPaidAdvance,
+      amount_due_on_delivery: amountDueOnDelivery,
+      payment_status: effectiveIsSplitPayment ? 'partially_paid' : 'unpaid'
     };
 
     setCreatedOrder(newOrder);
@@ -655,6 +686,80 @@ export default function Cart({
                         className="w-full rounded-xl border border-amber-500/20 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 focus:outline-none resize-none"
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* نظام الدفع وتقسيم الفاتورة (للمنتجات الملموسة) */}
+                {hasPhysicalProducts && (
+                  <div className="space-y-3 bg-slate-950/20 border border-amber-500/10 p-4 rounded-xl text-right">
+                    <h3 className="text-sm font-bold text-white border-b border-amber-500/10 pb-1.5 flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-amber-400" />
+                      <span>نظام دفع الفاتورة (Payment Plan)</span>
+                    </h3>
+                    <p className="text-[10px] text-amber-100/60 leading-relaxed">
+                      نوفر لك خيار دفع القيمة الإجمالية بالكامل أو دفع 50% كعربون مقدم والـ 50% المتبقية عند استلام البضائع.
+                    </p>
+                    
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      {/* Option 1: Full Payment */}
+                      <div
+                        className={`flex items-start justify-between rounded-xl border p-3 cursor-pointer transition-all ${
+                          !isSplitPayment
+                            ? 'border-amber-500 bg-amber-500/5 ring-1 ring-amber-500'
+                            : 'border-amber-500/10 bg-slate-950/40 hover:bg-slate-950/85'
+                        }`}
+                        onClick={() => setIsSplitPayment(false)}
+                      >
+                        <div className="flex gap-2">
+                          <input
+                            type="radio"
+                            name="payment_plan"
+                            checked={!isSplitPayment}
+                            onChange={() => setIsSplitPayment(false)}
+                            className="mt-1 h-3.5 w-3.5 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <div className="flex flex-col text-right">
+                            <span className="text-xs font-bold text-slate-100">دفع كامل القيمة 100% مقدماً</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">دفع المبلغ الإجمالي لتسريع الشحن وتجهيز الفواتير</span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-black text-amber-400">{formatPrice(totalAmount)}</span>
+                      </div>
+
+                      {/* Option 2: Split 50/50 */}
+                      <div
+                        className={`flex items-start justify-between rounded-xl border p-3 cursor-pointer transition-all ${
+                          isSplitPayment
+                            ? 'border-amber-500 bg-amber-500/5 ring-1 ring-amber-500'
+                            : 'border-amber-500/10 bg-slate-950/40 hover:bg-slate-950/85'
+                        }`}
+                        onClick={() => setIsSplitPayment(true)}
+                      >
+                        <div className="flex gap-2">
+                          <input
+                            type="radio"
+                            name="payment_plan"
+                            checked={isSplitPayment}
+                            onChange={() => setIsSplitPayment(true)}
+                            className="mt-1 h-3.5 w-3.5 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                          />
+                          <div className="flex flex-col text-right">
+                            <span className="text-xs font-bold text-slate-100">تقسيم الدفع (50% مقدماً / 50% عند الاستلام)</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">دفع نصف قيمة المواد الملموسة بالإضافة للرسوم، والمتبقي نقداً عند الاستلام</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs font-black text-emerald-400">العربون: {formatPrice(amountPaidAdvance)}</span>
+                          <span className="text-[9px] text-amber-500/80 mt-0.5 font-bold">المتبقي: {formatPrice(amountDueOnDelivery)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {hasDigitalProducts && (
+                      <p className="text-[9px] text-emerald-400/80 bg-emerald-950/20 p-2 rounded-lg border border-emerald-900/30">
+                        * يرجى ملاحظة: المنتجات الرقمية/غير الملموسة يتم احتساب قيمتها 100% مقدماً دائماً وتضاف لقيمة العربون.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1049,10 +1154,28 @@ export default function Cart({
                     )}
                   </div>
                 )}
+                {hasPhysicalProducts && physicalImportTax > 0 && (
+                  <div className="flex justify-between text-[11px] text-amber-500/80">
+                    <span>الرسوم الجمركية وضريبة الاستيراد (10% للمواد الملموسة):</span>
+                    <span className="font-bold">+ {formatPrice(physicalImportTax)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold text-slate-300 border-t border-slate-800/60 pt-2">
                   <span>المجموع الكلي:</span>
                   <span className="text-xl text-amber-400 font-black">{formatPrice(totalAmount)}</span>
                 </div>
+                {effectiveIsSplitPayment && (
+                  <div className="mt-2.5 pt-2.5 border-t border-dashed border-zinc-800 space-y-1 text-[11px]">
+                    <div className="flex justify-between text-emerald-400 font-bold">
+                      <span>العربون المطلوب دفعه الآن (50% ملموس + 100% غير ملموس):</span>
+                      <span>{formatPrice(amountPaidAdvance)}</span>
+                    </div>
+                    <div className="flex justify-between text-amber-500 font-bold">
+                      <span>المتبقي المستحق عند الاستلام (50% ملموس):</span>
+                      <span>{formatPrice(amountDueOnDelivery)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {step === 'cart' ? (
