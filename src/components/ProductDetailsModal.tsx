@@ -4,7 +4,9 @@
  */
 
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Product, Order, ProductReview } from '../types';
+import { useCurrency } from '../contexts/CurrencyContext';
 import {
   X,
   Star,
@@ -16,7 +18,10 @@ import {
   AlertCircle,
   Package,
   Zap,
-  ShoppingBag
+  ShoppingBag,
+  ChevronLeft,
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
 
 interface ProductDetailsModalProps {
@@ -25,9 +30,17 @@ interface ProductDetailsModalProps {
   onClose: () => void;
   orders: Order[];
   onAddReview: (productId: string, review: ProductReview) => void;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, options?: { selectedSize?: string; selectedColor?: string; selectedOptions?: Record<string, string> }) => void;
   globalDiscount?: number;
   exchangeRate?: number;
+  isSypEnabled?: boolean;
+  isAdminMode?: boolean;
+  onDeleteProduct?: (productId: string) => void;
+  initialOptions?: { 
+    selectedSize?: string; 
+    selectedColor?: string;
+    selectedOptions?: Record<string, string>;
+  };
 }
 
 export default function ProductDetailsModal({
@@ -38,8 +51,11 @@ export default function ProductDetailsModal({
   onAddReview,
   onAddToCart,
   globalDiscount = 0,
-  exchangeRate = 15000,
+  isAdminMode,
+  onDeleteProduct,
+  initialOptions
 }: ProductDetailsModalProps) {
+  const { formatPrice } = useCurrency();
   const [reviewerName, setReviewerName] = useState('');
   const [reviewerEmail, setReviewerEmail] = useState('');
   const [rating, setRating] = useState(5);
@@ -47,6 +63,20 @@ export default function ProductDetailsModal({
   const [comment, setComment] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [selectedSize, setSelectedSize] = useState(initialOptions?.selectedSize || '');
+  const [sizeError, setSizeError] = useState(false);
+  const [colorError, setColorError] = useState(false);
+  const [selectedColor, setSelectedColor] = useState<string | null>(initialOptions?.selectedColor || null);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(
+    (initialOptions as any)?.selectedOptions || {}
+  );
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const images = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
+
+  const nextImage = () => setCurrentImageIndex((prev) => (prev + 1) % images.length);
+  const prevImage = () => setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
 
   if (!isOpen) return null;
 
@@ -58,9 +88,6 @@ export default function ProductDetailsModal({
   const discountedPrice = hasDiscount
     ? Math.round(product.price * (1 - totalDiscount / 100))
     : product.price;
-
-  const sypPrice = discountedPrice * exchangeRate;
-  const originalSypPrice = product.price * exchangeRate;
 
   // Calculate average rating
   const reviews = product.reviews || [];
@@ -128,8 +155,32 @@ export default function ProductDetailsModal({
 
   const isOutOfStock = product.type === 'physical' && (product.stock === undefined || product.stock <= 0);
 
+  const colorMap: { [key: string]: string } = {
+    "أسود": "#000000",
+    "أبيض": "#FFFFFF",
+    "أحمر": "#FF0000",
+    "أزرق": "#0000FF",
+    "أخضر": "#008000",
+    "كحلي": "#000080",
+    "رمادي": "#808080",
+    "أصفر": "#FFFF00",
+    "برتقالي": "#FFA500",
+    "بنفسجي": "#800080",
+    "وردي": "#FFC0CB",
+    "سماوي": "#87CEEB",
+    "ذهبي": "#FFD700",
+    "فضي": "#C0C0C0"
+  };
+
+  const isColorMandatory = product.type === 'physical' && product.colors && product.colors.length > 0;
+  const isSizeMandatory = product.type === 'physical' && product.sizes && product.sizes.length > 0;
+  
+  const canAddToCart = !isOutOfStock && 
+    (!isColorMandatory || selectedColor) && 
+    (!isSizeMandatory || selectedSize);
+
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" dir="rtl">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 animate-fade-in" dir="rtl">
       <div 
         className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-[#0d0d0d] text-zinc-100 shadow-2xl flex flex-col md:flex-row"
         id={`product-modal-${product.id}`}
@@ -145,12 +196,31 @@ export default function ProductDetailsModal({
         {/* Product Image and Main Stats (Right Side on large screen, Top on Mobile) */}
         <div className="w-full md:w-1/2 p-6 md:p-8 border-b md:border-b-0 md:border-l border-zinc-900 flex flex-col">
           <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800">
-            <img
-              src={product.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80'}
-              alt={product.name}
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={currentImageIndex}
+                src={images[currentImageIndex]}
+                alt={`${product.name} - image ${currentImageIndex + 1}`}
+                className="h-full w-full object-cover"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                referrerPolicy="no-referrer"
+              />
+            </AnimatePresence>
+            
+            {images.length > 1 && (
+              <>
+                <button onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-zinc-950/50 text-white hover:bg-zinc-950/80 transition-colors">
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-zinc-950/50 text-white hover:bg-zinc-950/80 transition-colors">
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </>
+            )}
+
             <div className="absolute top-3 right-3">
               {product.type === 'physical' ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-zinc-950/90 px-2.5 py-1 text-xs font-semibold text-amber-400 border border-amber-500/20 shadow-sm">
@@ -172,21 +242,26 @@ export default function ProductDetailsModal({
             </span>
             <h2 className="text-2xl font-black text-white mt-3 leading-tight">{product.name}</h2>
             
+            {/* Product Specifications */}
+            {product.specifications && (
+              <p className="mt-2 text-xs font-bold text-red-500 bg-red-950/20 border border-red-900/30 px-3 py-1.5 rounded-lg inline-block">
+                ✨ {product.specifications}
+              </p>
+            )}
+            
             {/* Price & Stock info */}
             <div className="mt-4 flex items-center justify-between bg-zinc-900/40 p-4 rounded-xl border border-zinc-900">
               <div>
                 <span className="text-[10px] text-zinc-500 font-bold block">السعر الملكي</span>
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-amber-400">${discountedPrice.toLocaleString()}</span>
+                    <span className="text-2xl font-black text-amber-400">
+                      {formatPrice(discountedPrice)}
+                    </span>
                     {hasDiscount && (
-                      <span className="text-xs text-zinc-500 line-through">${product.price.toLocaleString()}</span>
-                    )}
-                  </div>
-                  <div className="flex items-baseline gap-1.5 text-sm text-amber-500/85 font-black">
-                    <span>{sypPrice.toLocaleString()} ل.س</span>
-                    {hasDiscount && (
-                      <span className="text-xs text-zinc-650 line-through font-medium">{originalSypPrice.toLocaleString()} ل.س</span>
+                      <span className="text-xs text-zinc-500 line-through">
+                        {formatPrice(product.price)}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -214,17 +289,158 @@ export default function ProductDetailsModal({
             <p className="mt-5 text-sm leading-relaxed text-zinc-300 bg-zinc-900/10 p-1 rounded-lg">
               {product.description}
             </p>
+
+            {/* Color selection */}
+            {product.type === 'physical' && (
+              <div className="mt-5 p-4 rounded-xl bg-zinc-900/40 border border-zinc-800">
+                <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 justify-start mb-3">
+                  🎨 اللون المطلوب (إجباري):
+                  <span className="text-amber-400 font-extrabold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{selectedColor || 'لم يتم الاختيار'}</span>
+                </span>
+                {product.colors && product.colors.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 justify-start">
+                    {product.colors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => {
+                          setSelectedColor(color);
+                          setColorError(false);
+                        }}
+                        className={`w-8 h-8 rounded-full border-2 transition-all ${
+                          selectedColor === color 
+                            ? 'border-amber-400 scale-110 shadow-lg shadow-amber-500/20' 
+                            : 'border-zinc-700 hover:border-zinc-500'
+                        }`}
+                        style={{ backgroundColor: colorMap[color] || color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-red-400 font-bold">عذراً، لا تتوفر ألوان لهذا المنتج حالياً.</p>
+                )}
+              </div>
+            )}
+
+            {/* Size selection */}
+            {product.type === 'physical' && product.sizes && product.sizes.length > 0 && (
+              <div className={`mt-5 p-4 rounded-xl border transition-all duration-350 ${
+                sizeError 
+                  ? 'bg-red-500/5 border-red-500/30 ring-1 ring-red-500/20' 
+                  : 'bg-zinc-900/40 border-zinc-800'
+              }`}>
+                <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 justify-start">
+                  <span>{
+                    product.category === 'أحذية' || 
+                    product.category?.toLowerCase().includes('shoes') || 
+                    product.category?.toLowerCase().includes('footwear') 
+                      ? '👟 مقاس الحذاء المطلوب:' 
+                      : '👕 المقاس المطلوب للملابس:'
+                  }</span>
+                  {!selectedSize ? (
+                    <span className="text-amber-500 font-extrabold text-[10px] animate-pulse">(يرجى اختيار مقاسك)</span>
+                  ) : (
+                    <span className="text-amber-400 font-extrabold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{selectedSize}</span>
+                  )}
+                </span>
+                <div className="flex flex-wrap gap-2 justify-start mt-3">
+                  {product.sizes.map((sz) => {
+                    const isSelected = selectedSize === sz;
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSize(sz);
+                          setSizeError(false);
+                        }}
+                        className={`min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-xs font-black transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-zinc-700 hover:text-white'
+                        }`}
+                      >
+                        {sz}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Custom Options Display */}
+            {product.options && product.options.length > 0 && (
+              <div className="space-y-4 mt-5">
+                {product.options.map((opt) => (
+                  <div key={opt.name} className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800">
+                    <span className="text-xs font-bold text-zinc-400 block mb-3">
+                      {opt.name}:
+                      {selectedOptions[opt.name] && (
+                        <span className="mr-2 text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                          {selectedOptions[opt.name]}
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {opt.values.map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setSelectedOptions(prev => ({ ...prev, [opt.name]: val }))}
+                          className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all cursor-pointer border ${
+                            selectedOptions[opt.name] === val
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/10'
+                              : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-zinc-700 hover:text-white'
+                          }`}
+                        >
+                          {val}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Add to Cart Button */}
           <div className="mt-6 pt-6 border-t border-zinc-900">
+            {(sizeError || colorError) && (
+              <div className="mb-4 p-3 bg-red-950/40 border border-red-900/50 rounded-xl flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5 animate-bounce" />
+                <p className="text-red-400 font-bold text-sm leading-relaxed">
+                  {sizeError && "يرجى اختيار المقاس أولاً. "}
+                  {colorError && "يرجى اختيار اللون أولاً. "}
+                </p>
+              </div>
+            )}
             <button
               onClick={() => {
-                onAddToCart(product);
+                let hasError = false;
+                if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+                  setSizeError(true);
+                  hasError = true;
+                } else {
+                  setSizeError(false);
+                }
+                if (product.colors && product.colors.length > 0 && !selectedColor) {
+                  setColorError(true);
+                  hasError = true;
+                } else {
+                  setColorError(false);
+                }
+                if (hasError) return;
+                
+                onAddToCart(product, { 
+                  selectedSize: selectedSize || undefined, 
+                  selectedColor: selectedColor || undefined,
+                  selectedOptions: Object.keys(selectedOptions).length > 0 ? selectedOptions : undefined
+                } as any);
               }}
-              disabled={isOutOfStock}
+              disabled={!canAddToCart}
               className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold transition-all cursor-pointer ${
-                isOutOfStock
+                !canAddToCart
                   ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-850'
                   : 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 hover:from-amber-400 hover:to-amber-500 active:scale-98 shadow-lg shadow-amber-500/10'
               }`}
@@ -232,6 +448,43 @@ export default function ProductDetailsModal({
               <ShoppingBag className="h-5 w-5" />
               <span>{isOutOfStock ? 'نفدت الكمية المتاحة' : 'أضف إلى سلة المشتريات'}</span>
             </button>
+
+            {/* Admin Delete Action - Quick Access */}
+            {isAdminMode && onDeleteProduct && (
+              <div className="mt-4 space-y-2">
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full bg-red-950/20 hover:bg-red-950/40 text-red-500 border border-red-900/30 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                    id="admin-delete-product-trigger"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>حذف هذا المنتج نهائياً (صلاحية مدير)</span>
+                  </button>
+                ) : (
+                  <div className="p-3 bg-red-950/40 border border-red-900/50 rounded-xl space-y-3">
+                    <p className="text-xs text-red-400 font-bold text-center">⚠️ هل أنت متأكد من حذف هذا المنتج نهائياً؟</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          onDeleteProduct(product.id);
+                          setShowDeleteConfirm(false);
+                        }}
+                        className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-lg text-xs cursor-pointer shadow-lg shadow-red-500/10"
+                      >
+                        نعم، احذف نهائياً
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 rounded-lg text-xs cursor-pointer"
+                      >
+                        إلغاء التراجع
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

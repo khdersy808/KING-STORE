@@ -5,6 +5,25 @@
 
 export type ProductType = 'physical' | 'digital';
 
+export interface DeliveryRule {
+  days: number;
+  modifierType: 'discount_percentage' | 'multiplier' | 'fixed_discount';
+  value: number;
+}
+
+export interface DeliverySettings {
+  id: string; // 'global'
+  basePricePerDay: number; // Price per day
+  rules?: DeliveryRule[];
+  // Logistics & Shipping Config (Air vs Sea)
+  airBaseCost?: number;
+  airUrgencyFactor?: number;
+  airWeightVolumeFactor?: number;
+  seaBaseCost?: number;
+  seaDailyDecay?: number;
+  seaMinBaseline?: number;
+}
+
 export interface ProductReview {
   id: string;
   reviewerName: string;
@@ -22,11 +41,18 @@ export interface Product {
   type: ProductType;
   category: string;
   imageUrl: string;
+  images?: string[]; // مصفوفة الصور الجديدة لرفع أكثر من صورة
+  colors?: string[]; // مصفوفة الألوان المتوفرة للمنتج
   stock?: number; // للمنتجات الملموسة
   downloadUrl?: string; // للمنتجات غير الملموسة (رقمية)
   licenseKeys?: string[]; // مفاتيح ترخيص أو أكواد للمنتجات الرقمية
   reviews?: ProductReview[]; // تقييمات وآراء العملاء
-  discountPercentage?: number; // نسبة الخصم الخاصة بالمنتج (0-100)
+  discountPercentage?: number; // نسبة الخصم الخاصة بالمنتجة (0-100)
+  sizes?: string[]; // مقاسات الملابس المتوفرة
+  options?: { name: string; values: string[] }[]; // خيارات إضافية (مثل: السعة، المادة، الخ)
+  specifications?: string; // مواصفات عامة (مثل: هاتف ذكي، فاخر، وذهبي)
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PaymentGatewayField {
@@ -54,6 +80,9 @@ export interface OrderItem {
   price: number;
   quantity: number;
   type: ProductType;
+  selectedSize?: string; // المقاس المختار إن وجد
+  selectedColor?: string; // اللون المختار إن وجد
+  selectedOptions?: Record<string, string>; // الخيارات الأخرى المختارة
 }
 
 export type OrderStatus = 'pending' | 'completed' | 'cancelled';
@@ -73,11 +102,16 @@ export interface Order {
   date: string;
   senderName?: string;
   transactionId?: string;
+  deliveryDate?: string; // ISO string
+  deliveryFee?: number;
 }
 
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedSize?: string; // المقاس المختار
+  selectedColor?: string; // اللون المختار
+  selectedOptions?: Record<string, string>; // الخيارات الأخرى المختارة
 }
 
 export interface User {

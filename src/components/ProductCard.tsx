@@ -7,6 +7,7 @@ import React from 'react';
 import { Product } from '../types';
 import { ShoppingCart, Smartphone, Package, Zap, Star } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface ProductCardProps {
   product: Product;
@@ -14,11 +15,13 @@ interface ProductCardProps {
   onViewDetails: (product: Product) => void;
   globalDiscount?: number;
   exchangeRate?: number;
+  isSypEnabled?: boolean;
   key?: string | number;
 }
 
-export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0, exchangeRate = 15000 }: ProductCardProps) {
+export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0 }: ProductCardProps) {
   const { t } = useLanguage();
+  const { formatPrice } = useCurrency();
   const isPhysical = product.type === 'physical';
   const outOfStock = isPhysical && (product.stock === undefined || product.stock <= 0);
 
@@ -36,21 +39,23 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
     ? Math.round(product.price * (1 - totalDiscount / 100))
     : product.price;
 
-  const sypPrice = discountedPrice * exchangeRate;
-  const originalSypPrice = product.price * exchangeRate;
-
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800/60 bg-[#0d0d0d] hover:border-amber-500/40 transition-all duration-300">
+    <div 
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800/60 bg-[#0d0d0d] hover:border-amber-500/40 transition-all duration-300 [will-change:transform,opacity] [transform:translate3d(0,0,0)]"
+      style={{ contain: 'content', contentVisibility: 'auto' }}
+    >
       
       {/* Product Image Container */}
       <div 
         onClick={() => onViewDetails(product)}
-        className="relative aspect-video w-full overflow-hidden bg-zinc-900 cursor-pointer"
+        className="relative aspect-video w-full overflow-hidden bg-zinc-900 cursor-pointer [backface-visibility:hidden] [transform:translate3d(0,0,0)]"
       >
         <img
           src={product.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80'}
           alt={product.name}
           referrerPolicy="no-referrer"
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -82,7 +87,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
 
         {/* Rating Badge */}
         {averageRating && (
-          <div className="absolute top-3 left-3 flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-zinc-950/90 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-sm backdrop-blur-sm">
+          <div className="absolute top-3 left-3 flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-zinc-950/90 px-2 py-0.5 rounded-full border border-amber-500/20 shadow-sm ">
             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
             <span>{averageRating}</span>
             <span className="text-[9px] text-zinc-500 font-normal">({reviews.length})</span>
@@ -90,7 +95,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
         )}
 
         {/* Category Badge */}
-        <span className="absolute bottom-3 left-3 rounded-md bg-zinc-950/85 backdrop-blur-md px-2 py-0.5 text-[11px] font-bold text-amber-400 border border-zinc-800 uppercase">
+        <span className="absolute bottom-3 left-3 rounded-md bg-zinc-950/85 px-2 py-0.5 text-[11px] font-bold text-amber-400 border border-zinc-800 uppercase">
           {product.category}
         </span>
       </div>
@@ -116,19 +121,19 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
             <div className="flex flex-col gap-0.5">
               <div className="flex items-baseline gap-1.5 flex-wrap">
                 <span className="text-xl font-black text-amber-400">
-                  ${discountedPrice.toLocaleString()}
+                  {formatPrice(discountedPrice)}
                 </span>
                 {hasDiscount && (
                   <span className="text-xs text-zinc-500 line-through">
-                    ${product.price.toLocaleString()}
+                    {formatPrice(product.price)}
                   </span>
                 )}
               </div>
               <div className="flex items-baseline gap-1 flex-wrap text-xs text-amber-500/85 font-black">
-                <span>{sypPrice.toLocaleString()} ل.س</span>
+
                 {hasDiscount && (
                   <span className="text-[10px] text-zinc-650 line-through font-medium">
-                    {originalSypPrice.toLocaleString()} ل.س
+
                   </span>
                 )}
               </div>
@@ -157,7 +162,7 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
 
         {/* Add to Cart Button */}
         <button
-          onClick={() => onAddToCart(product)}
+          onClick={() => onViewDetails(product)}
           disabled={outOfStock}
           className={`mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
             outOfStock
@@ -166,8 +171,10 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
           }`}
           id={`add-to-cart-${product.id}`}
         >
-          <ShoppingCart className="h-4 w-4" />
-          <span>{outOfStock ? t('soldOut') : t('addToCartLong')}</span>
+          <>
+            <ShoppingCart className="h-4 w-4" />
+            <span>{outOfStock ? t('soldOut') : t('addToCartLong')}</span>
+          </>
         </button>
       </div>
     </div>

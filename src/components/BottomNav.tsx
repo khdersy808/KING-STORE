@@ -1,61 +1,99 @@
 import React from 'react';
-import { Home, Users, MessageSquare, ShoppingCart, Settings } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Home, ShoppingBag, Menu, LayoutDashboard } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   cartCount: number;
+  onOpenMenu: () => void;
   isAdmin?: boolean;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentTab, setCurrentTab, cartCount, isAdmin = false }) => {
+export function BottomNav({ currentTab, setCurrentTab, cartCount, onOpenMenu, isAdmin }: BottomNavProps) {
   const { t } = useLanguage();
+
   const tabs = [
-    { id: 'home', label: t('navHome'), icon: Home },
-    { id: 'messaging', label: t('navChat'), icon: MessageSquare },
-    { id: 'cart', label: t('navCart'), icon: ShoppingCart },
+    { id: 'home', icon: Home, label: t('navHome') },
+    { id: 'cart', icon: ShoppingBag, label: t('navCart'), badge: cartCount },
+    { id: isAdmin ? 'admin' : 'menu', icon: isAdmin ? LayoutDashboard : Menu, label: isAdmin ? t('navAdmin') : t('navMore') },
   ];
 
-  if (isAdmin) {
-    tabs.push({ id: 'admin', label: t('navAdmin'), icon: Settings });
-  }
-
   return (
-    <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] w-[92%] max-w-lg rounded-[2rem] border border-white/10 bg-slate-900/90 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} items-center animate-fade-in transition-all duration-500`}>
-      {tabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = currentTab === tab.id;
+    <div className="fixed bottom-0 left-0 right-0 z-[1000] px-6 pb-6 md:hidden pointer-events-none [will-change:transform] [transform:translate3d(0,0,0)]">
+      <div className="relative mx-auto max-w-sm bg-zinc-950/95 backdrop-blur-3xl border border-white/5 rounded-[2.5rem] shadow-[0_-10px_50px_rgba(0,0,0,0.5)] flex items-center justify-around h-16 px-2 overflow-hidden pointer-events-auto [backface-visibility:hidden]">
         
-        return (
-          <button
-            key={tab.id}
-            onClick={() => setCurrentTab(tab.id)}
-            className={`group relative flex flex-col items-center justify-center gap-1 w-full h-16 transition-all duration-300 cursor-pointer ${
-              isActive ? 'text-amber-400 scale-105' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <div className={`p-2.5 rounded-2xl transition-all duration-300 ${isActive ? 'bg-amber-400/20 shadow-lg shadow-amber-400/10' : 'group-hover:bg-white/5'}`}>
-              <Icon className={`h-6 w-6 transition-all duration-300 ${isActive ? 'stroke-[2.5]' : 'stroke-2'}`} />
-            </div>
-            <span className={`text-[10px] font-black tracking-tight transition-all duration-300 ${isActive ? 'text-amber-400 opacity-100' : 'text-amber-500/70 opacity-70'}`}>
-              {tab.label}
-              {tab.id === 'cart' && cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-slate-950 shadow-lg shadow-amber-500/30 animate-bounce">
-                  {cartCount}
-                </span>
+        {/* Tab Icons */}
+        {tabs.map((tab) => {
+          const isActive = currentTab === tab.id;
+          const Icon = tab.icon;
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.id === 'admin') {
+                  setCurrentTab('admin');
+                } else if (tab.id === 'menu') {
+                  onOpenMenu();
+                } else {
+                  setCurrentTab(tab.id);
+                }
+              }}
+              className="relative z-10 flex flex-col items-center justify-center w-full h-full cursor-pointer group select-none [backface-visibility:hidden] [transform:translate3d(0,0,0)]"
+              style={{ contentVisibility: 'auto' }}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="active-blob"
+                  className="absolute inset-1 bg-amber-500/20 rounded-2xl [will-change:transform,opacity]"
+                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  style={{ backfaceVisibility: 'hidden' }}
+                />
               )}
-            </span>
-            
-            {/* Active Indicator: Glowing Golden Dot */}
-            <div 
-              className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.9)] transition-all duration-500 ease-in-out ${
-                isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-2 scale-0'
-              }`} 
-            />
-          </button>
-        );
-      })}
+              
+              <motion.div
+                animate={{ 
+                  scale: isActive ? 1.05 : 1
+                }}
+                transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                className="relative flex items-center justify-center [will-change:transform]"
+              >
+                <Icon 
+                  className={`h-5 w-5 transition-all duration-300 ${
+                    isActive ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'text-zinc-500 group-hover:text-zinc-300'
+                  }`} 
+                />
+                
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                    className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-black text-slate-950 ring-1 ring-zinc-950 shadow-lg"
+                  >
+                    {tab.badge}
+                  </motion.span>
+                )}
+              </motion.div>
+              
+              <motion.span 
+                animate={{ 
+                  opacity: isActive ? 1 : 0.4,
+                  scale: isActive ? 1 : 0.95
+                }}
+                transition={{ duration: 0.15, ease: "linear" }}
+                className={`text-[8px] font-black uppercase tracking-widest mt-1 transition-colors duration-300 ${
+                  isActive ? 'text-amber-400' : 'text-zinc-500'
+                }`}
+              >
+                {tab.label}
+              </motion.span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
-};
+}

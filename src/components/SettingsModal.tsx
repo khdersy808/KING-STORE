@@ -222,7 +222,7 @@ export default function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 flex items-center justify-center p-4" dir="rtl">
       <div 
         className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-md w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
         onClick={(e) => e.stopPropagation()}

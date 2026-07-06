@@ -4,9 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import { CartItem, PaymentGateway, Order, OrderItem, Product, User } from '../types';
+import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySettings } from '../types';
 import PaymentReceipt from './PaymentReceipt';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import {
   X,
   Minus,
@@ -33,15 +34,20 @@ interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
-  onUpdateQuantity: (productId: string, quantity: number) => void;
-  onRemoveItem: (productId: string) => void;
+  onUpdateQuantity: (index: number, quantity: number) => void;
+  onRemoveItem: (index: number) => void;
+  onUpdateItemSize: (index: number, newSize: string) => void;
+  onUpdateItemColor: (index: number, newColor: string) => void;
   onClearCart: () => void;
   enabledGateways: PaymentGateway[];
   onPlaceOrder: (order: Order) => void;
   currentUser: User | null;
   onOpenAuth: () => void;
+  onEditItem?: (item: CartItem) => void;
   globalDiscount?: number;
   exchangeRate?: number;
+  isSypEnabled?: boolean;
+  deliverySettings: DeliverySettings;
 }
 
 export default function Cart({
@@ -50,25 +56,31 @@ export default function Cart({
   cartItems,
   onUpdateQuantity,
   onRemoveItem,
+  onUpdateItemSize,
+  onUpdateItemColor,
   onClearCart,
   enabledGateways,
   onPlaceOrder,
   currentUser,
   onOpenAuth,
+  onEditItem,
   globalDiscount = 0,
-  exchangeRate = 15000,
+  deliverySettings
 }: CartProps) {
   const { t, language } = useLanguage();
+  const { isSypEnabled, exchangeRate, formatPrice } = useCurrency();
   // Helper to get active product price with global and product-specific discounts
-  const getProductPrice = (product: Product) => {
-    const pSpecific = product.discountPercentage || 0;
+  const getCartItemPrice = (item: CartItem) => {
+    const pSpecific = item.product.discountPercentage || 0;
     const gDiscount = globalDiscount || 0;
     const totalDiscount = Math.max(gDiscount, pSpecific);
     
+    let basePrice = item.product.price;
     if (totalDiscount > 0) {
-      return Math.round(product.price * (1 - totalDiscount / 100));
+      basePrice = Math.round(basePrice * (1 - totalDiscount / 100));
     }
-    return product.price;
+    
+    return basePrice;
   };
 
   // Checkout states
@@ -78,6 +90,7 @@ export default function Cart({
   const [customerPhone, setCustomerPhone] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
   const [gatewayFieldValues, setGatewayFieldValues] = useState<Record<string, string>>({});
   const [senderName, setSenderName] = useState('');
   const [transactionId, setTransactionId] = useState('');
@@ -108,9 +121,38 @@ export default function Cart({
 
   if (!isOpen) return null;
 
-  const totalAmount = cartItems.reduce((acc, item) => acc + getProductPrice(item.product) * item.quantity, 0);
+  const subTotal = cartItems.reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
   const hasPhysicalProducts = cartItems.some(item => item.product.type === 'physical');
   const hasDigitalProducts = cartItems.some(item => item.product.type === 'digital');
+
+  let daysDifference = 0;
+  let deliveryFee = 0;
+
+  if (deliveryDate) {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const chosenDate = new Date(deliveryDate);
+    chosenDate.setHours(0,0,0,0);
+    daysDifference = Math.max(0, Math.floor((chosenDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+    
+    const airBase = deliverySettings?.airBaseCost ?? 40;
+    const airUrgency = deliverySettings?.airUrgencyFactor ?? 8;
+    const airWeight = deliverySettings?.airWeightVolumeFactor ?? 1.5;
+    const seaBase = deliverySettings?.seaBaseCost ?? 15;
+    const seaDecay = deliverySettings?.seaDailyDecay ?? 0.5;
+    const seaMin = deliverySettings?.seaMinBaseline ?? 5;
+
+    // 1-4 days: Air Freight. 5+ days: Sea Freight
+    if (daysDifference <= 4) {
+      deliveryFee = airBase + (5 - Math.max(1, daysDifference)) * airUrgency * airWeight;
+    } else {
+      deliveryFee = Math.max(seaMin, seaBase - (daysDifference - 5) * seaDecay);
+    }
+  }
+
+  // Charge delivery fee only if there are physical products
+  const finalDeliveryFee = hasPhysicalProducts ? deliveryFee : 0;
+  const totalAmount = subTotal + finalDeliveryFee;
 
   // Filter out COD if we have ONLY digital items
   const applicableGateways = enabledGateways.filter(gw => {
@@ -175,6 +217,11 @@ export default function Cart({
       return;
     }
 
+    if (!deliveryDate) {
+      setCheckoutError('يرجى اختيار تاريخ التسليم المطلوب لمتابعة الدفع.');
+      return;
+    }
+
     if (hasPhysicalProducts && !shippingAddress.trim()) {
       setCheckoutError('يرجى كتابة عنوان الشحن والتوصيل للمنتجات الملموسة.');
       return;
@@ -236,9 +283,12 @@ export default function Cart({
     const orderItems: OrderItem[] = cartItems.map(item => ({
       productId: item.product.id,
       productName: item.product.name,
-      price: getProductPrice(item.product),
+      price: getCartItemPrice(item),
       quantity: item.quantity,
-      type: item.product.type
+      type: item.product.type,
+      selectedSize: item.selectedSize,
+      selectedColor: item.selectedColor,
+      selectedOptions: item.selectedOptions
     }));
 
     const finalSenderName = selectedGatewayId === 'mtn_cash' 
@@ -276,6 +326,8 @@ export default function Cart({
         gatewayName: selectedGateway?.name || selectedGatewayId
       },
       receiptUrl: receiptBase64 || undefined,
+      deliveryDate: deliveryDate,
+      deliveryFee: finalDeliveryFee,
       status: 'pending', // All new orders are pending verification by Admin
       date: new Date().toISOString(),
       senderName: finalSenderName,
@@ -310,7 +362,7 @@ export default function Cart({
 
   return (
     <div className="fixed inset-0 z-[10001] overflow-hidden" aria-modal="true" role="dialog" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-950/80 transition-opacity" onClick={onClose} />
 
       <div className="absolute inset-y-0 left-0 flex max-w-full pr-0 md:pr-10">
         <div className="w-screen max-w-lg transform bg-[#0F172AFF] text-white shadow-2xl transition-all flex flex-col h-full rounded-r-2xl border-r border-amber-500/20">
@@ -338,8 +390,8 @@ export default function Cart({
               <>
                 {cartItems.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center py-12">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10 text-amber-400 mb-4 ring-1 ring-amber-500/20">
-                      <ShoppingBag className="h-8 w-8 animate-pulse" />
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600/20 text-blue-400 mb-4 ring-1 ring-blue-500/30 shadow-lg shadow-blue-500/10">
+                      <ShoppingBag className="h-8 w-8 animate-pulse text-blue-500" />
                     </div>
                     <h3 className="text-base font-bold text-slate-100">{t('emptyCartTitle')}</h3>
                     <p className="mt-1 text-xs text-amber-100/60 max-w-xs leading-relaxed">
@@ -366,11 +418,12 @@ export default function Cart({
                       </div>
                     )}
 
-                    {cartItems.map((item) => {
+                    {cartItems.map((item, index) => {
                       const maxStock = item.product.stock || 99;
+                      const itemUniqueId = `${item.product.id}-${item.selectedSize || 'default'}-${item.selectedColor || 'default'}-${JSON.stringify(item.selectedOptions || {})}-${index}`;
                       return (
                         <div
-                          key={item.product.id}
+                          key={itemUniqueId}
                           className="flex items-center gap-4 rounded-xl border border-amber-500/10 p-4 hover:border-amber-500/35 transition-all duration-300 bg-slate-950/40 hover:bg-slate-950/80 shadow-inner group"
                         >
                           <img
@@ -383,61 +436,107 @@ export default function Cart({
                             <h4 className="text-sm font-bold text-slate-100 truncate group-hover:text-amber-200 transition-colors">
                               {item.product.name}
                             </h4>
-                            <div className="flex flex-col mt-0.5">
-                              <span className="text-xs text-amber-400 font-extrabold block">
-                                ${getProductPrice(item.product).toLocaleString()}
-                                {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
-                                  <span className="text-[10px] text-zinc-500 line-through mr-1.5">${item.product.price.toLocaleString()}</span>
-                                )}
+                            
+                            {/* Product Specifications (Enhanced Red highlight) */}
+                            {item.product.specifications && (
+                              <div className="bg-red-50 border-r-4 border-red-500 px-3 py-1.5 rounded my-2 shadow-sm">
+                                <p className="text-[10px] font-black text-red-600 text-right leading-tight uppercase tracking-tight">
+                                  🔥 {item.product.specifications}
+                                </p>
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {item.selectedSize && (
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 flex flex-col">
+                                  <span className="text-[8px] text-zinc-500 font-bold uppercase">المقاس</span>
+                                  <span className="text-[10px] font-black text-white">{item.selectedSize}</span>
+                                </div>
+                              )}
+                              
+                              {item.selectedColor && (
+                                <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1 flex items-center gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="text-[8px] text-zinc-500 font-bold uppercase">اللون</span>
+                                    <span className="text-[10px] font-black text-white">{item.selectedColor}</span>
+                                  </div>
+                                  <div 
+                                    className="w-4 h-4 rounded-full border border-white/20 shadow-inner" 
+                                    style={{ backgroundColor: item.selectedColor }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Custom selected options display */}
+                            {item.selectedOptions && Object.entries(item.selectedOptions).length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {Object.entries(item.selectedOptions).map(([key, value]) => (
+                                  <div key={key} className="bg-zinc-900/50 border border-zinc-800/50 rounded-md px-2 py-0.5">
+                                    <span className="text-[9px] font-bold text-zinc-400">{key}: {value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-3">
+                              <button
+                                onClick={() => onEditItem?.(item)}
+                                className="w-full py-2 rounded-xl bg-amber-500/5 border border-amber-500/20 text-amber-500 text-[11px] font-black hover:bg-amber-500 hover:text-slate-950 transition-all flex items-center justify-center gap-2"
+                              >
+                                {t('editDetails')}
+                              </button>
+                            </div>
+
+                            <div className="flex flex-col mt-2">
+                              <span className="text-2xl font-black text-red-500 drop-shadow-sm filter saturate-150 transform -rotate-1 block leading-none">
+                                {formatPrice(getCartItemPrice(item))}
                               </span>
-                              <span className="text-[10px] text-amber-500/85 font-black block">
-                                {(getProductPrice(item.product) * exchangeRate).toLocaleString()} ل.س
-                                {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
-                                  <span className="text-[9px] text-zinc-650 line-through font-normal mr-1.5">{(item.product.price * exchangeRate).toLocaleString()} ل.س</span>
-                                )}
-                              </span>
+                              {(globalDiscount > 0 || (item.product.discountPercentage && item.product.discountPercentage > 0)) && (
+                                <span className="text-[10px] text-zinc-650 line-through font-bold mt-1">
+                                  {formatPrice(item.product.price)}
+                                </span>
+                              )}
                             </div>
                             <span className="text-[10px] text-amber-200/50 font-medium block">
                               {item.product.type === 'physical' ? '📦 منتج ملموس' : '⚡ تسليم رقمي'}
                             </span>
                           </div>
 
-                          <div className="flex flex-col items-end gap-2">
-                            {/* Quantity Adjusters */}
-                            <div className="flex items-center gap-1 rounded-lg border border-amber-500/20 bg-slate-950 p-1">
+                        {/* Quantity & Delete */}
+                        <div className="flex flex-col items-end justify-between gap-2">
+                          <button
+                            onClick={() => onRemoveItem(index)}
+                            className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          
+                          {item.product.type === 'physical' ? (
+                            <div className="flex items-center gap-2 bg-slate-900 border border-zinc-800 rounded-lg p-0.5">
                               <button
-                                onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
-                                className="p-1 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 rounded transition-colors"
-                                id={`qty-dec-${item.product.id}`}
+                                onClick={() => onUpdateQuantity(index, item.quantity - 1)}
+                                className="p-1 text-slate-400 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-400"
+                                disabled={item.quantity <= 1}
                               >
                                 <Minus className="h-3 w-3" />
                               </button>
-                              <span className="w-6 text-center text-xs font-bold text-white font-mono">{item.quantity}</span>
+                              <span className="text-xs font-black text-white min-w-[1.2rem] text-center font-mono">
+                                {item.quantity}
+                              </span>
                               <button
-                                onClick={() => {
-                                  if (item.product.type !== 'physical' || item.quantity < maxStock) {
-                                    onUpdateQuantity(item.product.id, item.quantity + 1);
-                                  }
-                                }}
-                                disabled={item.product.type === 'physical' && item.quantity >= maxStock}
-                                className="p-1 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 rounded disabled:opacity-30 transition-colors"
-                                id={`qty-inc-${item.product.id}`}
+                                onClick={() => onUpdateQuantity(index, item.quantity + 1)}
+                                className="p-1 text-slate-400 hover:text-amber-400 disabled:opacity-30 disabled:hover:text-slate-400"
+                                disabled={item.product.stock !== undefined && item.product.stock !== null && item.quantity >= item.product.stock}
                               >
                                 <Plus className="h-3 w-3" />
                               </button>
                             </div>
-
-                            {/* Remove button */}
-                            <button
-                              onClick={() => onRemoveItem(item.product.id)}
-                              className="text-slate-400 hover:text-rose-400 p-1 transition-colors"
-                              title={t('removeFromCart')}
-                              id={`remove-item-${item.product.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          ) : (
+                            <span className="text-[10px] font-black text-slate-400 bg-slate-900 px-2 py-1 rounded-md border border-zinc-800">الكمية: 1</span>
+                          )}
                         </div>
+                      </div>
                       );
                     })}
                   </div>
@@ -468,7 +567,7 @@ export default function Cart({
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-amber-200/70 mb-1">{t('email')} *</label>
                       <input
@@ -490,6 +589,50 @@ export default function Cart({
                         onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full rounded-xl border border-amber-500/20 bg-slate-950 p-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 focus:outline-none"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-200/70 mb-1">تاريخ التسليم المطلوب *</label>
+                      <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().split('T')[0]}
+                        value={deliveryDate}
+                        onChange={(e) => setDeliveryDate(e.target.value)}
+                        className={`w-full rounded-xl border p-3 text-xs text-white focus:ring-1 focus:outline-none ${
+                          !deliveryDate 
+                            ? 'border-red-500/40 bg-red-950/10 focus:border-red-400 focus:ring-red-400/30' 
+                            : 'border-amber-500/20 bg-slate-950 focus:border-amber-400 focus:ring-amber-400/30'
+                        }`}
+                      />
+                      {deliveryDate ? (
+                        <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-slate-900/80 space-y-2">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-slate-400">وسيلة النقل والشحن:</span>
+                            <span className="font-black text-amber-400 flex items-center gap-1">
+                              {daysDifference <= 4 ? (
+                                <><span>✈️ شحن جوي سريع</span></>
+                              ) : (
+                                <><span>🚢 شحن بحري اقتصادي</span></>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-slate-400">المدة الزمنية للتسليم:</span>
+                            <span className="font-mono font-black text-white">{daysDifference} يوم</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] border-t border-slate-800 pt-2">
+                            <span className="text-slate-400">تكلفة خدمة التوصيل والشحن الدولي:</span>
+                            <span className="font-mono font-black text-emerald-400">
+                              ${finalDeliveryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-red-400 mt-2 font-black animate-pulse flex items-center gap-1">
+                          <span>⚠️</span>
+                          <span>الرجاء اختيار تاريخ التسليم لحساب تكلفة الشحن والمتابعة</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -884,11 +1027,31 @@ export default function Cart({
           {/* Footer of Drawer (Cart checkout summary) */}
           {step !== 'success' && cartItems.length > 0 && (
             <div className="border-t border-amber-500/10 p-6 bg-slate-950/40 pb-28 md:pb-8">
-              <div className="flex items-center justify-between text-base font-bold text-slate-300 mb-4">
-                <span>المجموع الكلي:</span>
-                <div className="flex flex-col items-end">
-                  <span className="text-xl text-amber-400 font-black">${totalAmount.toLocaleString()}</span>
-                  <span className="text-xs text-amber-500/85 font-black">{(totalAmount * exchangeRate).toLocaleString()} ل.س</span>
+              {checkoutError && step === 'cart' && (
+                <div className="p-3 bg-red-950/20 text-red-400 border border-red-950/40 rounded-xl text-xs flex items-center gap-2 mb-3">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{checkoutError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5 mb-4 text-xs font-semibold text-slate-400">
+                <div className="flex justify-between">
+                  <span>قيمة المنتجات:</span>
+                  <span className="text-slate-200">{formatPrice(subTotal)}</span>
+                </div>
+                {hasPhysicalProducts && (
+                  <div className="flex justify-between">
+                    <span>تكلفة خدمة التوصيل والشحن الدولي:</span>
+                    {deliveryDate ? (
+                      <span className="text-amber-400 font-bold">+ {formatPrice(finalDeliveryFee)}</span>
+                    ) : (
+                      <span className="text-red-400 text-[10px] animate-pulse">⚠️ بانتظار تحديد التاريخ</span>
+                    )}
+                  </div>
+                )}
+                <div className="flex justify-between text-base font-bold text-slate-300 border-t border-slate-800/60 pt-2">
+                  <span>المجموع الكلي:</span>
+                  <span className="text-xl text-amber-400 font-black">{formatPrice(totalAmount)}</span>
                 </div>
               </div>
 
@@ -908,8 +1071,22 @@ export default function Cart({
                 ) : (
                   <button
                     onClick={() => {
+                      // Check if any cart item has sizes available but no selectedSize
+                      const missingSizeItem = cartItems.find(
+                        (item) => item.product.sizes && item.product.sizes.length > 0 && !item.selectedSize
+                      );
+                      if (missingSizeItem) {
+                        const isShoes = missingSizeItem.product.category === 'أحذية' || 
+                                        missingSizeItem.product.category?.toLowerCase().includes('shoes') || 
+                                        missingSizeItem.product.category?.toLowerCase().includes('footwear');
+                        setCheckoutError(`⚠️ يرجى اختيار المقاس المطلوب لـ "${missingSizeItem.product.name}" أولاً قبل إتمام عملية الدفع!`);
+                        setTimeout(() => setCheckoutError(''), 5000);
+                        return;
+                      }
+
                       if (applicableGateways.length > 0) {
                         setStep('checkout');
+                        setCheckoutError('');
                       } else {
                         setCheckoutError('يرجى تفعيل طريقة دفع واحدة على الأقل في حساب الآدمن.');
                         setTimeout(() => setCheckoutError(''), 4000);
@@ -948,7 +1125,7 @@ export default function Cart({
       </div>
 
       {zoomedQrUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md transition-opacity" onClick={() => setZoomedQrUrl(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-4 transition-opacity" onClick={() => setZoomedQrUrl(null)}>
           <div className="relative max-w-lg w-full bg-[#0F172AFF] border border-amber-500/20 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4 text-center text-right" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"

@@ -5,8 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon } from '../types';
+import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, User, DeliverySettings } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import CustomSelect from './CustomSelect';
+import AIImageLab from './AIImageLab';
 import {
   BarChart,
   Bar,
@@ -62,7 +64,6 @@ import {
   Percent,
   Link as LinkIcon
 } from 'lucide-react';
-import { User } from '../types';
 import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
@@ -84,9 +85,10 @@ interface AdminPanelProps {
   onAddCategory: (categoryName: string) => Promise<void>;
   onDeleteCategory: (categoryName: string) => Promise<void>;
   onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
+  onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab';
 
 export default function AdminPanel({
   products,
@@ -104,7 +106,8 @@ export default function AdminPanel({
   categories,
   onAddCategory,
   onDeleteCategory,
-  onUpdateCategory
+  onUpdateCategory,
+  onShowToast
 }: AdminPanelProps) {
   const { t, texts, dir } = useLanguage();
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
@@ -137,29 +140,46 @@ export default function AdminPanel({
   const [formType, setFormType] = useState<ProductType>('physical');
   const [formCategory, setFormCategory] = useState(() => categories[0] || 'إلكترونيات');
   const [formImageUrl, setFormImageUrl] = useState('');
+  const [formImages, setFormImages] = useState<string[]>([]);
+  const [formColors, setFormColors] = useState<string[]>([]);
   const [formImageFileName, setFormImageFileName] = useState('');
   const [formStock, setFormStock] = useState(10);
   const [formDownloadUrl, setFormDownloadUrl] = useState('');
   const [formLicenseKeys, setFormLicenseKeys] = useState('');
+  const [formSizes, setFormSizes] = useState('');
+  const [formSpecifications, setFormSpecifications] = useState('');
+  const [formOptions, setFormOptions] = useState<{ name: string; values: string }[]>([]);
   const [productFormError, setProductFormError] = useState('');
 
   const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setProductFormError('حجم الصورة كبير جداً. الحد الأقصى 2 ميجابايت.');
-      return;
+    const newImages: string[] = [];
+    let error = '';
+
+    Array.from(files).forEach((file) => {
+      if (file.size > 2 * 1024 * 1024) {
+        error = 'حجم إحدى الصور كبير جداً. الحد الأقصى 2 ميجابايت لكل صورة.';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        newImages.push(reader.result as string);
+        if (newImages.length === files.length) {
+          setFormImages((prev) => [...prev, ...newImages]);
+          if (!formImageUrl) setFormImageUrl(newImages[0]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (error) {
+      setProductFormError(error);
+    } else {
+      setProductFormError('');
     }
-    
-    setFormImageFileName(file.name);
-    setProductFormError('');
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormImageUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
   // AI Smart Product Creator states
@@ -288,6 +308,54 @@ export default function AdminPanel({
   const [selectedProductIdToAdd, setSelectedProductIdToAdd] = useState('');
   const [isUpdatingDiscountsSection, setIsUpdatingDiscountsSection] = useState(false);
   const [discountsSectionSuccess, setDiscountsSectionSuccess] = useState('');
+
+  // Delivery Time Settings States
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
+    id: 'global_settings',
+    basePricePerDay: 5,
+    rules: [],
+    airBaseCost: 40,
+    airUrgencyFactor: 8,
+    airWeightVolumeFactor: 1.5,
+    seaBaseCost: 15,
+    seaDailyDecay: 0.5,
+    seaMinBaseline: 5
+  });
+  const [newRuleDays, setNewRuleDays] = useState<number>(10);
+  const [newRuleType, setNewRuleType] = useState<'discount_percentage' | 'multiplier' | 'fixed_discount'>('discount_percentage');
+  const [newRuleValue, setNewRuleValue] = useState<number>(10);
+  const [deliverySavedSuccess, setDeliverySavedSuccess] = useState('');
+
+  // Admin Testing Simulator State
+  const [testDays, setTestDays] = useState<number>(3);
+
+  // Synchronize Delivery Settings from Firestore
+  useEffect(() => {
+    try {
+      const docRef = doc(db, 'delivery_config', 'global_settings');
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setDeliverySettings({ 
+            id: docSnap.id, 
+            basePricePerDay: data.basePricePerDay ?? 5, 
+            rules: data.rules ?? [],
+            airBaseCost: data.airBaseCost ?? 40,
+            airUrgencyFactor: data.airUrgencyFactor ?? 8,
+            airWeightVolumeFactor: data.airWeightVolumeFactor ?? 1.5,
+            seaBaseCost: data.seaBaseCost ?? 15,
+            seaDailyDecay: data.seaDailyDecay ?? 0.5,
+            seaMinBaseline: data.seaMinBaseline ?? 5
+          } as DeliverySettings);
+        }
+      }, (error) => {
+        console.warn("Error loading delivery settings:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase delivery settings sync not active.", e);
+    }
+  }, []);
 
   // Synchronize Coupons from Firestore
   useEffect(() => {
@@ -625,9 +693,14 @@ export default function AdminPanel({
     setFormType('physical');
     setFormCategory(categories[0] || 'إلكترونيات');
     setFormImageUrl('');
+    setFormImages([]);
+    setFormColors([]);
     setFormStock(10);
     setFormDownloadUrl('');
     setFormLicenseKeys('');
+    setFormSizes('');
+    setFormSpecifications('');
+    setFormOptions([]);
     setProductFormError('');
     setEditingProduct(null);
     setIsAddingNew(false);
@@ -667,8 +740,22 @@ export default function AdminPanel({
       else if (aiAspectRatio === '4:3') { width = 800; height = 600; }
       else if (aiAspectRatio === '3:4') { width = 600; height = 800; }
 
-      // 1. Translate the prompt to English via backend
-      let englishPromptToUse = promptToUse;
+      // 2. Sanitize user input before sending to AI
+      let sanitizedPrompt = promptToUse;
+      const clothingKeywords = ['رجالي', 'نسائي', 'شبابي', 'بناتي', 'أطفال'];
+      const hasClothingKeyword = clothingKeywords.some(kw => sanitizedPrompt.includes(kw));
+      
+      if (hasClothingKeyword) {
+        sanitizedPrompt = sanitizedPrompt
+          .replace(/رجالي/g, "Men's style apparel piece, flat lay clothing item")
+          .replace(/نسائي/g, "Women's style apparel piece, flat lay clothing item")
+          .replace(/شبابي/g, "Youth style apparel piece, flat lay clothing item")
+          .replace(/بناتي/g, "Girls style apparel piece, flat lay clothing item")
+          .replace(/أطفال/g, "Kids style apparel piece, flat lay clothing item");
+      }
+
+      // 3. Translate the sanitized prompt to English via backend
+      let englishPromptToUse = sanitizedPrompt;
       try {
         const token = await auth.currentUser?.getIdToken(true);
         const transRes = await fetch('/api/ai/translate-prompt', {
@@ -677,7 +764,7 @@ export default function AdminPanel({
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
           },
-          body: JSON.stringify({ prompt: promptToUse })
+          body: JSON.stringify({ prompt: sanitizedPrompt })
         });
         const transData = await transRes.json();
         if (transData.success && transData.translatedPrompt) {
@@ -687,7 +774,15 @@ export default function AdminPanel({
         console.warn('Translation failed, using original prompt');
       }
 
-      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(englishPromptToUse)}?width=${width}&height=${height}&nologo=true`;
+      // 4. Enforce strict Negative Prompt and Flat Lay style
+      const engineeredPrompt = `
+Subject: ${englishPromptToUse}.
+Style: Flat lay product photography or invisible mannequin. Isolated product photography only.
+Strictly NO humans, NO male or female models, NO faces, NO bodies.
+Lighting/Background: Pure studio white background or luxurious marble grey background, 8k resolution, highly detailed, studio lighting, commercial e-commerce product photography.
+      `.trim();
+
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(engineeredPrompt)}?width=${width}&height=${height}&nologo=true`;
       
       await new Promise((resolve, reject) => {
         const img = new Image();
@@ -785,10 +880,40 @@ export default function AdminPanel({
     setFormStock(product.stock || 0);
     setFormDownloadUrl(product.downloadUrl || '');
     setFormLicenseKeys(product.licenseKeys?.join(', ') || '');
+    setFormSizes(product.sizes?.join(', ') || '');
+    setFormSpecifications(product.specifications || '');
+    setFormColors(product.colors || []);
+    setFormOptions(product.options?.map(o => ({ name: o.name, values: o.values.join(', ') })) || []);
+  };
+
+  // Handle updating product
+  const handleUpdateProduct = async (product: Product) => {
+    try {
+      const productRef = doc(db, 'products', product.id);
+      await updateDoc(productRef, {
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        type: product.type,
+        category: product.category,
+        imageUrl: product.imageUrl,
+        images: product.images,
+        colors: product.colors,
+        stock: product.stock,
+        downloadUrl: product.downloadUrl,
+        licenseKeys: product.licenseKeys,
+        sizes: product.sizes,
+      });
+      onUpdateProduct(product);
+      onShowToast('تم التعديل', 'تم تحديث بيانات المنتج بنجاح', 'success');
+    } catch (error) {
+      console.error(error);
+      onShowToast('خطأ', 'فشل تحديث المنتج في قاعدة البيانات', 'error');
+    }
   };
 
   // Handle saving product
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formName.trim() || !formDescription.trim() || formPrice <= 0) {
@@ -796,31 +921,87 @@ export default function AdminPanel({
       return;
     }
 
+    setProductFormError('');
+
     const licenseKeysArray = formLicenseKeys
       ? formLicenseKeys.split(',').map(k => k.trim()).filter(Boolean)
       : undefined;
 
-    const savedProduct: Product = {
-      id: editingProduct ? editingProduct.id : `p-${Date.now()}`,
-      name: formName,
-      description: formDescription,
+    const parsedSizesArray = formSizes
+      ? formSizes.split(/[,،]/).map(s => s.trim().toUpperCase()).filter(Boolean)
+      : undefined;
+
+    const isEligibleForSizes = formCategory === 'ملابس' || 
+                               formCategory === 'أحذية' ||
+                               formCategory.toLowerCase().includes('clothing') || 
+                               formCategory.toLowerCase().includes('apparel') ||
+                               formCategory.toLowerCase().includes('shoes') ||
+                               formCategory.toLowerCase().includes('footwear');
+
+    // Automatically collect all data from the form state
+    const productData: any = {
+      name: formName.trim(),
+      description: formDescription.trim(),
+      specifications: formSpecifications.trim(),
+      options: formOptions.length > 0 ? formOptions.map(opt => ({
+        name: opt.name,
+        values: typeof opt.values === 'string' ? opt.values.split(/[,،]/).map(v => v.trim()).filter(Boolean) : opt.values
+      })) : [],
       price: Number(formPrice),
       type: formType,
       category: formCategory,
-      imageUrl: formImageUrl.trim() || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80',
-      stock: formType === 'physical' ? Number(formStock) : undefined,
-      downloadUrl: formType === 'digital' ? formDownloadUrl.trim() : undefined,
-      licenseKeys: formType === 'digital' ? licenseKeysArray : undefined,
-      reviews: editingProduct ? editingProduct.reviews : undefined
+      imageUrl: formImageUrl.trim() || (formImages.length > 0 ? formImages[0] : 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80'),
+      images: formImages.length > 0 ? formImages : [formImageUrl.trim() || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80'],
+      colors: formType === 'physical' ? formColors : [],
+      updatedAt: new Date().toISOString()
     };
 
-    if (editingProduct) {
-      onUpdateProduct(savedProduct);
-    } else {
-      onAddProduct(savedProduct);
+    // Add optional fields only if they have values to avoid Firestore "undefined" errors
+    if (formType === 'physical') {
+      productData.stock = Number(formStock);
+    }
+    
+    if (formType === 'digital') {
+      if (formDownloadUrl.trim()) productData.downloadUrl = formDownloadUrl.trim();
+      if (licenseKeysArray && licenseKeysArray.length > 0) productData.licenseKeys = licenseKeysArray;
     }
 
-    resetProductForm();
+    if (formType === 'physical' && isEligibleForSizes && parsedSizesArray && parsedSizesArray.length > 0) {
+      productData.sizes = parsedSizesArray;
+    } else {
+      productData.sizes = [];
+    }
+
+    if (editingProduct) {
+      productData.reviews = editingProduct.reviews || [];
+    } else {
+      productData.reviews = [];
+    }
+
+    try {
+      if (editingProduct) {
+        // Update existing product in Firestore
+        await setDoc(doc(db, 'products', editingProduct.id), productData, { merge: true });
+        onShowToast('تم التحديث بنجاح 🎉', 'تم تحديث بيانات المنتج بنجاح في المتجر والفايربيس.', 'success');
+        setEditingProduct(null);
+      } else {
+        // Add new product to Firestore
+        await addDoc(collection(db, 'products'), {
+          ...productData,
+          createdAt: new Date().toISOString()
+        });
+        onShowToast('تمت الإضافة بنجاح 🎉', 'تم إضافة المنتج بنجاح إلى المتجر والفايربيس 🎉', 'success');
+      }
+      
+      // Reset Form and close the editor
+      resetProductForm();
+      setIsAddingNew(false);
+      
+      // The table will update automatically thanks to the Firestore onSnapshot listener in App.tsx
+    } catch (error) {
+      console.error('Error saving product to Firestore:', error);
+      setProductFormError('حدث خطأ أثناء حفظ المنتج في الفايربيس. يرجى المحاولة مرة أخرى.');
+    }
   };
 
   const handleExportProductsCSV = () => {
@@ -1186,6 +1367,17 @@ export default function AdminPanel({
             <MessageSquare className="h-4 w-4 text-amber-500" />
             <span>{texts.messagesTab} 💬</span>
           </button>
+          <button
+            onClick={() => { setActiveTab('ai-lab'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'ai-lab'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/20'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <span>معمل الصور الملكي 🤖</span>
+          </button>
         </div>
       </div>
       {activeTab === 'analytics' && (
@@ -1474,7 +1666,7 @@ export default function AdminPanel({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   {editingProduct ? <Edit2 className="h-5 w-5 text-amber-600" /> : <Plus className="h-5 w-5 text-amber-600" />}
-                  <span>{editingProduct ? 'تعديل منتج موجود' : 'إضافة منتج جديد للمتجر'}</span>
+                  <span>{editingProduct ? 'تعديل بيانات المنتج الحالي' : 'إضافة منتج جديد للمتجر'}</span>
                 </h3>
                 {(editingProduct || isAddingNew) && (
                   <button
@@ -1585,6 +1777,18 @@ export default function AdminPanel({
                     />
                   </div>
 
+                  {/* Specifications */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">المواصفات البارزة (مثال: هاتف ذكي، فاخر، وذهبي)</label>
+                    <input
+                      type="text"
+                      placeholder="هذا النص سيظهر باللون الأحمر الجريء في حقيبة التسوق"
+                      value={formSpecifications || ""}
+                      onChange={(e) => setFormSpecifications(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
                   {/* Row: Price & Category */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1600,24 +1804,12 @@ export default function AdminPanel({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">الفئة</label>
-                      <select
+                      <CustomSelect
+                        label="الفئة"
                         value={formCategory}
-                        onChange={(e) => setFormCategory(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs focus:border-amber-400 focus:bg-white focus:outline-none cursor-pointer text-right font-medium"
-                      >
-                        {categories.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                        {formCategory && !categories.includes(formCategory) && (
-                          <option value={formCategory}>{formCategory}</option>
-                        )}
-                        {categories.length === 0 && (
-                          <option value="أخرى">أخرى</option>
-                        )}
-                      </select>
+                        onChange={setFormCategory}
+                        options={categories.map(cat => ({ label: cat, value: cat }))}
+                      />
                       <button
                         type="button"
                         onClick={() => {
@@ -1629,6 +1821,37 @@ export default function AdminPanel({
                       </button>
                     </div>
                   </div>
+
+                  {/* Available Sizes for Apparel/Clothing or Shoes/Footwear categories */}
+                  {formType === 'physical' && (formCategory === 'ملابس' || 
+                    formCategory === 'أحذية' || 
+                    formCategory.toLowerCase().includes('clothing') || 
+                    formCategory.toLowerCase().includes('apparel') ||
+                    formCategory.toLowerCase().includes('shoes') ||
+                    formCategory.toLowerCase().includes('footwear')) && (
+                    <div className="bg-amber-500/5 p-4 rounded-2xl border border-amber-500/15 space-y-1.5 animate-slide-up">
+                      <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <span>👟 المقاسات المتوفرة (للملابس أو الأحذية)</span>
+                        <span className="text-[10px] text-amber-600 font-normal">(مطلوب للاختيار قبل الإضافة للسلة)</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={
+                          formCategory === 'أحذية' || 
+                          formCategory.toLowerCase().includes('shoes') || 
+                          formCategory.toLowerCase().includes('footwear') 
+                            ? "مثال: 40, 41, 42, 43" 
+                            : "مثال: S, M, L, XL"
+                        }
+                        value={formSizes}
+                        onChange={(e) => setFormSizes(e.target.value)}
+                        className="w-full rounded-xl border border-amber-500/10 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none text-right font-bold font-mono"
+                      />
+                      <span className="text-[10px] text-zinc-500 block leading-normal">
+                        اكتب المقاسات مفصولة بفاصلة (مثال: S, M, L, XL أو للأحذية: 40, 41, 42, 43). سيتمكن العميل من اختيار مقاسه قبل الإضافة إلى السلة، وسيظهر لك مقاسه بوضوح في الطلب.
+                      </span>
+                    </div>
+                  )}
 
                   {/* Product Type (Physical vs Digital) */}
                   <div>
@@ -1724,31 +1947,145 @@ export default function AdminPanel({
                         <input
                           type="file"
                           accept="image/*"
+                          multiple
                           onChange={handleProductImageUpload}
                           className="flex-1 text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-100 file:text-amber-700 hover:file:bg-amber-200 focus:outline-none cursor-pointer"
                         />
-                        {formImageUrl && (
-                          <div className="shrink-0 relative">
-                            <img
-                              src={formImageUrl}
-                              alt="Preview"
-                              className="h-10 w-10 object-cover rounded border border-slate-200"
-                              referrerPolicy="no-referrer"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => { setFormImageUrl(''); setFormImageFileName(''); }}
-                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition"
-                            >
-                              <X className="h-2 w-2" />
-                            </button>
+                        {formImages.length > 0 && (
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            {formImages.map((img, idx) => (
+                              <div key={idx} className="relative">
+                                <img
+                                  src={img}
+                                  alt={`Preview ${idx}`}
+                                  className="h-10 w-10 object-cover rounded border border-slate-200"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setFormImages(prev => prev.filter((_, i) => i !== idx))}
+                                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 transition"
+                                >
+                                  <X className="h-2 w-2" />
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
                       {formImageFileName && (
                         <p className="mt-1 text-[10px] text-emerald-600 font-medium">الملف المرفق: {formImageFileName}</p>
                       )}
-                      <p className="mt-1 text-[10px] text-slate-500">سيتم حفظ الصورة المرفوعة، أو الصورة المولدة بالذكاء الاصطناعي إن وُجدت.</p>
+                      <p className="mt-1 text-[10px] text-slate-500">سيتم حفظ الصور المرفوعة، أو الصورة المولدة بالذكاء الاصطناعي إن وُجدت.</p>
+                    </div>
+
+                    {/* Colors Selection */}
+                    {formType === 'physical' && (
+                      <div className="mt-4">
+                        <label className="block text-xs font-bold text-slate-700 mb-2">الألوان المتوفرة</label>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {["أسود", "أبيض", "أحمر", "أزرق", "أخضر", "كحلي", "رمادي"].map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => {
+                                setFormColors(prev => 
+                                  prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]
+                                );
+                              }}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                                formColors.includes(color)
+                                  ? 'bg-amber-500 text-white shadow-md'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {color}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="أضف لوناً آخر..."
+                            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs focus:border-amber-400 focus:bg-white focus:outline-none"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = e.currentTarget.value.trim();
+                                if (val && !formColors.includes(val)) {
+                                  setFormColors([...formColors, val]);
+                                  e.currentTarget.value = '';
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {formColors.filter(c => !["أسود", "أبيض", "أحمر", "أزرق", "أخضر", "كحلي", "رمادي"].includes(c)).map(color => (
+                            <span key={color} className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                              {color}
+                              <button type="button" onClick={() => setFormColors(prev => prev.filter(c => c !== color))}>&times;</button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Custom Options Selection */}
+                    <div className="mt-4 p-4 rounded-xl bg-slate-100/50 border border-slate-200 shadow-inner">
+                      <label className="block text-xs font-bold text-slate-700 mb-3 flex items-center gap-2">
+                        <Settings className="h-3.5 w-3.5 text-amber-500" />
+                        <span>خيارات مخصصة إضافية للمنتج (مثلاً: السعة، المادة)</span>
+                      </label>
+                      <div className="space-y-3">
+                        {formOptions.map((opt, idx) => (
+                          <div key={idx} className="grid grid-cols-[1fr,1.5fr,auto] gap-2 items-end bg-white p-2.5 rounded-xl border border-slate-200">
+                            <div>
+                              <label className="block text-[9px] font-bold text-slate-500 mb-1">اسم الخيار</label>
+                              <input
+                                type="text"
+                                placeholder="السعة"
+                                value={opt.name}
+                                onChange={(e) => {
+                                  const newOpts = [...formOptions];
+                                  newOpts[idx].name = e.target.value;
+                                  setFormOptions(newOpts);
+                                }}
+                                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] focus:border-amber-400 focus:bg-white outline-none transition-colors"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-bold text-slate-500 mb-1">القيم (مفصولة بفاصلة)</label>
+                              <input
+                                type="text"
+                                placeholder="128GB, 256GB"
+                                value={opt.values}
+                                onChange={(e) => {
+                                  const newOpts = [...formOptions];
+                                  newOpts[idx].values = e.target.value;
+                                  setFormOptions(newOpts);
+                                }}
+                                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] focus:border-amber-400 focus:bg-white outline-none transition-colors"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setFormOptions(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setFormOptions([...formOptions, { name: '', values: '' }])}
+                          className="w-full py-2.5 flex items-center justify-center gap-2 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl text-[11px] font-bold hover:border-amber-300 hover:text-amber-600 transition-all cursor-pointer bg-white/50 hover:bg-white"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>إضافة خيار منتج مخصص جديد</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* AI Image Generation Panel */}
@@ -1785,18 +2122,18 @@ export default function AdminPanel({
 
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-[10px] font-bold text-slate-600 mb-1">أبعاد الصورة (Aspect Ratio):</label>
-                              <select
+                              <CustomSelect
+                                label="أبعاد الصورة (Aspect Ratio):"
                                 value={aiAspectRatio}
-                                onChange={(e) => setAiAspectRatio(e.target.value)}
-                                className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs focus:border-amber-400 focus:outline-none"
-                              >
-                                <option value="1:1">1:1 (مربع - افتراضي)</option>
-                                <option value="16:9">16:9 (عريض - لاندسكيب)</option>
-                                <option value="9:16">9:16 (رأسي - بورتريت)</option>
-                                <option value="4:3">4:3 (شاشة كلاسيكية)</option>
-                                <option value="3:4">3:4 (رأسي كلاسيكي)</option>
-                              </select>
+                                onChange={(val) => setAiAspectRatio(val)}
+                                options={[
+                                  { label: '1:1 (مربع - افتراضي)', value: '1:1' },
+                                  { label: '16:9 (عريض - لاندسكيب)', value: '16:9' },
+                                  { label: '9:16 (رأسي - بورتريت)', value: '9:16' },
+                                  { label: '4:3 (شاشة كلاسيكية)', value: '4:3' },
+                                  { label: '3:4 (رأسي كلاسيكي)', value: '3:4' }
+                                ]}
+                              />
                             </div>
 
                             <div className="flex items-end">
@@ -1931,38 +2268,37 @@ export default function AdminPanel({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-3 items-end">
                     {/* Category Filter */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-                      <Filter className="h-3 w-3 text-slate-400" />
-                      <span className="text-[10px] font-bold text-slate-500">التصنيف:</span>
-                      <select
+                    <div className="min-w-[150px]">
+                      <CustomSelect
+                        label="تصنيف المنتجات:"
                         value={productCategoryFilter}
-                        onChange={(e) => setProductCategoryFilter(e.target.value)}
-                        className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
-                      >
-                        <option value="all">كل التصنيفات</option>
-                        {categories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setProductCategoryFilter(val)}
+                        options={[
+                          { label: 'كل التصنيفات', value: 'all' },
+                          ...categories.map(cat => ({ label: cat, value: cat }))
+                        ]}
+                      />
                     </div>
 
                     {/* Type Filter */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-                      <Filter className="h-3 w-3 text-slate-400" />
-                      <span className="text-[10px] font-bold text-slate-500">النوع:</span>
-                      <select
+                    <div className="min-w-[150px]">
+                      <CustomSelect
+                        label="نوع المنتجات:"
                         value={productTypeFilter}
-                        onChange={(e) => setProductTypeFilter(e.target.value)}
-                        className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
-                      >
-                        <option value="all">كل الأنواع</option>
-                        <option value="physical">منتجات ملموسة</option>
-                        <option value="digital">منتجات رقمية</option>
-                      </select>
+                        onChange={(val) => setProductTypeFilter(val)}
+                        options={[
+                          { label: 'كل الأنواع', value: 'all' },
+                          { label: 'منتجات ملموسة', value: 'physical' },
+                          { label: 'منتجات رقمية', value: 'digital' }
+                        ]}
+                      />
                     </div>
                   </div>
+                  
+                  {/* Delivery Time Option */}
+                  {/* Removed: Delivery options are now managed globally */}
                 </div>
               </div>
 
@@ -2768,18 +3104,17 @@ export default function AdminPanel({
               <div className="flex flex-wrap items-center gap-2.5">
                 
                 {/* Product Type filter */}
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-                  <Filter className="h-3 w-3 text-slate-400" />
-                  <span className="text-[10px] font-bold text-slate-500">النوع:</span>
-                  <select
+                <div className="min-w-[150px]">
+                  <CustomSelect
+                    label="نوع الطلبات:"
                     value={orderTypeFilter}
-                    onChange={(e) => setOrderTypeFilter(e.target.value as any)}
-                    className="bg-transparent text-[11px] font-bold text-slate-700 focus:outline-none cursor-pointer"
-                  >
-                    <option value="all">كل المنتجات</option>
-                    <option value="physical">منتجات ملموسة فقط</option>
-                    <option value="digital">منتجات رقمية فقط</option>
-                  </select>
+                    onChange={(val) => setOrderTypeFilter(val as any)}
+                    options={[
+                      { label: 'كل المنتجات', value: 'all' },
+                      { label: 'منتجات ملموسة فقط', value: 'physical' },
+                      { label: 'منتجات رقمية فقط', value: 'digital' }
+                    ]}
+                  />
                 </div>
 
                 {/* Clear filters shortcut */}
@@ -2929,7 +3264,7 @@ export default function AdminPanel({
 
                             {/* Products Summary */}
                             <td className="p-4">
-                              <div className="space-y-1.5">
+                              <div className="space-y-1.5 text-right">
                                 {order.items.map((item, idx) => (
                                   <div key={idx} className="flex items-center gap-1">
                                     <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-black font-mono">
@@ -2938,6 +3273,11 @@ export default function AdminPanel({
                                     <span className="text-[11px] font-bold text-slate-800 truncate max-w-[140px] block" title={item.productName}>
                                       {item.productName}
                                     </span>
+                                    {item.selectedSize && (
+                                      <span className="text-[9px] font-black bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded shrink-0" title={`المقاس: ${item.selectedSize}`}>
+                                        {item.selectedSize}
+                                      </span>
+                                    )}
                                     <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 ${
                                       item.type === 'physical'
                                         ? 'bg-blue-50 text-blue-700 border border-blue-100'
@@ -3055,7 +3395,7 @@ export default function AdminPanel({
 
           {/* 5. Detailed Invoice & Fulfillment Modal Dialog */}
           {selectedOrderForModal && (
-            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+            <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4" dir="rtl">
               <div 
                 className="relative bg-white rounded-3xl border border-slate-200 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-slate-800"
                 onClick={(e) => e.stopPropagation()}
@@ -3275,6 +3615,19 @@ export default function AdminPanel({
                               <span className="text-[10px] text-slate-400 font-medium block">
                                 فئة: {item.type === 'physical' ? 'منتج ملموس (يتطلب شحن)' : 'منتج رقمي (كود/مفتاح ترخيص)'}
                               </span>
+                              {item.selectedSize && (
+                                <span className="inline-block mt-1 text-[10px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full">
+                                  {item.productName.toLowerCase().includes('حذاء') || 
+                                   item.productName.toLowerCase().includes('حذا') || 
+                                   item.productName.toLowerCase().includes('shoe') || 
+                                   item.productName.toLowerCase().includes('sneaker') || 
+                                   item.productName.toLowerCase().includes('boot') ||
+                                   item.productName.toLowerCase().includes('footwear')
+                                    ? '👟' 
+                                    : '👕'}{' '}
+                                  المقاس المطلوب: {item.selectedSize}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <span className="font-mono font-black text-slate-900">
@@ -3427,24 +3780,22 @@ export default function AdminPanel({
                 <div className="space-y-6">
                   {/* Product Selection Dropdown */}
                   <div className="space-y-3">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">اختر المنتج من القائمة</label>
-                    <select
+                    <CustomSelect
+                      label="اختر المنتج من القائمة"
+                      placeholder="-- اختر منتجاً لتعديل خصمه --"
                       value={selectedProductId}
-                      onChange={(e) => {
-                        const pid = e.target.value;
-                        setSelectedProductId(pid);
-                        const p = products.find(prod => prod.id === pid);
+                      onChange={(val) => {
+                        setSelectedProductId(val);
+                        const p = products.find(prod => prod.id === val);
                         if (p) {
                           setProductDiscountPercentage(p.discountPercentage || 0);
                         }
                       }}
-                      className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-4 text-slate-950 font-black text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer appearance-none"
-                    >
-                      <option value="">-- اختر منتجاً لتعديل خصمه --</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} (${p.price})</option>
-                      ))}
-                    </select>
+                      options={[
+                        { label: '-- اختر منتجاً لتعديل خصمه --', value: '' },
+                        ...products.map(p => ({ label: `${p.name} ($${p.price})`, value: p.id }))
+                      ]}
+                    />
                   </div>
 
                   {selectedProductId && (
@@ -3609,22 +3960,21 @@ export default function AdminPanel({
 
                   {/* Product Selection Dropdown for Exclusive Offers */}
                   <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">إضافة منتج للوحة العروض الحصرية</label>
                     <div className="space-y-2 text-right">
-                      <select
+                      <CustomSelect
+                        label="إضافة منتج للوحة العروض الحصرية"
+                        placeholder="-- اختر منتجاً للإضافة --"
                         value={selectedProductIdToAdd}
-                        onChange={(e) => setSelectedProductIdToAdd(e.target.value)}
-                        className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-3.5 px-4 text-slate-950 font-black text-xs focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer"
-                      >
-                        <option value="">-- اختر منتجاً للإضافة --</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.price} ل.س)</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setSelectedProductIdToAdd(val)}
+                        options={[
+                          { label: '-- اختر منتجاً للإضافة --', value: '' },
+                          ...products.map(p => ({ label: `${p.name} - $${p.price}`, value: p.id }))
+                        ]}
+                      />
                       <button
                         type="button"
                         onClick={handleAddProductToDiscountsSection}
-                        className="w-full mt-1 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition-all active:scale-95 cursor-pointer text-center block"
+                        className="w-full mt-2 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-xs transition-all active:scale-95 cursor-pointer text-center block"
                       >
                         إضافة المنتج المختار 👑
                       </button>
@@ -3722,14 +4072,14 @@ export default function AdminPanel({
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">نوع الخصم</label>
-                        <select
+                        <CustomSelect
                           value={couponType}
-                          onChange={(e) => setCouponType(e.target.value as 'percentage' | 'fixed')}
-                          className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50 py-4 px-4 text-slate-950 font-black text-xs sm:text-sm focus:border-amber-500 focus:bg-white focus:outline-none transition-all cursor-pointer appearance-none"
-                        >
-                          <option value="percentage">٪ نسبة مئوية</option>
-                          <option value="fixed">مبلغ ثابت ($)</option>
-                        </select>
+                          onChange={(val) => setCouponType(val as 'percentage' | 'fixed')}
+                          options={[
+                            { label: '٪ نسبة مئوية', value: 'percentage' },
+                            { label: 'مبلغ ثابت ($)', value: 'fixed' }
+                          ]}
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -3995,7 +4345,7 @@ export default function AdminPanel({
                 <div className="space-y-3">
                   <label className="flex items-center justify-between text-xs font-black text-slate-400 uppercase tracking-widest px-1">
                     <span>سعر صرف $1 دولار الحالي</span>
-                    <span className="text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-lg border border-amber-500/20 font-mono">{exchangeRateInput.toLocaleString()} ل.س</span>
+
                   </label>
                   <div className="relative group/input">
                     <input
@@ -4006,7 +4356,7 @@ export default function AdminPanel({
                       className="w-full rounded-2xl border-2 border-slate-800 bg-slate-900 py-4 pr-5 pl-16 text-white font-black text-lg focus:border-amber-500 focus:bg-slate-900/90 focus:outline-none transition-all font-mono"
                     />
                     <div className="absolute inset-y-0 left-0 flex items-center pl-5">
-                      <span className="text-amber-500 font-bold text-sm">ل.س / $</span>
+
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-400 font-medium leading-relaxed px-1">
@@ -4037,6 +4387,204 @@ export default function AdminPanel({
                     </div>
                   )}
                   <span>{savingExchangeRate ? 'جاري تحديث السعر...' : 'تحديث سعر الصرف'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Logistics & Shipping Settings */}
+            <div className="rounded-[2rem] border border-amber-500/30 bg-slate-950 p-8 shadow-xl hover:shadow-2xl hover:border-amber-500/50 transition-all duration-500 group relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+              
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
+                  <Clock className="h-5 w-5" />
+                </div>
+                <h3 className="text-lg font-black text-amber-400">آلة حاسبة لإدارة الشحن وتكلفة التوصيل الملكية 🌐</h3>
+              </div>
+
+              <div className="space-y-6">
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  قم بضبط معايير الشحن الدولي والمحلي للتوصيل الملكي. يتم حساب الشحن آلياً للعميل بناءً على بُعد تاريخ التسليم المطلوب وطريقة النقل المناسبة.
+                </p>
+
+                {/* Air Freight config (1-4 days) */}
+                <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <span className="text-xs font-black text-amber-400">✈️ الشحن الجوي السريع (Fast Window: 1-4 أيام)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">السعر الأساسي ($) *</label>
+                      <input
+                        type="number"
+                        value={deliverySettings.airBaseCost ?? 40}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, airBaseCost: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">معامل الاستعجال اليومي ($) *</label>
+                      <input
+                        type="number"
+                        value={deliverySettings.airUrgencyFactor ?? 8}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, airUrgencyFactor: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                        title="المبلغ المضاف عن كل يوم اقتراب من موعد التوصيل الفوري"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">معامل الحجم والوزن الجوي (ضرب) *</label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        value={deliverySettings.airWeightVolumeFactor ?? 1.5}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, airWeightVolumeFactor: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-500 leading-relaxed font-bold">
+                    * معادلة الاحتساب: السعر الأساسي + (5 - عدد الأيام) × معامل الاستعجال × معامل الوزن.
+                  </p>
+                </div>
+
+                {/* Sea Freight config (5+ days) */}
+                <div className="bg-slate-900/50 border border-slate-800 p-5 rounded-2xl space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <span className="text-xs font-black text-cyan-400">🚢 الشحن البحري الاقتصادي (Economy Window: 5 أيام فأكثر)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">السعر الأساسي لليوم الخامس ($) *</label>
+                      <input
+                        type="number"
+                        value={deliverySettings.seaBaseCost ?? 15}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, seaBaseCost: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-955 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">معامل التخفيض اليومي ($) *</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={deliverySettings.seaDailyDecay ?? 0.5}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, seaDailyDecay: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-955 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                        title="المبلغ الذي يقل تدريجياً كلما كان تاريخ التسليم أبعد"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-bold">الحد الأدنى المستقر للتكلفة ($) *</label>
+                      <input
+                        type="number"
+                        value={deliverySettings.seaMinBaseline ?? 5}
+                        onChange={(e) => setDeliverySettings({...deliverySettings, seaMinBaseline: Math.max(0, Number(e.target.value))})}
+                        className="w-full rounded-xl border border-slate-700 bg-slate-955 p-3 text-xs text-white font-bold focus:border-amber-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-500 leading-relaxed font-bold">
+                    * معادلة الاحتساب: الحد الأقصى بين (الحد الأدنى المستقر) و (السعر الأساسي لليوم الخامس - (عدد الأيام - 5) × معامل التخفيض).
+                  </p>
+                </div>
+
+                {/* Admin Testing Calculator Widget */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-amber-400 flex items-center gap-1">
+                      <span>🧪 محاكي فحص أسعار الشحن اللحظي:</span>
+                    </h4>
+                    <span className="text-[9px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">معاينة فورية قبل الحفظ</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[9px] text-slate-400 mb-1">حدد عدد أيام التوصيل المفترضة للفحص:</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="1"
+                          max="90"
+                          value={testDays}
+                          onChange={(e) => setTestDays(Math.max(1, Number(e.target.value)))}
+                          className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 px-3 text-xs text-white font-black focus:outline-none"
+                        />
+                        <span className="absolute left-3 top-2.5 text-slate-500 text-[10px]">يوم</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+                      <div className="text-[10px] text-slate-400 mb-0.5">تكلفة التوصيل الناتجة:</div>
+                      <div className="text-lg font-black text-emerald-400">
+                        ${(() => {
+                          const days = testDays;
+                          const airBase = deliverySettings.airBaseCost ?? 40;
+                          const airUrgency = deliverySettings.airUrgencyFactor ?? 8;
+                          const airWeight = deliverySettings.airWeightVolumeFactor ?? 1.5;
+                          const seaBase = deliverySettings.seaBaseCost ?? 15;
+                          const seaDecay = deliverySettings.seaDailyDecay ?? 0.5;
+                          const seaMin = deliverySettings.seaMinBaseline ?? 5;
+
+                          if (days <= 4) {
+                            return (airBase + (5 - days) * airUrgency * airWeight).toFixed(2);
+                          } else {
+                            return Math.max(seaMin, seaBase - (days - 5) * seaDecay).toFixed(2);
+                          }
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] bg-slate-950/70 p-3 rounded-xl text-slate-300 leading-relaxed font-mono">
+                    {testDays <= 4 ? (
+                      <div>
+                        <span className="text-amber-400 font-bold">✈️ نوع الشحن: جوي سريع (مدة قصيرة 1-4 أيام)</span>
+                        <br />
+                        <span>الحسبة: {deliverySettings.airBaseCost ?? 40} + (5 - {testDays}) × {deliverySettings.airUrgencyFactor ?? 8} × {deliverySettings.airWeightVolumeFactor ?? 1.5}</span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-cyan-400 font-bold">🚢 نوع الشحن: بحري اقتصادي (مدة طويلة 5+ أيام)</span>
+                        <br />
+                        <span>الحسبة: Max({deliverySettings.seaMinBaseline ?? 5}, {deliverySettings.seaBaseCost ?? 15} - ({testDays} - 5) × {deliverySettings.seaDailyDecay ?? 0.5})</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {deliverySavedSuccess && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold text-center animate-pulse">
+                    {deliverySavedSuccess}
+                  </div>
+                )}
+                
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await setDoc(doc(db, 'delivery_config', 'global_settings'), {
+                        basePricePerDay: deliverySettings.basePricePerDay ?? 5,
+                        rules: deliverySettings.rules || [],
+                        airBaseCost: deliverySettings.airBaseCost ?? 40,
+                        airUrgencyFactor: deliverySettings.airUrgencyFactor ?? 8,
+                        airWeightVolumeFactor: deliverySettings.airWeightVolumeFactor ?? 1.5,
+                        seaBaseCost: deliverySettings.seaBaseCost ?? 15,
+                        seaDailyDecay: deliverySettings.seaDailyDecay ?? 0.5,
+                        seaMinBaseline: deliverySettings.seaMinBaseline ?? 5
+                      }, { merge: true });
+                      setDeliverySavedSuccess('تم حفظ إعدادات آلة حاسبة خدمة التوصيل الملكية في قاعدة البيانات! ✈️🚢👑');
+                      setTimeout(() => setDeliverySavedSuccess(''), 4000);
+                    } catch (err) {
+                      console.error("Error saving delivery settings:", err);
+                      alert('حدث خطأ أثناء حفظ الإعدادات، يرجى المحاولة لاحقاً.');
+                    }
+                  }}
+                  className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/10 hover:shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Check className="h-5 w-5" />
+                  <span>حفظ وإرسال إعدادات آلة حاسبة التوصيل والشحن</span>
                 </button>
               </div>
             </div>
@@ -4289,9 +4837,13 @@ export default function AdminPanel({
         </div>
       )}
 
+      {activeTab === 'ai-lab' && (
+        <AIImageLab products={products} onShowToast={onShowToast} />
+      )}
+
       {/* 6. Delete Gateway Confirmation Modal */}
       {gatewayToDelete && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4" dir={dir}>
           <div 
             className={`relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
             onClick={(e) => e.stopPropagation()}

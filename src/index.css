@@ -10,24 +10,42 @@ body {
   font-family: var(--font-sans);
   background-color: #050505;
   color: #e2e8f0;
-  direction: rtl; /* Set default Arabic RTL layout */
+  direction: rtl;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 👑 تحسينات الخطوط وتأمين رندرة مستقرة */
 *, *::before, *::after {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 🚀 تفعيل تسريع الرندرة لمنع الاهتزاز والبطء على الهواتف */
 .main-store-container {
   transform: translateZ(0);
   backface-visibility: hidden;
   perspective: 1000px;
 }
 
+/* 
+ * 🛠️ Global input fields styling to ensure high contrast 
+ * Background: slate-900 (navy), Text: slate-50, Border: slate-700
+ */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+textarea {
+  background-color: #0f172a !important; 
+  color: #f8fafc !important; 
+  border-color: #334155 !important; 
+}
 
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8 !important; 
+}

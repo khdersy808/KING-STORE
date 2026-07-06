@@ -36,6 +36,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Rules for delivery settings configuration
+    match /delivery_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Rules for orders
     match /orders/{orderId} {
       allow create: if true; // Anyone can place an order

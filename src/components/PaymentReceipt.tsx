@@ -97,7 +97,7 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
             </div>
             <div className="text-base font-extrabold text-amber-500/90 tracking-tight flex items-center justify-center gap-1">
               <span>{(order.totalAmount * exchangeRate).toLocaleString()}</span>
-              <span className="text-[10px] text-zinc-400">ل.س</span>
+
             </div>
           </div>
         </div>
@@ -182,7 +182,7 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
                 </div>
                 <div className="flex flex-col items-end">
                   <span className="font-mono font-bold text-slate-400">${(item.price * item.quantity).toFixed(2)}</span>
-                  <span className="text-[9px] text-amber-500/80 font-bold">{(item.price * item.quantity * exchangeRate).toLocaleString()} ل.س</span>
+
                 </div>
               </div>
             ))}

@@ -9,6 +9,7 @@ export interface TranslationSchema {
   navChat: string;
   navCart: string;
   navAdmin: string;
+  navMore: string;
   cartTitle: string;
   cartEmpty: string;
   checkout: string;
@@ -248,6 +249,10 @@ export interface TranslationSchema {
   shoppingBagCurrent: string;
   royalCartTitle: string;
   cartDesc: string;
+  productSpecs: string;
+  productTypeLabel: string;
+  sizeLabel: string;
+  colorLabel: string;
   cartEmptyLong: string;
   cartEmptyDesc: string;
   backToShoppingRoyal: string;
@@ -366,6 +371,10 @@ export interface TranslationSchema {
   footerPlatformName: string;
   royalAdminName: string;
   loading: string;
+  editDetails: string;
+  languageSelection: string;
+  currencySettings: string;
+  royalPricing: string;
 }
 
 export const translations: Record<Language, TranslationSchema> = {
@@ -377,6 +386,7 @@ export const translations: Record<Language, TranslationSchema> = {
     navChat: 'المحادثة',
     navCart: 'السلة',
     navAdmin: 'الإدارة',
+    navMore: 'المزيد',
     cartTitle: 'سلة المشتريات',
     cartEmpty: 'سلة المشتريات فارغة',
     checkout: 'إتمام الطلب / الدفع',
@@ -614,8 +624,12 @@ export const translations: Record<Language, TranslationSchema> = {
     productCount: '{count} منتج',
     customCategoriesDesc: 'منتجات مخصصة واشتراكات فاخرة',
     shoppingBagCurrent: 'حقيبة التسوق الحالية 🛒',
-    royalCartTitle: 'سلة مشترياتك الملكية',
-    cartDesc: 'قم بإجراء مراجعة نهائية على السلع المحددة واستكمل عملية الدفع بأمان.',
+    royalCartTitle: 'حقيبة التسوق الملكية',
+    cartDesc: 'مراجعة نهائية لمواصفات منتجاتك الملكية قبل إتمام الدفع.',
+    productSpecs: 'مواصفات المنتج المختار:',
+    productTypeLabel: 'نوع المنتج:',
+    sizeLabel: 'المقاس:',
+    colorLabel: 'اللون:',
     cartEmptyLong: 'سلة التسوق فارغة تماماً!',
     cartEmptyDesc: 'أنت لم تقم بإضافة أي منتج أو اشتراك رقمي إلى السلة حتى الآن. توجه إلى الصفحة الرئيسية وتصفح المنتجات لاختيار ما يعجبك!',
     backToShoppingRoyal: 'العودة للتسوق واكتشاف المنتجات 👑',
@@ -734,6 +748,10 @@ export const translations: Record<Language, TranslationSchema> = {
     footerPlatformName: '👑 KING STORE - منصة الملوك والأمان الفائق',
     royalAdminName: 'مدير النظام الملكي',
     loading: 'جاري التحميل...',
+    editDetails: 'تعديل التفاصيل',
+    languageSelection: 'اختيار اللغة',
+    currencySettings: 'إعدادات العملة',
+    royalPricing: 'التسعير الملكي',
   },
   en: {
     shopName: 'KING STORE',
@@ -743,6 +761,7 @@ export const translations: Record<Language, TranslationSchema> = {
     navChat: 'Chat',
     navCart: 'Cart',
     navAdmin: 'Admin',
+    navMore: 'More',
     cartTitle: 'Shopping Cart',
     cartEmpty: 'Your cart is empty',
     checkout: 'Proceed to Checkout',
@@ -980,8 +999,12 @@ export const translations: Record<Language, TranslationSchema> = {
     productCount: '{count} products',
     customCategoriesDesc: 'Custom products and luxury subscriptions',
     shoppingBagCurrent: 'Current Shopping Bag 🛒',
-    royalCartTitle: 'Your Royal Shopping Cart',
-    cartDesc: 'Perform a final review on the selected items and complete the payment safely.',
+    royalCartTitle: 'Royal Shopping Bag',
+    cartDesc: 'Final review of your royal product specifications before payment.',
+    productSpecs: 'Selected Product Specifications:',
+    productTypeLabel: 'Product Type:',
+    sizeLabel: 'Size:',
+    colorLabel: 'Color:',
     cartEmptyLong: 'Shopping cart is completely empty!',
     cartEmptyDesc: 'You haven\'t added any product or digital subscription to the cart yet. Head to the home page and browse products to choose what you like!',
     backToShoppingRoyal: 'Back to Shopping & Discover Products 👑',
@@ -1100,5 +1123,9 @@ export const translations: Record<Language, TranslationSchema> = {
     footerPlatformName: '👑 KING STORE - Platform of Kings and Ultimate Security',
     royalAdminName: 'Royal System Admin',
     loading: 'Loading...',
+    editDetails: 'Edit Details',
+    languageSelection: 'Language Selection',
+    currencySettings: 'Currency Settings',
+    royalPricing: 'Royal Pricing',
   }
 };

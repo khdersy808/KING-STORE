@@ -4,12 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import OrderTracking from './components/OrderTracking';
-import { Product, PaymentGateway, Order, CartItem, ProductType, OrderStatus, ProductReview, User, AppNotification } from './types';
+import { Product, PaymentGateway, Order, CartItem, ProductType, OrderStatus, ProductReview, User, AppNotification, DeliverySettings } from './types';
 import { INITIAL_PRODUCTS, INITIAL_PAYMENT_GATEWAYS, INITIAL_ORDERS } from './data';
 import {
   Package,
@@ -43,19 +44,23 @@ import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
 import AgentDashboard from './components/AgentDashboard';
 import MessagingSystem from './components/MessagingSystem';
-import { db, collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
+import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
 
 export default function App() {
   return (
     <LanguageProvider>
-      <AppContent />
+      <CurrencyProvider>
+        <AppContent />
+      </CurrencyProvider>
     </LanguageProvider>
   );
 }
 
 function AppContent() {
   const { dir, t, language, texts } = useLanguage();
+  const { isSypEnabled, setIsSypEnabled, exchangeRate } = useCurrency();
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
 
@@ -181,8 +186,124 @@ function AppContent() {
     localStorage.setItem('king_store_categories', JSON.stringify(categories));
   }, [categories]);
 
+  // Synchronize products with Firestore real-time listener
+  useEffect(() => {
+    try {
+      const q = collection(db, 'products');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Product[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              name: data.name || '',
+              description: data.description || '',
+              price: Number(data.price) || 0,
+              type: data.type || 'physical',
+              category: data.category || '',
+              imageUrl: data.imageUrl || '',
+              stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : undefined,
+              downloadUrl: data.downloadUrl || undefined,
+              licenseKeys: Array.isArray(data.licenseKeys) ? data.licenseKeys : undefined,
+              reviews: Array.isArray(data.reviews) ? data.reviews : undefined,
+              discountPercentage: data.discountPercentage !== undefined ? Number(data.discountPercentage) : undefined,
+              sizes: Array.isArray(data.sizes) ? data.sizes : [],
+              colors: Array.isArray(data.colors) ? data.colors : [],
+              createdAt: data.createdAt || undefined,
+              updatedAt: data.updatedAt || undefined,
+            } as Product);
+          });
+          setProducts(list);
+        } else {
+          // Seed INITIAL_PRODUCTS if empty in Firestore
+          INITIAL_PRODUCTS.forEach(async (p) => {
+            try {
+              await setDoc(doc(db, 'products', p.id), {
+                name: p.name,
+                description: p.description,
+                price: Number(p.price),
+                type: p.type,
+                category: p.category,
+                imageUrl: p.imageUrl,
+                stock: p.stock !== undefined ? Number(p.stock) : null,
+                downloadUrl: p.downloadUrl || null,
+                licenseKeys: p.licenseKeys || null,
+                reviews: p.reviews || null,
+                discountPercentage: p.discountPercentage || 0,
+                sizes: p.sizes || []
+              });
+            } catch (err) {
+              console.warn(`Error seeding product ${p.name} to Firestore:`, err);
+            }
+          });
+        }
+      }, (error) => {
+        console.warn("Firestore listening products warning:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase products sync not active:", e);
+    }
+  }, []);
+
+  // Synchronize orders with Firestore real-time listener
+  useEffect(() => {
+    try {
+      const q = collection(db, 'orders');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Order[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              customerName: data.customerName || '',
+              customerEmail: data.customerEmail || '',
+              customerPhone: data.customerPhone || '',
+              shippingAddress: data.shippingAddress || undefined,
+              items: Array.isArray(data.items) ? data.items.map((it: any) => ({
+                productId: String(it.productId),
+                productName: it.productName || '',
+                price: Number(it.price) || 0,
+                quantity: Number(it.quantity) || 1,
+                type: it.type || 'physical',
+                selectedSize: it.selectedSize || undefined,
+              })) : [],
+              totalAmount: Number(data.totalAmount) || 0,
+              paymentMethodId: data.paymentMethodId || '',
+              paymentDetails: data.paymentDetails || {},
+              receiptUrl: data.receiptUrl || undefined,
+              status: data.status || 'pending',
+              date: data.date || new Date().toISOString(),
+              senderName: data.senderName || undefined,
+              transactionId: data.transactionId || undefined,
+            } as Order);
+          });
+          list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setOrders(list);
+        }
+      }, (error) => {
+        console.warn("Firestore listening orders warning:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase orders sync not active:", e);
+    }
+  }, []);
+
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
-  const [exchangeRate, setExchangeRate] = useState<number>(15000);
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
+    id: 'global_settings',
+    basePricePerDay: 5,
+    rules: [],
+    airBaseCost: 40,
+    airUrgencyFactor: 8,
+    airWeightVolumeFactor: 1.5,
+    seaBaseCost: 15,
+    seaDailyDecay: 0.5,
+    seaMinBaseline: 5
+  });
 
   // Exclusive Weekly Offers / Discounts Section States
   const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
@@ -229,23 +350,20 @@ function AppContent() {
     }
   }, []);
 
-  // Synchronize exchange rate setting from Firestore real-time listener
+  // Synchronize Delivery Settings from Firestore
   useEffect(() => {
     try {
-      const docRef = doc(db, 'settings', 'currency');
+      const docRef = doc(db, 'delivery_config', 'global_settings');
       const unsubscribe = onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (typeof data.exchangeRate === 'number') {
-            setExchangeRate(data.exchangeRate);
-          }
+          setDeliverySettings({ id: docSnap.id, ...docSnap.data() } as DeliverySettings);
         }
       }, (error) => {
-        console.warn("Error listening to exchange rate in App:", error);
+        console.warn("Error loading delivery settings in App:", error);
       });
       return () => unsubscribe();
     } catch (e) {
-      console.warn("Firebase exchange rate sync not fully active.", e);
+      console.warn("Firebase delivery settings sync not active in App.", e);
     }
   }, []);
 
@@ -428,6 +546,7 @@ function AppContent() {
 
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
   // --- User Authentication / Registry State Engine ---
@@ -504,8 +623,42 @@ function AppContent() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
+  const [editingCartItemIndex, setEditingCartItemIndex] = useState<number | null>(null);
 
-  // Sync to local storage
+  const [prevTab, setPrevTab] = useState(currentTab);
+  const [direction, setDirection] = useState(0);
+
+  useEffect(() => {
+    if (currentTab !== prevTab) {
+      const tabsOrder = ['home', 'cart', 'admin'];
+      const newIndex = tabsOrder.indexOf(currentTab);
+      const oldIndex = tabsOrder.indexOf(prevTab);
+      
+      if (newIndex !== -1 && oldIndex !== -1) {
+        setDirection(newIndex > oldIndex ? 1 : -1);
+      } else {
+        setDirection(0); // No horizontal slide for non-main tabs
+      }
+      setPrevTab(currentTab);
+    }
+  }, [currentTab, prevTab]);
+
+  const slideVariants = {
+    enter: (dir: number) => ({
+      x: dir !== 0 ? (dir > 0 ? "100%" : "-100%") : 0,
+      opacity: dir !== 0 ? 0 : 1,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (dir: number) => ({
+      x: dir !== 0 ? (dir < 0 ? "100%" : "-100%") : 0,
+      opacity: dir !== 0 ? 0 : 1,
+    }),
+  };
+
   useEffect(() => {
     localStorage.setItem('king_store_products', JSON.stringify(products));
   }, [products]);
@@ -536,41 +689,92 @@ function AppContent() {
   }, [currentUser]);
 
   // --- Cart Handlers ---
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, options: { selectedSize?: string; selectedColor?: string; selectedOptions?: Record<string, string> } = {}) => {
+    const { selectedSize, selectedColor, selectedOptions } = options;
     if (!currentUser) {
       setIsAuthModalOpen(true);
       return;
     }
     setCartItems((prevItems) => {
-      const existing = prevItems.find((item) => item.product.id === product.id);
+      let filtered = [...prevItems];
+      
+      // If editing, remove the specific item being edited by index
+      if (editingCartItemIndex !== null) {
+        filtered = filtered.filter((_, i) => i !== editingCartItemIndex);
+      }
+
+      const existing = filtered.find(
+        (item) => item.product.id === product.id && 
+                 item.selectedSize === selectedSize && 
+                 item.selectedColor === selectedColor &&
+                 JSON.stringify(item.selectedOptions || {}) === JSON.stringify(selectedOptions || {})
+      );
+
       if (existing) {
+        // If editing, we keep the quantity from the edited item, otherwise increment
+        const newQuantity = editingCartItem ? editingCartItem.quantity : existing.quantity + 1;
+        
         // For physical products, check stock
         if (product.type === 'physical') {
           const maxStock = product.stock || 99;
-          if (existing.quantity >= maxStock) return prevItems;
+          if (newQuantity > maxStock) return prevItems;
         }
-        return prevItems.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        
+        return filtered.map((item) =>
+          item.product.id === product.id && 
+          item.selectedSize === selectedSize && 
+          item.selectedColor === selectedColor &&
+          JSON.stringify(item.selectedOptions || {}) === JSON.stringify(selectedOptions || {})
+            ? { ...item, quantity: newQuantity }
+            : item
         );
       }
-      return [...prevItems, { product, quantity: 1 }];
+      
+      return [...filtered, { 
+        product, 
+        quantity: editingCartItem ? editingCartItem.quantity : 1, 
+        selectedSize, 
+        selectedColor,
+        selectedOptions
+      }];
     });
+
+    setEditingCartItem(null);
+    setEditingCartItemIndex(null);
   };
 
-  const handleUpdateQuantity = (productId: string, quantity: number) => {
+  const handleUpdateQuantity = (index: number, quantity: number) => {
     if (quantity <= 0) {
-      handleRemoveItem(productId);
+      handleRemoveItem(index);
       return;
     }
     setCartItems((prevItems) =>
-      prevItems.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
+      prevItems.map((item, i) =>
+        i === index ? { ...item, quantity } : item
       )
     );
   };
 
-  const handleRemoveItem = (productId: string) => {
-    setCartItems((prevItems) => prevItems.filter((item) => item.product.id !== productId));
+  const handleRemoveItem = (index: number) => {
+    setCartItems((prevItems) =>
+      prevItems.filter((_, i) => i !== index)
+    );
+  };
+
+  const handleUpdateItemSize = (index: number, newSize: string) => {
+    setCartItems((prevItems) => 
+      prevItems.map((item, i) => 
+        i === index ? { ...item, selectedSize: newSize } : item
+      )
+    );
+  };
+
+  const handleUpdateItemColor = (index: number, newColor: string) => {
+    setCartItems((prevItems) => 
+      prevItems.map((item, i) => 
+        i === index ? { ...item, selectedColor: newColor } : item
+      )
+    );
   };
 
   const handleClearCart = () => {
@@ -604,9 +808,9 @@ function AppContent() {
 
   // --- Product Management Handlers ---
   const handleAddProduct = async (newProduct: Product) => {
-    // Optimistic local update
-    setProducts((prev) => [newProduct, ...prev]);
-
+    // We intentionally don't do optimistic update here because the onSnapshot listener 
+    // will immediately fetch the change. We will update it if needed.
+    
     try {
       const token = await auth.currentUser?.getIdToken(true);
       if (!token) {
@@ -614,124 +818,95 @@ function AppContent() {
         return;
       }
 
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      // Sync to Firestore
+      try {
+        const { doc, collection, setDoc } = await import('./lib/firebase');
+        // Generate a new ID for the product
+        const newId = newProduct.id.startsWith('p-') ? doc(collection(db, 'products')).id : newProduct.id;
+        
+        const dbProd = {
           name: newProduct.name,
           description: newProduct.description,
           price: Number(newProduct.price),
           type: newProduct.type,
           category: newProduct.category,
           imageUrl: newProduct.imageUrl,
-          stock: newProduct.stock,
-          downloadUrl: newProduct.downloadUrl,
-          licenseKeys: newProduct.licenseKeys,
-        })
-      });
+          images: Array.isArray(newProduct.images) ? newProduct.images : [],
+          colors: Array.isArray(newProduct.colors) ? newProduct.colors : [],
+          stock: newProduct.stock !== undefined && newProduct.stock !== null ? Number(newProduct.stock) : null,
+          downloadUrl: newProduct.downloadUrl || null,
+          licenseKeys: newProduct.licenseKeys || null,
+          discountPercentage: newProduct.discountPercentage || 0,
+          sizes: Array.isArray(newProduct.sizes) ? newProduct.sizes : [],
+          reviews: newProduct.reviews || []
+        };
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.product) {
-          const dbProd = {
-            ...data.product,
-            id: String(data.product.id)
-          };
-          // Replace the optimistic product with the actual DB product containing the real ID
-          setProducts((prev) => 
-            prev.map((p) => (p.id === newProduct.id ? dbProd : p))
-          );
-          showToast('نجاح', `تم إضافة منتج "${newProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
-        }
-      } else {
-        const data = await res.json();
-        showToast('فشل المزامنة', data.error || 'فشل حفظ المنتج في قاعدة البيانات.', 'warning');
+        await setDoc(doc(db, 'products', newId), dbProd);
+        
+        // Let the onSnapshot listener update the local state.
+        showToast('نجاح', `تم إضافة منتج "${newProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
+      } catch (fsErr) {
+        console.error("Firestore error adding product:", fsErr);
+        showToast('خطأ', 'فشل حفظ المنتج. تحقق من الصلاحيات.', 'warning');
       }
     } catch (err) {
-      console.warn("Failed to save added product to backend Cloud SQL:", err);
+      console.error("Error checking auth token:", err);
     }
   };
 
   const handleUpdateProduct = async (updatedProduct: Product) => {
-    // Optimistic local update
-    setProducts((prev) =>
-      prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
-    );
-
     try {
       const token = await auth.currentUser?.getIdToken(true);
-      if (!token) return;
-
-      const numericId = Number(updatedProduct.id);
-      if (isNaN(numericId)) {
-        // If it's a temporary string ID and not in DB yet, we skip DB call
+      if (!token) {
+        showToast('تنبيه', 'يرجى تسجيل الدخول لتعديل المنتج في قاعدة البيانات.', 'info');
         return;
       }
 
-      const res = await fetch(`/api/products/${numericId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
+      try {
+        const { doc, setDoc } = await import('./lib/firebase');
+        const dbProd = {
           name: updatedProduct.name,
           description: updatedProduct.description,
           price: Number(updatedProduct.price),
           type: updatedProduct.type,
           category: updatedProduct.category,
           imageUrl: updatedProduct.imageUrl,
-          stock: updatedProduct.stock,
-          downloadUrl: updatedProduct.downloadUrl,
-          licenseKeys: updatedProduct.licenseKeys,
-        })
-      });
+          stock: updatedProduct.stock !== undefined && updatedProduct.stock !== null ? Number(updatedProduct.stock) : null,
+          downloadUrl: updatedProduct.downloadUrl || null,
+          licenseKeys: updatedProduct.licenseKeys || null,
+          discountPercentage: updatedProduct.discountPercentage || 0,
+          sizes: Array.isArray(updatedProduct.sizes) ? updatedProduct.sizes : []
+        };
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.product) {
-          showToast('نجاح', `تم تحديث منتج "${updatedProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
-        }
-      } else {
-        const data = await res.json();
-        showToast('خطأ', data.error || 'فشل تحديث المنتج في قاعدة البيانات.', 'warning');
+        await setDoc(doc(db, 'products', updatedProduct.id), dbProd, { merge: true });
+        showToast('نجاح', `تم تحديث منتج "${updatedProduct.name}" بنجاح في قاعدة البيانات ✨`, 'success');
+      } catch (fsErr) {
+        console.error("Firestore error updating product:", fsErr);
+        showToast('خطأ', 'فشل تحديث المنتج. تحقق من الصلاحيات.', 'warning');
       }
     } catch (err) {
-      console.warn("Failed to update product in backend Cloud SQL:", err);
+      console.error("Error checking auth token:", err);
     }
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (confirm('هل أنت متأكد من حذف هذا المنتج نهائياً من KING STORE؟')) {
-      // Optimistic local update
-      setProducts((prev) => prev.filter((p) => p.id !== productId));
-
-      try {
-        const token = await auth.currentUser?.getIdToken(true);
-        if (!token) return;
-
-        const numericId = Number(productId);
-        if (isNaN(numericId)) return;
-
-        const res = await fetch(`/api/products/${numericId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (res.ok) {
-          showToast('تم الحذف', 'تم حذف المنتج من قاعدة البيانات بنجاح 🗑️', 'success');
-        } else {
-          const data = await res.json();
-          showToast('خطأ', data.error || 'فشل حذف المنتج من قاعدة البيانات.', 'warning');
-        }
-      } catch (err) {
-        console.warn("Failed to delete product from backend Cloud SQL:", err);
+    try {
+      // Ensure user is authenticated
+      if (!auth.currentUser) {
+        showToast('تنبيه', 'يجب تسجيل الدخول كمدير للقيام بهذه العملية.', 'info');
+        return;
       }
+
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'products', productId));
+      
+      showToast('تم الحذف بنجاح ✅', 'تم إزالة المنتج نهائياً من قاعدة البيانات والمنصة.', 'success');
+      
+      // Close modal if open
+      setSelectedProduct(null);
+    } catch (error) {
+      console.error('Error deleting product from Firestore:', error);
+      showToast('خطأ في العملية', 'فشل حذف المنتج. يرجى التحقق من الصلاحيات السحابية.', 'warning');
     }
   };
 
@@ -866,6 +1041,37 @@ function AppContent() {
       })
     );
 
+    // Sync order to Firestore
+    try {
+      await setDoc(doc(db, 'orders', newOrder.id), {
+        customerUid: auth.currentUser?.uid || null,
+        customerName: newOrder.customerName,
+        customerEmail: newOrder.customerEmail,
+        customerPhone: newOrder.customerPhone,
+        shippingAddress: newOrder.shippingAddress || null,
+        totalAmount: Number(newOrder.totalAmount),
+        paymentMethodId: newOrder.paymentMethodId,
+        paymentDetails: newOrder.paymentDetails || {},
+        receiptUrl: newOrder.receiptUrl || null,
+        status: newOrder.status,
+        date: newOrder.date,
+        senderName: newOrder.senderName || null,
+        transactionId: newOrder.transactionId || null,
+        deliveryDate: newOrder.deliveryDate || null,
+        deliveryFee: newOrder.deliveryFee || 0,
+        items: newOrder.items.map(item => ({
+          productId: String(item.productId),
+          productName: item.productName,
+          price: Number(item.price),
+          quantity: Number(item.quantity),
+          type: item.type,
+          selectedSize: item.selectedSize || null
+        }))
+      });
+    } catch (fsErr) {
+      console.warn("Firestore error adding order:", fsErr);
+    }
+
     // Persist order to Cloud SQL PostgreSQL database via backend API
     try {
       const response = await fetch('/api/orders', {
@@ -888,7 +1094,8 @@ function AppContent() {
             productName: item.productName,
             price: Number(item.price),
             quantity: Number(item.quantity),
-            type: item.type
+            type: item.type,
+            selectedSize: item.selectedSize || null
           }))
         })
       });
@@ -902,7 +1109,35 @@ function AppContent() {
             id: String(data.order.id)
           };
           setOrders((prev) => prev.map(o => o.id === newOrder.id ? dbOrder : o));
-          console.log(`[Database Sync] Order ${newOrder.id} persisted with DB ID: ${data.order.id}`);
+
+          // Also duplicate to Firestore under the actual DB ID for matching consistency
+          try {
+            await setDoc(doc(db, 'orders', String(data.order.id)), {
+              customerUid: auth.currentUser?.uid || null,
+              customerName: newOrder.customerName,
+              customerEmail: newOrder.customerEmail,
+              customerPhone: newOrder.customerPhone,
+              shippingAddress: newOrder.shippingAddress || null,
+              totalAmount: Number(newOrder.totalAmount),
+              paymentMethodId: newOrder.paymentMethodId,
+              paymentDetails: newOrder.paymentDetails || {},
+              receiptUrl: newOrder.receiptUrl || null,
+              status: newOrder.status,
+              date: newOrder.date,
+              senderName: newOrder.senderName || null,
+              transactionId: newOrder.transactionId || null,
+              items: newOrder.items.map(item => ({
+                productId: String(item.productId),
+                productName: item.productName,
+                price: Number(item.price),
+                quantity: Number(item.quantity),
+                type: item.type,
+                selectedSize: item.selectedSize || null
+              }))
+            });
+          } catch (fsErr) {
+            console.warn("Firestore error adding serial order ID:", fsErr);
+          }
         }
       }
     } catch (err) {
@@ -934,6 +1169,13 @@ function AppContent() {
       }
       return prev.map((o) => (o.id === orderId ? { ...o, status } : o));
     });
+
+    // Sync status with Firestore
+    try {
+      await setDoc(doc(db, 'orders', orderId), { status }, { merge: true });
+    } catch (fsErr) {
+      console.warn("Firestore error updating order status:", fsErr);
+    }
 
     // 2. Persist update to database
     try {
@@ -1028,73 +1270,89 @@ function AppContent() {
         onDeleteNotification={handleDeleteNotification}
         activeCustomerView={activeCustomerView}
         setActiveCustomerView={setActiveCustomerView}
+        isSypEnabled={isSypEnabled}
+        setIsSypEnabled={setIsSypEnabled}
+        isMobileMenuOpen={isMobileMenuOpen}
+        setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1 min-h-screen w-full overflow-y-auto" style={{ contain: 'content' }}>
-        {currentTab === 'agents' ? (
-          <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
-            <div className="mb-8 space-y-2">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
-                <Users className="h-4 w-4" />
-                <span>فريق الوكلاء المعتمدين 🤝</span>
-              </div>
-              <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">لوحة الوكلاء والموزعين المعتمدين</h3>
-              <p className="text-xs sm:text-sm text-slate-500">
-                تصفح وتواصل مع وكلائنا المعتمدين لتسهيل عمليات الدفع المحلّي والحصول على بطاقات التعبئة الفورية لـ KING STORE.
-              </p>
-            </div>
-            <AgentDashboard isAdminMode={isAdminMode} />
-          </section>
-        ) : currentTab === 'messaging' ? (
-          <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 text-right">
-            <div className="mb-8 space-y-2">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
-                <MessageSquare className="h-4 w-4" />
-                <span>المحادثة المباشرة الفورية 💬</span>
-              </div>
-              <h3 className="text-2xl font-black text-amber-500 tracking-wide block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">نظام الدعم الفني الملكي</h3>
-              <p className="text-xs sm:text-sm text-slate-500">
-                راسل الإدارة وطاقم الدعم الفني مباشرة وبكل أمان لحل أي استفسار أو مشكلة تتعلق بطلباتك.
-              </p>
-            </div>
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
-              <MessagingSystem />
-            </div>
-          </section>
-        ) : isAdminMode ? (
-          
-          /* ADMIN DASHBOARD MODE */
-          <AdminPanel
-            products={products}
-            onAddProduct={handleAddProduct}
-            onUpdateProduct={handleUpdateProduct}
-            onDeleteProduct={handleDeleteProduct}
-            gateways={gateways}
-            onUpdateGateway={handleUpdateGateway}
-            onAddGateway={handleAddGateway}
-            onDeleteGateway={handleDeleteGateway}
-            orders={orders}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            users={users}
-            onDeleteUser={handleDeleteUser}
-            categories={categories}
-            onAddCategory={handleAddCategory}
-            onDeleteCategory={handleDeleteCategory}
-            onUpdateCategory={handleUpdateCategory}
-          />
-        ) : activeCustomerView === 'tracking' ? (
-          <OrderTracking
-            orders={orders}
-            gateways={gateways}
-            onBackToStore={() => setActiveCustomerView('store')}
-          />
-        ) : (
-          
-          /* CUSTOMER STOREFRONT MODE */
-          <>
-            {currentTab === 'home' && (
+      <div className="flex-1 min-h-screen w-full overflow-y-auto pb-24" style={{ contain: 'content' }}>
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : currentTab}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="w-full h-full"
+          >
+            {currentTab === 'agents' ? (
+              <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <Users className="h-4 w-4" />
+                    <span>فريق الوكلاء المعتمدين 🤝</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide drop-shadow-sm">لوحة الوكلاء والموزعين المعتمدين</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    تصفح وتواصل مع وكلائنا المعتمدين لتسهيل عمليات الدفع المحلّي والحصول على بطاقات التعبئة الفورية لـ KING STORE.
+                  </p>
+                </div>
+                <AgentDashboard isAdminMode={isAdminMode} />
+              </section>
+            ) : currentTab === 'messaging' ? (
+              <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 text-right">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-500">
+                    <MessageSquare className="h-4 w-4" />
+                    <span>المحادثة المباشرة الفورية 💬</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-wide block drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">نظام الدعم الفني الملكي</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    راسل الإدارة وطاقم الدعم الفني مباشرة وبكل أمان لحل أي استفسار أو مشكلة تتعلق بطلباتك.
+                  </p>
+                </div>
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
+                  <MessagingSystem />
+                </div>
+              </section>
+            ) : isAdminMode ? (
+              
+              /* ADMIN DASHBOARD MODE */
+              <AdminPanel
+                products={products}
+                onAddProduct={handleAddProduct}
+                onUpdateProduct={handleUpdateProduct}
+                onDeleteProduct={handleDeleteProduct}
+                gateways={gateways}
+                onUpdateGateway={handleUpdateGateway}
+                onAddGateway={handleAddGateway}
+                onDeleteGateway={handleDeleteGateway}
+                orders={orders}
+                onUpdateOrderStatus={handleUpdateOrderStatus}
+                users={users}
+                onDeleteUser={handleDeleteUser}
+                categories={categories}
+                onAddCategory={handleAddCategory}
+                onDeleteCategory={handleDeleteCategory}
+                onUpdateCategory={handleUpdateCategory}
+                onShowToast={showToast}
+              />
+            ) : activeCustomerView === 'tracking' ? (
+              <OrderTracking
+                orders={orders}
+                gateways={gateways}
+                onBackToStore={() => setActiveCustomerView('store')}
+              />
+            ) : (
+              
+              /* CUSTOMER STOREFRONT MODE */
               <>
+                {currentTab === 'home' && (
+                  <>
                 {/* Elegant Majestic Hero Banner */}
                 <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
                   <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
@@ -1117,15 +1375,15 @@ function AppContent() {
 
                     {/* Core trust badges */}
                     <div className="pt-6 flex flex-wrap justify-center gap-6 text-xs text-amber-400/80 font-bold">
-                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 px-4 py-2 rounded-xl border border-slate-800">
                         <ShieldCheck className="h-4 w-4 text-amber-500" />
                         <span>{t('trustBadge1')}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 px-4 py-2 rounded-xl border border-slate-800">
                         <Zap className="h-4 w-4 text-amber-500" />
                         <span>{t('trustBadge2')}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 bg-slate-900/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800">
+                      <div className="flex items-center gap-1.5 bg-slate-900/60 px-4 py-2 rounded-xl border border-slate-800">
                         <Truck className="h-4 w-4 text-amber-500" />
                         <span>{t('trustBadge3')}</span>
                       </div>
@@ -1179,7 +1437,7 @@ function AppContent() {
                               </h4>
                               <div className="flex items-center justify-between mt-2">
                                 <span className="text-xs sm:text-sm font-black text-amber-400">
-                                  {product.price} {t('syrianPound')}
+                                  ${product.price}
                                 </span>
                                 <span className="text-[9px] sm:text-[10px] text-zinc-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
                                   {product.type === 'digital' ? t('instantDeliverySmall') : t('fastShippingSmall')}
@@ -1416,7 +1674,6 @@ function AppContent() {
                           onAddToCart={handleAddToCart}
                           onViewDetails={(prod) => setSelectedProduct(prod)}
                           globalDiscount={globalDiscount}
-                          exchangeRate={exchangeRate}
                         />
                       ))}
                     </div>
@@ -1527,49 +1784,123 @@ function AppContent() {
                   <div className="space-y-6">
                     {/* Cart Items List */}
                     <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm divide-y divide-slate-100">
-                      {cartItems.map((item) => (
-                        <div key={item.product.id} className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 text-right">
+                      {cartItems.map((item, index) => (
+                        <div key={`${item.product.id}-${index}`} className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 text-right">
                           <img 
                             src={item.product.imageUrl || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=150"} 
                             alt={item.product.name} 
                             className="h-16 w-16 object-cover rounded-xl border border-slate-100 shrink-0 bg-slate-50"
                             referrerPolicy="no-referrer"
                           />
-                          <div className="flex-1 space-y-1">
-                            <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {item.product.category}
-                            </span>
-                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{item.product.name}</h4>
-                            <p className="text-xs font-black text-amber-500">{item.product.price} {t('syrianPound')}</p>
-                          </div>
-
-                          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
-                            {/* Quantity Controls */}
-                            <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50/50">
-                              <button 
-                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
-                                className="px-3 py-1.5 text-slate-500 hover:text-red-600 transition-colors cursor-pointer font-bold text-xs"
-                              >
-                                -
-                              </button>
-                              <span className="px-3 py-1 text-xs font-black text-slate-800 bg-white border-x border-slate-200">
-                                {item.quantity}
+                          <div className="flex-1 space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 uppercase tracking-wider">
+                                {item.product.category}
                               </span>
+                              <span className="inline-block text-[9px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                {item.product.type === 'physical' ? '📦 ملموس' : '⚡ رقمي'}
+                              </span>
+                            </div>
+                            <h4 className="text-sm font-bold text-slate-900 leading-snug truncate">{item.product.name}</h4>
+                            
+                            {/* Product Specifications (Enhanced Red highlight) */}
+                            {item.product.specifications && (
+                              <div className="bg-red-50/60 border-r-4 border-red-500 px-3 py-2 rounded-lg my-2 shadow-sm transition-transform hover:scale-[1.02]">
+                                <p className="text-[11px] font-black text-red-700 text-right leading-relaxed">
+                                  🔥 {item.product.specifications}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Selected Options with Edit capability */}
+                            <div className="flex flex-wrap items-center gap-4 mt-2">
+                              {item.selectedSize && (
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mb-1">المقاس</span>
+                                  <span className="inline-flex items-center justify-center text-sm font-black text-slate-800 bg-white px-4 py-1.5 rounded-xl border-2 border-slate-100 shadow-sm">
+                                    {item.selectedSize}
+                                  </span>
+                                </div>
+                              )}
+                              {item.selectedColor && (
+                                <div className="flex items-center gap-3 bg-white p-2 pr-4 rounded-2xl border-2 border-slate-100 shadow-sm group transition-all hover:border-amber-200">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mb-0.5">اللون المختار</span>
+                                    <span className="text-sm font-black text-slate-900">
+                                      {item.selectedColor}
+                                    </span>
+                                  </div>
+                                  <div 
+                                    className="w-10 h-10 rounded-full border-4 border-white shadow-lg ring-2 ring-slate-50 group-hover:scale-110 transition-transform relative overflow-hidden" 
+                                    style={{ backgroundColor: item.selectedColor }}
+                                    title={item.selectedColor}
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-black/10 pointer-events-none" />
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Custom selected options display */}
+                              {item.selectedOptions && Object.entries(item.selectedOptions).map(([key, value]) => (
+                                <div key={key} className="flex flex-col">
+                                  <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold mb-1">{key}</span>
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-slate-700 bg-white px-3 py-1.5 rounded-xl border-2 border-slate-100 shadow-sm">
+                                    {value}
+                                  </span>
+                                </div>
+                              ))}
+                              
                               <button 
-                                onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
-                                className="px-3 py-1.5 text-slate-500 hover:text-amber-600 transition-colors cursor-pointer font-bold text-xs"
+                                onClick={() => {
+                                  setEditingCartItem(item);
+                                  setSelectedProduct(item.product);
+                                }}
+                                className="mt-auto self-end text-xs font-bold text-amber-600 hover:text-white flex items-center gap-1.5 bg-amber-50 hover:bg-amber-500 px-4 py-2 rounded-2xl transition-all cursor-pointer border border-amber-200 hover:shadow-lg hover:-translate-y-0.5"
                               >
-                                +
+                                <Settings className="h-4 w-4" />
+                                <span>{t('editDetails')}</span>
                               </button>
                             </div>
+                          </div>
 
-                            <button 
-                              onClick={() => handleRemoveItem(item.product.id)}
-                              className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-xl transition-colors cursor-pointer"
-                              title={t('removeFromCart')}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                          {/* Price and Actions Section */}
+                          <div className="flex flex-row-reverse sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-4 w-full sm:w-auto mt-4 sm:mt-0 pt-5 sm:pt-0 border-t sm:border-0 border-slate-100">
+                            <div className="flex flex-col items-end">
+                              <p className="text-5xl font-black text-red-600 drop-shadow-md leading-none tracking-tighter filter saturate-150 transform -rotate-1">${item.product.price}</p>
+                              {item.product.discountPercentage ? (
+                                <span className="text-xs text-slate-400 line-through font-bold mt-1">
+                                  ${Math.round(item.product.price * (1 + item.product.discountPercentage / 100))}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {/* Quantity Controls */}
+                              <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50/50 shadow-inner">
+                                <button 
+                                  onClick={() => handleUpdateQuantity(index, item.quantity - 1)}
+                                  className="px-3 py-1.5 text-slate-500 hover:text-red-600 transition-colors cursor-pointer font-bold text-xs"
+                                >
+                                  -
+                                </button>
+                                <span className="px-3 py-1 text-xs font-black text-slate-800 bg-white border-x border-slate-200 min-w-[2.5rem] text-center">
+                                  {item.quantity}
+                                </span>
+                                <button 
+                                  onClick={() => handleUpdateQuantity(index, item.quantity + 1)}
+                                  className="px-3 py-1.5 text-slate-500 hover:text-amber-600 transition-colors cursor-pointer font-bold text-xs"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <button 
+                                onClick={() => handleRemoveItem(index)}
+                                className="text-red-600 bg-red-50 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all cursor-pointer shadow-sm active:scale-90"
+                                title={t('removeFromCart')}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1580,7 +1911,7 @@ function AppContent() {
                       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                         <span className="text-zinc-400 font-bold text-xs">{t('itemsTotalAmount')}</span>
                         <span className="text-lg font-black text-white">
-                          {cartItems.reduce((acc, i) => acc + (i.product.price * i.quantity), 0)} {t('syrianPound')}
+                          ${cartItems.reduce((acc, i) => acc + (i.product.price * i.quantity), 0)}
                         </span>
                       </div>
                       
@@ -1714,7 +2045,7 @@ function AppContent() {
                               <div>
                                 <span className="text-[10px] font-mono text-slate-400 block">{t('orderId')} {order.id}</span>
                                 <h5 className="text-xs font-black text-slate-900 mt-1">
-                                  {t('orderTotalIs')} <strong className="text-amber-600">{order.totalAmount} {t('syrianPound')}</strong>
+                                  {t('orderTotalIs')} <strong className="text-amber-600">${order.totalAmount}</strong>
                                 </h5>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{t('orderDate')} {order.date}</p>
                               </div>
@@ -1749,7 +2080,9 @@ function AppContent() {
             )}
           </>
         )}
-      </div>
+      </motion.div>
+    </AnimatePresence>
+  </div>
 
       {/* 4. Footer */}
       <footer className="bg-slate-950 text-white border-t border-amber-500/10 py-10 mt-auto">
@@ -1783,13 +2116,24 @@ function AppContent() {
         cartItems={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
+        onUpdateItemSize={handleUpdateItemSize}
+        onUpdateItemColor={handleUpdateItemColor}
         onClearCart={handleClearCart}
         enabledGateways={enabledGateways}
         onPlaceOrder={handlePlaceOrder}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        onEditItem={(item) => {
+          const index = cartItems.indexOf(item);
+          setEditingCartItem(item);
+          setEditingCartItemIndex(index !== -1 ? index : null);
+          setSelectedProduct(item.product);
+          setIsCartOpen(false);
+        }}
         globalDiscount={globalDiscount}
         exchangeRate={exchangeRate}
+        isSypEnabled={isSypEnabled}
+        deliverySettings={deliverySettings}
       />
 
       {/* 5. Product Details Modal */}
@@ -1797,12 +2141,21 @@ function AppContent() {
         <ProductDetailsModal
           product={selectedProduct}
           isOpen={true}
-          onClose={() => setSelectedProduct(null)}
+          onClose={() => {
+            setSelectedProduct(null);
+            setEditingCartItem(null);
+          }}
+          initialOptions={editingCartItem ? {
+            selectedSize: editingCartItem.selectedSize,
+            selectedColor: editingCartItem.selectedColor,
+            selectedOptions: (editingCartItem as any).selectedOptions
+          } : undefined}
           orders={orders}
           onAddReview={handleAddReview}
           onAddToCart={handleAddToCart}
           globalDiscount={globalDiscount}
-          exchangeRate={exchangeRate}
+          isAdminMode={isAdminMode}
+          onDeleteProduct={handleDeleteProduct}
         />
       )}
 
@@ -1832,7 +2185,7 @@ function AppContent() {
 
       {/* 7. Mobile App Installation & Generation Guide Modal */}
       {isApkGuideOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-md flex items-center justify-center p-4" dir={dir}>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 flex items-center justify-center p-4" dir={dir}>
           <div 
             className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
             onClick={(e) => e.stopPropagation()}
@@ -1919,7 +2272,7 @@ function AppContent() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-start gap-3 p-4 rounded-2xl bg-slate-900/95 text-white border border-amber-500/30 shadow-2xl transition-all duration-300 backdrop-blur-md ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+            className={`pointer-events-auto flex items-start gap-3 p-4 rounded-2xl bg-slate-900/95 text-white border border-amber-500/30 shadow-2xl transition-all duration-300 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
             style={{ animation: dir === 'rtl' ? 'slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
           >
             <div className="rounded-full bg-amber-500/10 p-1.5 shrink-0 text-amber-400">
@@ -1943,17 +2296,18 @@ function AppContent() {
 
       {/* 8. Mobile Floating Bottom Navigation Bar (Visible on All Screens) */}
       <BottomNav 
-        currentTab={isAdminMode ? 'admin' : currentTab} 
+        currentTab={currentTab} 
         setCurrentTab={(tab) => {
           if (tab === 'admin') {
             setIsAdminMode(true);
-            setCurrentTab('home');
+            setCurrentTab('admin');
           } else {
             setIsAdminMode(false);
             setCurrentTab(tab);
           }
-        }} 
+        }}
         cartCount={cartItems?.length || 0} 
+        onOpenMenu={() => setIsMobileMenuOpen(true)}
         isAdmin={currentUser?.role === 'admin'}
       />
 

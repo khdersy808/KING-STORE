@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare, Globe } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { User, AppNotification } from '../types';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
@@ -26,6 +27,10 @@ interface NavbarProps {
   onDeleteNotification: (id: string) => void;
   activeCustomerView?: 'store' | 'tracking';
   setActiveCustomerView?: (view: 'store' | 'tracking') => void;
+  isSypEnabled?: boolean;
+  setIsSypEnabled?: (enabled: boolean) => void;
+  isMobileMenuOpen?: boolean;
+  setIsMobileMenuOpen?: (open: boolean) => void;
 }
 
 export default function Navbar({
@@ -44,11 +49,17 @@ export default function Navbar({
   onDeleteNotification,
   activeCustomerView = 'store',
   setActiveCustomerView,
+  isMobileMenuOpen: isMobileMenuOpenProp = false,
+  setIsMobileMenuOpen: setIsMobileMenuOpenProp,
 }: NavbarProps) {
   const { t, language, setLanguage } = useLanguage();
+  const { isSypEnabled, setIsSypEnabled } = useCurrency();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [internalMobileMenuOpen, setInternalMobileMenuOpen] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<'menu' | 'agent' | 'messaging'>('menu');
+
+  const isMobileMenuOpen = setIsMobileMenuOpenProp ? isMobileMenuOpenProp : internalMobileMenuOpen;
+  const setIsMobileMenuOpen = setIsMobileMenuOpenProp ? setIsMobileMenuOpenProp : setInternalMobileMenuOpen;
 
   // Filter notifications belonging to the current user (either user email or 'admin')
   const userNotifications = notifications.filter((n) => {
@@ -59,7 +70,7 @@ export default function Navbar({
   const unreadCount = userNotifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="sticky top-0 w-full border-b border-zinc-900 bg-slate-950 text-[#e0e0e0] shadow-xl backdrop-blur-md transition-all z-[999]">
+    <header className="sticky top-0 w-full border-b border-zinc-900 bg-slate-950 text-[#e0e0e0] shadow-xl transition-all z-[999]">
       <div className="mx-auto flex max-w-7xl h-16 sm:h-18 items-center justify-between px-2 gap-1 md:px-6 md:gap-4 flex-nowrap w-full">
         
         {/* Right side: App Branding / Logo */}
@@ -129,7 +140,7 @@ export default function Navbar({
         )}
 
         {/* Left side: Controls */}
-        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           
           {/* Search bar toggle for mobile */}
           {!isAdminMode && (
@@ -139,25 +150,13 @@ export default function Navbar({
                 placeholder={t('searchPlaceholder')}
                 value={searchQuery || ""}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-16 xs:w-24 sm:w-40 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-7 pl-2 text-[10px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none transition-all"
+                className="w-16 xs:w-24 sm:w-32 rounded-full border border-zinc-800 bg-[#121212] py-1.5 pr-7 pl-2 text-[10px] text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none transition-all"
               />
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                 <Search className="h-2.5 w-2.5 text-zinc-500" />
               </div>
             </div>
           )}
-
-          {/* Language Switcher */}
-          <button
-            onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-            className="group relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white cursor-pointer"
-            title={language === 'ar' ? 'English' : 'العربية'}
-          >
-            <Globe className="h-4 w-4 sm:h-5 sm:w-5" />
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-black text-slate-950 uppercase">
-              {language === 'ar' ? 'EN' : 'AR'}
-            </span>
-          </button>
 
           {/* Notifications Bell Icon Button (shown to logged-in users) */}
           {currentUser && (
@@ -311,13 +310,17 @@ export default function Navbar({
           {!isAdminMode && (
             <button
               onClick={onOpenCart}
-              className="relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 hover:border-amber-500/40 transition-all text-zinc-300 hover:text-amber-400 cursor-pointer"
+              className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
+                cartCount > 0 
+                  ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/10' 
+                  : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
+              }`}
               title={t('navCart')}
               id="cart-toggle-btn"
             >
-              <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5" />
+              <ShoppingBag className={`h-4 w-4 sm:h-5 sm:w-5 ${cartCount > 0 ? 'animate-bounce' : ''}`} />
               {cartCount > 0 && (
-                <span className="absolute -top-1 -left-1 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-[8px] sm:text-[11px] font-bold text-slate-950 ring-1 sm:ring-2 ring-zinc-950 animate-bounce">
+                <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-red-600 text-[8px] sm:text-[11px] font-black text-white ring-1 sm:ring-2 ring-zinc-950 shadow-lg">
                   {cartCount}
                 </span>
               )}
@@ -350,17 +353,15 @@ export default function Navbar({
             </button>
           )}
 
-          {/* Mobile Menu Toggle Button (Hamburger Menu - Mobile Only, visible if logged in) */}
-          {true && (
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
-              title="القائمة"
-              id="mobile-menu-toggle-btn"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-          )}
+          {/* Menu Toggle Button (Navigation Drawer - accessible everywhere) */}
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
+            title="القائمة"
+            id="mobile-menu-toggle-btn"
+          >
+            <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
+          </button>
 
         </div>
       </div>
@@ -370,7 +371,7 @@ export default function Navbar({
         <div className="fixed inset-0 z-[99999]" aria-modal="true" role="dialog" dir={language === 'ar' ? 'rtl' : 'ltr'}>
           {/* Backdrop overlay */}
           <div 
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md transition-opacity duration-300 ease-in-out cursor-pointer z-40" 
+            className="fixed inset-0 bg-slate-950/85 transition-opacity duration-300 ease-in-out cursor-pointer z-40" 
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
@@ -436,10 +437,67 @@ export default function Navbar({
               )}
 
               {/* 2. Navigation Links: Middle Section */}
-              <div className="flex flex-col gap-4 pt-2">
+              <div className="flex flex-col gap-5 pt-2">
                 
                 {activeDrawer === 'menu' && (
                   <>
+                    {/* Language Selection Section */}
+                    <div className="flex flex-col gap-2.5">
+                      <span className="text-[10px] text-amber-400 font-black uppercase tracking-widest px-1">
+                        {t('languageSelection')}
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setLanguage('ar')}
+                          className={`flex items-center justify-center gap-2 py-3 rounded-xl border font-bold transition-all ${
+                            language === 'ar' 
+                              ? 'bg-amber-500 border-amber-500 text-slate-950 shadow-lg' 
+                              : 'bg-slate-900/50 border-amber-500/10 text-zinc-400 hover:border-amber-500/30'
+                          }`}
+                        >
+                          <span className="text-xs">العربية</span>
+                        </button>
+                        <button
+                          onClick={() => setLanguage('en')}
+                          className={`flex items-center justify-center gap-2 py-3 rounded-xl border font-bold transition-all ${
+                            language === 'en' 
+                              ? 'bg-amber-500 border-amber-500 text-slate-950 shadow-lg' 
+                              : 'bg-slate-900/50 border-amber-500/10 text-zinc-400 hover:border-amber-500/30'
+                          }`}
+                        >
+                          <span className="text-xs">English</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Currency Pricing Toggle Section */}
+                    <div className="flex flex-col gap-2.5">
+                      <span className="text-[10px] text-amber-400 font-black uppercase tracking-widest px-1">
+                        {t('currencySettings')}
+                      </span>
+                      <button
+                        onClick={() => setIsSypEnabled(!isSypEnabled)}
+                        className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-950/50 border border-amber-500/20 group hover:border-amber-500/40 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg font-black transition-all ${
+                            isSypEnabled ? 'bg-amber-500 text-slate-950' : 'bg-slate-900 text-amber-400 border border-amber-500/20'
+                          }`}>
+                            {isSypEnabled ? 'SYP' : '$'}
+                          </div>
+                          <div className="flex flex-col items-start">
+                            <span className="text-sm font-bold text-white">{t('royalPricing')}</span>
+                            <span className="text-[10px] text-zinc-500 font-medium">
+                              {isSypEnabled ? 'Show prices in Syrian Pounds' : 'Show prices in US Dollars'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full p-1 transition-all ${isSypEnabled ? 'bg-amber-500' : 'bg-zinc-800'}`}>
+                          <div className={`w-3 h-3 rounded-full bg-white transition-all transform ${isSypEnabled ? (language === 'ar' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'}`} />
+                        </div>
+                      </button>
+                    </div>
+
                     {/* Admin Mode Toggle (inside menu, only for admins) */}
                     {currentUser?.role === 'admin' && (
                       <button

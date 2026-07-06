@@ -7,6 +7,8 @@
         "price": "number",
         "description": "string",
         "image": "string",
+        "images": "array",
+        "colors": "array",
         "type": "string",
         "stock": "number",
         "reviews": "array"
@@ -22,7 +24,9 @@
         "totalAmount": "number",
         "status": "string",
         "createdAt": "string",
-        "items": "array"
+        "items": "array",
+        "deliveryDate": "string",
+        "deliveryFee": "number"
       }
     },
     "notifications": {
@@ -78,6 +82,17 @@
       "fields": {
         "exchangeRate": "number",
         "globalDiscount": "number"
+      }
+    },
+    "delivery_config": {
+      "fields": {
+        "basePricePerDay": "number",
+        "airBaseCost": "number",
+        "airUrgencyFactor": "number",
+        "airWeightVolumeFactor": "number",
+        "seaBaseCost": "number",
+        "seaDailyDecay": "number",
+        "seaMinBaseline": "number"
       }
     }
   }

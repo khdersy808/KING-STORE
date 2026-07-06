@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -38,6 +39,9 @@ export const db = initializeFirestore(app, {
 // Initialize and export Auth
 export const auth = getAuth(app);
 
+// Initialize Storage
+export const storage = getStorage(app);
+
 // Collection References
 export const PRODUCTS_COLLECTION = 'products';
 export const ORDERS_COLLECTION = 'orders';
@@ -57,6 +61,9 @@ export {
   addDoc,
   updateDoc,
   deleteDoc,
+  ref,
+  uploadString,
+  getDownloadURL,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
