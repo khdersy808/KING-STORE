@@ -631,14 +631,14 @@ function AppContent() {
 
   useEffect(() => {
     if (currentTab !== prevTab) {
-      const tabsOrder = ['home', 'cart', 'admin'];
+      const tabsOrder = ['home', 'categories', 'cart', 'agents', 'messaging', 'profile', 'admin'];
       const newIndex = tabsOrder.indexOf(currentTab);
       const oldIndex = tabsOrder.indexOf(prevTab);
       
       if (newIndex !== -1 && oldIndex !== -1) {
         setDirection(newIndex > oldIndex ? 1 : -1);
       } else {
-        setDirection(0); // No horizontal slide for non-main tabs
+        setDirection(0);
       }
       setPrevTab(currentTab);
     }
@@ -646,16 +646,16 @@ function AppContent() {
 
   const slideVariants = {
     enter: (dir: number) => ({
-      x: dir !== 0 ? (dir > 0 ? "100%" : "-100%") : 0,
-      opacity: dir !== 0 ? 0 : 1,
+      x: dir > 0 ? "100%" : dir < 0 ? "-100%" : 0,
+      opacity: 0,
     }),
     center: {
       x: 0,
       opacity: 1,
     },
     exit: (dir: number) => ({
-      x: dir !== 0 ? (dir < 0 ? "100%" : "-100%") : 0,
-      opacity: dir !== 0 ? 0 : 1,
+      x: dir > 0 ? "-100%" : dir < 0 ? "100%" : 0,
+      opacity: 0,
     }),
   };
 
@@ -1277,7 +1277,7 @@ function AppContent() {
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1 min-h-screen w-full overflow-y-auto pb-24" style={{ contain: 'content' }}>
+      <div className="flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24" style={{ contain: 'content' }}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : currentTab}
@@ -1286,8 +1286,8 @@ function AppContent() {
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="w-full h-full"
+            transition={{ type: "spring", stiffness: 420, damping: 38 }}
+            className="w-full h-full will-change-[transform,opacity]"
           >
             {currentTab === 'agents' ? (
               <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
