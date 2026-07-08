@@ -9,8 +9,57 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/crown.png" />
+    <style>
+      #global-loader {
+        position: fixed;
+        inset: 0;
+        background: #020617;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.5s ease-out;
+      }
+      .loader-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+      .loader-content h1 {
+        color: #f59e0b;
+        font-family: sans-serif;
+        font-weight: 800;
+        letter-spacing: 4px;
+        margin: 0;
+        font-size: 32px;
+        text-transform: uppercase;
+      }
+      .loader-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #f59e0b;
+        border-bottom-color: transparent;
+        border-radius: 50%;
+        animation: rotation 1s linear infinite;
+      }
+      @keyframes rotation {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <div id="global-loader">
+      <div class="loader-content">
+        <svg viewBox="0 0 24 24" width="80" height="80" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l4 4h4v4l-4 4-4-4-4 4-4-4V6h4l4-4z"/>
+          <path d="M4 18l8-2 8 2"/>
+        </svg>
+        <h1>KING STORE</h1>
+        <div class="loader-spinner"></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

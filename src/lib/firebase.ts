@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc, limit, serverTimestamp } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { 
@@ -187,6 +187,8 @@ export {
   addDoc,
   updateDoc,
   deleteDoc,
+  limit,
+  serverTimestamp,
   ref,
   uploadString,
   getDownloadURL,

@@ -64,8 +64,37 @@ export default function App() {
 function AppContent() {
   const { dir, t, language, texts } = useLanguage();
   const { isSypEnabled, setIsSypEnabled, exchangeRate } = useCurrency();
+  const [isAppReady, setIsAppReady] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
+
+  useEffect(() => {
+    // Faster removal once the app content starts mounting
+    setIsAppReady(true);
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+      loader.style.opacity = '0';
+      setTimeout(() => {
+        loader.style.display = 'none';
+        loader.remove();
+      }, 500); // Wait for transition
+    }
+  }, []);
+
+  const handleTabChange = (tab: string) => {
+    setIsNavigating(true);
+    setTimeout(() => {
+      if (tab === 'admin') {
+        setIsAdminMode(true);
+        setCurrentTab('admin');
+      } else {
+        setIsAdminMode(false);
+        setCurrentTab(tab);
+      }
+      setIsNavigating(false);
+    }, 800);
+  };
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
@@ -1437,6 +1466,10 @@ function AppContent() {
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
+  if (!isAppReady) {
+    return null; // Keep index.html loader visible
+  }
+
   return (
     <>
       <div 
@@ -1489,30 +1522,27 @@ function AppContent() {
         setIsMobileMenuOpen={setIsMobileMenuOpen}
         onOpenWallet={() => setIsWalletModalOpen(true)}
         currentTab={currentTab}
-        setCurrentTab={(tab) => {
-          if (tab === 'admin') {
-            setIsAdminMode(true);
-            setCurrentTab('admin');
-          } else {
-            setIsAdminMode(false);
-            setCurrentTab(tab);
-          }
-        }}
+        setCurrentTab={handleTabChange}
       />
 
       {/* 2. Main Content Container */}
       <div className="flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24 pt-32 sm:pt-40" style={{ contain: 'content' }}>
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : activeCustomerView === 'wishlist' ? 'wishlist' : currentTab}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ type: "spring", stiffness: 420, damping: 38 }}
-            className="w-full h-full will-change-[transform,opacity]"
-          >
+        {isNavigating ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950">
+            <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : (
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : activeCustomerView === 'wishlist' ? 'wishlist' : currentTab}
+              custom={direction}
+              variants={slideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "spring", stiffness: 420, damping: 38 }}
+              className="w-full h-full will-change-[transform,opacity]"
+            >
             {currentTab === 'agents' ? (
               <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right">
                 <div className="mb-8 space-y-2">
@@ -1625,11 +1655,11 @@ function AppContent() {
             ) : (
               
               /* CUSTOMER STOREFRONT MODE */
-              <>
+              <div>
                 {currentTab === 'home' && (
                   <>
-                {/* Elegant Majestic Hero Banner */}
                 <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
+                  {/* Elegant Majestic Hero Banner */}
                   <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
                   <div className="absolute -top-40 -right-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0) 70%)' }} />
                   <div className="absolute -bottom-40 -left-40 h-80 w-80 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(245, 158, 11, 0.05) 0%, rgba(245, 158, 11, 0) 70%)' }} />
@@ -1666,8 +1696,8 @@ function AppContent() {
                   </div>
                 </section>
 
-                {/* --- 🎁 بنر العروض المميز الفاخر (Featured Offers Banner) --- */}
                 <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+                  {/* --- 🎁 بنر العروض المميز الفاخر (Featured Offers Banner) --- */}
                   <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-8 border border-amber-500/20 shadow-xl">
                     <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-transparent pointer-events-none" />
                     <div className="absolute -top-16 -left-16 h-36 w-36 pointer-events-none bg-amber-500/5 rounded-full blur-3xl" />
@@ -1965,7 +1995,7 @@ function AppContent() {
                     </div>
                   )}
                 </section>
-              </>
+                </>
             )}
 
             {currentTab === 'categories' && (
@@ -2545,11 +2575,12 @@ function AppContent() {
                 )}
               </section>
             )}
-          </>
+              </div>
+            )}
+            </motion.div>
+          </AnimatePresence>
         )}
-      </motion.div>
-    </AnimatePresence>
-  </div>
+      </div>
 
       {/* 4. Footer */}
       <footer className="bg-slate-950 text-white border-t border-amber-500/10 py-10 mt-auto">
@@ -2589,7 +2620,6 @@ function AppContent() {
       </footer>
     </div>
 
-    {/* 3. Global Shopping Cart Drawer */}
     <Cart
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}

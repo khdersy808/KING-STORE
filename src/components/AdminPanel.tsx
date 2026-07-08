@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, User, DeliverySettings, Policy } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import CustomSelect from './CustomSelect';
 import AIImageLab from './AIImageLab';
 import {
@@ -113,6 +114,7 @@ export default function AdminPanel({
   onShowToast
 }: AdminPanelProps) {
   const { t, texts, dir } = useLanguage();
+  const { formatPrice, currency } = useCurrency();
   const [activeTab, setActiveTab] = useState<AdminTab>('products');
   const [adminEmail, setAdminEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('king_store_current_user');
@@ -1440,7 +1442,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
       return [
         p.name,
         p.category,
-        `$${p.price}`,
+        formatPrice(p.price),
         stockDesc,
         status
       ];
@@ -1823,7 +1825,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex items-center justify-between">
               <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
                 <span className="text-xs font-bold text-slate-400">{texts.totalRevenueAnalytics}</span>
-                <h3 className="mt-2 text-3xl font-black text-amber-600">${totalRevenue.toLocaleString()}</h3>
+                <h3 className="mt-2 text-3xl font-black text-amber-600">{formatPrice(totalRevenue)}</h3>
                 <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">{texts.orderStatusCompleted}</span>
               </div>
               <div className="rounded-xl bg-amber-500/10 p-3.5 text-amber-600">
@@ -1897,11 +1899,11 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                       fontSize={11} 
                       tickLine={false} 
                       axisLine={false}
-                      tickFormatter={(val) => `$${val}`}
+                      tickFormatter={(val) => formatPrice(val)}
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '0.75rem', color: '#f4f4f5' }}
-                      formatter={(value) => [`$${value}`, texts.revenueLabel]}
+                      formatter={(value) => [formatPrice(Number(value)), texts.revenueLabel]}
                       labelFormatter={(label) => `${texts.createdAt}: ${label}`}
                     />
                     <Bar 
@@ -2787,7 +2789,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                               </span>
                             )}
                           </td>
-                          <td className="p-4 font-bold text-slate-900">${p.price}</td>
+                          <td className="p-4 font-bold text-slate-900">{formatPrice(p.price)}</td>
                           <td className="p-4">
                             {p.type === 'physical' ? (
                               <span className={`font-semibold ${p.stock && p.stock <= 3 ? 'text-red-600 font-bold' : 'text-slate-600'}`}>
@@ -3512,7 +3514,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
               <div>
                 <span className="block text-[10px] font-bold text-slate-400 font-semibold">الأرباح والمبيعات المكتملة</span>
                 <span className="text-base font-black text-amber-600">
-                  ${orders.filter(o => o.status === 'completed').reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatPrice(orders.filter(o => o.status === 'completed').reduce((sum, o) => sum + o.totalAmount, 0))}
                 </span>
               </div>
             </div>
@@ -3798,7 +3800,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                             {/* Total Amount */}
                             <td className="p-4">
                               <span className="font-black text-slate-950 text-sm font-mono block">
-                                ${order.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                {formatPrice(order.totalAmount)}
                               </span>
                             </td>
 
@@ -4149,7 +4151,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                             </div>
                           </div>
                           <span className="font-mono font-black text-slate-900">
-                            ${(item.price * item.quantity).toLocaleString()}
+                            {formatPrice(item.price * item.quantity)}
                           </span>
                         </div>
                       ))}
@@ -4311,7 +4313,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                       }}
                       options={[
                         { label: '-- اختر منتجاً لتعديل خصمه --', value: '' },
-                        ...products.map(p => ({ label: `${p.name} ($${p.price})`, value: p.id }))
+                        ...products.map(p => ({ label: `${p.name} (${formatPrice(p.price)})`, value: p.id }))
                       ]}
                     />
                   </div>
@@ -4486,7 +4488,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                         onChange={(val) => setSelectedProductIdToAdd(val)}
                         options={[
                           { label: '-- اختر منتجاً للإضافة --', value: '' },
-                          ...products.map(p => ({ label: `${p.name} - $${p.price}`, value: p.id }))
+                          ...products.map(p => ({ label: `${p.name} - ${formatPrice(p.price)}`, value: p.id }))
                         ]}
                       />
                       <button
@@ -4752,14 +4754,14 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                             <td className="p-6">
                               <div className="flex items-center gap-2">
                                 <div className="p-2 rounded-lg bg-amber-50 text-amber-600 font-black text-lg">
-                                  {coupon.type === 'percentage' ? `${coupon.value}%` : `$${coupon.value.toLocaleString()}`}
+                                  {coupon.type === 'percentage' ? `${coupon.value}%` : formatPrice(coupon.value)}
                                 </div>
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">خصم ملكي</span>
                               </div>
                             </td>
                             <td className="p-6">
                               <span className="text-xs font-black text-slate-600">
-                                {coupon.minAmount > 0 ? `$${coupon.minAmount.toLocaleString()}` : 'بدون قيود'}
+                                {coupon.minAmount > 0 ? formatPrice(coupon.minAmount) : 'بدون قيود'}
                               </span>
                             </td>
                             <td className="p-6">

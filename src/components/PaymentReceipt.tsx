@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import { ShieldCheck, Calendar, User, ArrowDownRight, Copy, Check, QrCode, CreditCard, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { Order, PaymentGateway } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 interface PaymentReceiptProps {
   order: Order;
   gateway?: PaymentGateway;
   onPrint?: () => void;
-  exchangeRate?: number;
 }
 
-export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate = 15000 }: PaymentReceiptProps) {
+export default function PaymentReceipt({ order, gateway, onPrint }: PaymentReceiptProps) {
   const { t, dir, language } = useLanguage();
+  const { formatPrice } = useCurrency();
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const handleCopy = (text: string, fieldId: string) => {
@@ -92,12 +93,7 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
           <span className="block text-[10px] text-slate-400 font-bold mb-1">{t('netAmount')}</span>
           <div className="flex flex-col items-center gap-1.5">
             <div className="text-2xl font-black text-amber-400 tracking-tight font-mono flex items-center justify-center gap-1.5">
-              <span>${order.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-              <span className="text-xs text-white bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">USD</span>
-            </div>
-            <div className="text-base font-extrabold text-amber-500/90 tracking-tight flex items-center justify-center gap-1">
-              <span>{(order.totalAmount * exchangeRate).toLocaleString()}</span>
-              <span>ل.س</span>
+              <span>{formatPrice(order.totalAmount)}</span>
             </div>
           </div>
 
@@ -105,11 +101,11 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
             <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 gap-2 text-right">
               <div className="bg-slate-900/50 p-2 rounded-lg border border-emerald-500/10">
                 <span className="block text-[8px] text-emerald-400 font-bold">عربون 50% (مدفوع الآن):</span>
-                <span className="text-[11px] font-black text-emerald-400 font-mono">${(order.amount_paid_advance || (order.totalAmount * 0.5)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <span className="text-[11px] font-black text-emerald-400 font-mono">{formatPrice(order.amount_paid_advance || (order.totalAmount * 0.5))}</span>
               </div>
               <div className="bg-slate-900/50 p-2 rounded-lg border border-amber-500/10">
                 <span className="block text-[8px] text-amber-400 font-bold">المتبقي 50% (عند الاستلام):</span>
-                <span className="text-[11px] font-black text-amber-400 font-mono">${(order.amount_due_on_delivery || (order.totalAmount * 0.5)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <span className="text-[11px] font-black text-amber-400 font-mono">{formatPrice(order.amount_due_on_delivery || (order.totalAmount * 0.5))}</span>
               </div>
             </div>
           )}
@@ -194,7 +190,7 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
                   <span className="font-bold text-slate-200">{item.productName}</span>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="font-mono font-bold text-slate-400">${(item.price * item.quantity).toFixed(2)}</span>
+                  <span className="font-mono font-bold text-slate-400">{formatPrice(item.price * item.quantity)}</span>
 
                 </div>
               </div>
@@ -202,13 +198,13 @@ export default function PaymentReceipt({ order, gateway, onPrint, exchangeRate =
             {order.deliveryFee !== undefined && order.deliveryFee > 0 && (
               <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-white/[0.03]">
                 <span className="text-slate-400">تكلفة خدمة التوصيل والشحن الدولي:</span>
-                <span className="font-mono font-bold text-amber-400">+${order.deliveryFee.toFixed(2)}</span>
+                <span className="font-mono font-bold text-amber-400">+{formatPrice(order.deliveryFee)}</span>
               </div>
             )}
             {order.import_tax !== undefined && order.import_tax > 0 && (
               <div className={`flex items-center justify-between text-[11px] ${!(order.deliveryFee !== undefined && order.deliveryFee > 0) ? 'pt-1.5 border-t border-white/[0.03]' : ''}`}>
                 <span className="text-slate-400">الرسوم الجمركية وضريبة الاستيراد (10%):</span>
-                <span className="font-mono font-bold text-amber-400">+${order.import_tax.toFixed(2)}</span>
+                <span className="font-mono font-bold text-amber-400">+{formatPrice(order.import_tax)}</span>
               </div>
             )}
           </div>

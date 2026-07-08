@@ -290,7 +290,7 @@ export default function Cart({
       // Check minAmount
       if (currentSubTotal < foundCoupon.minAmount) {
         setCouponFeedback({
-          message: `الحد الأدنى لاستخدام هذا الكود هو $${foundCoupon.minAmount.toLocaleString()}`,
+          message: `الحد الأدنى لاستخدام هذا الكود هو ${formatPrice(foundCoupon.minAmount)}`,
           type: 'error'
         });
         setAppliedCoupon(null);
@@ -299,7 +299,7 @@ export default function Cart({
 
       // Success
       setAppliedCoupon(foundCoupon);
-      const discountVal = foundCoupon.type === 'percentage' ? `${foundCoupon.value}%` : `$${foundCoupon.value}`;
+      const discountVal = foundCoupon.type === 'percentage' ? `${foundCoupon.value}%` : formatPrice(foundCoupon.value);
       setCouponFeedback({
         message: `تم تطبيق كود الخصم بنجاح! خصم بقيمة ${discountVal}`,
         type: 'success'
@@ -1009,7 +1009,7 @@ export default function Cart({
                           <div className="flex justify-between items-center text-[10px] border-t border-slate-800 pt-2">
                             <span className="text-slate-400">تكلفة خدمة التوصيل والشحن الدولي:</span>
                             <span className="font-mono font-black text-emerald-400">
-                              ${finalDeliveryFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {formatPrice(finalDeliveryFee)}
                             </span>
                           </div>
                         </div>
