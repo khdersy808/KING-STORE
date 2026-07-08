@@ -43,6 +43,7 @@ import {
   Download,
   DollarSign,
   Sparkles,
+  Send,
   Image as ImageIcon,
   Loader2,
   UserPlus,
@@ -769,22 +770,30 @@ export default function AdminPanel({
         : [notificationTarget?.user].filter(Boolean) as User[];
 
       for (const target of targets) {
+        const targetEmail = target.email.toLowerCase();
+        
         // 1. Save to Firestore Notifications Collection (In-app)
         await addDoc(collection(db, 'notifications'), {
-          userId: target.email.toLowerCase(),
+          userId: targetEmail,
           title: notificationTitle.trim(),
           message: notificationMessage.trim(),
           date: new Date().toISOString(),
           isRead: false,
-          type: 'admin_broadcast'
+          type: 'private_message'
         });
 
-        // 2. Placeholder for Real Push (FCM)
-        // In a real production app, you would call a Cloud Function or your own backend API here
-        // passing the target.fcmToken if it exists.
+        // 2. Save to Messaging System (Messages Collection)
+        await addDoc(collection(db, 'messages'), {
+          senderId: 'admin',
+          receiverId: targetEmail,
+          text: `[${notificationTitle.trim()}] ${notificationMessage.trim()}`,
+          date: new Date().toISOString(),
+          isRead: false
+        });
+
+        // 3. Placeholder for Real Push (FCM)
         if (target.fcmToken) {
           console.log(`Sending FCM push to ${target.email} using token: ${target.fcmToken}`);
-          // fetch('https://your-api.com/send-push', { ... })
         }
       }
 
@@ -5253,10 +5262,10 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                               setNotificationTarget({ type: 'single', user });
                               setShowNotificationModal(true);
                             }}
-                            className="p-2 text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer opacity-0 group-hover:opacity-100"
-                            title="إرسال إشعار دفع (Push Notification)"
+                            className="p-2 text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 group/msg"
+                            title="إرسال تنبيه فردي (Push Notification)"
                           >
-                            <Sparkles className="h-4 w-4" />
+                            <Send className="h-4 w-4 transform group-hover/msg:translate-x-1 group-hover/msg:-translate-y-1 transition-transform" />
                           </button>
                           <button
                             onClick={() => {
@@ -5266,7 +5275,7 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                                 () => onDeleteUser(user.id)
                               );
                             }}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer opacity-40 hover:opacity-100"
                             title="حذف المستخدم"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -5814,59 +5823,47 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
         </div>
       )}
 
-      {/* Push Notification Modal */}
+      {/* Private Message Modal */}
       {showNotificationModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4" dir="rtl">
           <div 
             className="relative bg-white rounded-3xl border border-slate-200 max-w-lg w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3 text-amber-500 mb-6 justify-start">
-              <div className="bg-amber-50 p-3 rounded-2xl text-amber-500 border border-amber-100">
-                <Sparkles className="h-6 w-6" />
+            <div className="flex items-center gap-3 text-amber-600 mb-6 justify-start">
+              <div className="bg-amber-50 p-3 rounded-2xl text-amber-600 border border-amber-100">
+                <Send className="h-6 w-6" />
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-900">
                   {notificationTarget?.type === 'all' 
-                    ? 'إرسال إشعار جماعي لجميع الزبائن 📢' 
-                    : `إرسال إشعار لـ ${notificationTarget?.user?.name} ✨`}
+                    ? 'إرسال تنبيه جماعي لجميع الزبائن 📢' 
+                    : `إرسال تنبيه خاص لـ ${notificationTarget?.user?.name} ✨`}
                 </h3>
-                <p className="text-[10px] text-slate-500 font-bold mt-0.5">سيصل هذا الإشعار كرسالة Push على الموبايل وفي "الجرس" داخل المتجر.</p>
+                <p className="text-[10px] text-slate-500 font-bold mt-0.5">سيصل هذا التنبيه كإشعار Push فوري ويظهر في سجل التنبيهات الخاص بالزبون.</p>
               </div>
             </div>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-black text-slate-700 mb-2">عنوان الإشعار</label>
+                <label className="block text-xs font-black text-slate-700 mb-2">عنوان التنبيه</label>
                 <input
                   type="text"
                   value={notificationTitle}
                   onChange={(e) => setNotificationTitle(e.target.value)}
-                  placeholder="مثال: خصومات الجمعة الملكية! 👑"
+                  placeholder="مثال: يرجى تحديث بيانات الدفع 💳"
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-sm transition-all"
                 />
               </div>
               <div>
-                <label className="block text-xs font-black text-slate-700 mb-2">محتوى الرسالة</label>
+                <label className="block text-xs font-black text-slate-700 mb-2">محتوى التنبيه</label>
                 <textarea
                   value={notificationMessage}
                   onChange={(e) => setNotificationMessage(e.target.value)}
-                  placeholder="اكتب هنا تفاصيل العرض أو الرسالة التي ستظهر للمستخدم..."
+                  placeholder="مثال: يرجى تعبئة البيانات بشكل صحيح والتأكد من المبلغ حتى تتم العملية بنجاح..."
                   rows={4}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-sm transition-all resize-none"
                 />
-              </div>
-              
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                  <Info className="h-3.5 w-3.5" />
-                  <span>معلومات تقنية</span>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                  {notificationTarget?.type === 'all' 
-                    ? `سيتم استهداف جميع المستخدمين الذين لديهم دور "عميل".` 
-                    : `المستخدم لديه رمز FCM: ${notificationTarget?.user?.fcmToken ? 'متوفر ✅' : 'غير متوفر ❌ (سيظهر في الجرس فقط)'}`}
-                </p>
               </div>
             </div>
             
@@ -5896,8 +5893,8 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                   </>
                 ) : (
                   <>
-                    <MessageSquare className="h-4 w-4" />
-                    <span>إرسال الإشعار الآن</span>
+                    <Send className="h-4 w-4" />
+                    <span>إرسال التنبيه الفردي</span>
                   </>
                 )}
               </button>

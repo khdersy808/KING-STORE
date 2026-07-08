@@ -78,6 +78,41 @@ function AppContent() {
 
   const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
 
+  // --- PWA Installation Logic ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+      console.log('PWA was installed');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+  };
+
   // Setup Push Notifications
   useEffect(() => {
     if (!currentUser || !messaging) return;
@@ -750,7 +785,6 @@ function AppContent() {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
 
@@ -1775,15 +1809,24 @@ function AppContent() {
                       <div className="text-zinc-400 text-xs text-center lg:text-right">
                         💡 <span className="text-zinc-200 font-bold">{t('recommendedSolution')}</span> {t('pwaNotice')}
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-2.5 w-full lg:w-auto shrink-0 z-10">
-                        <button
-                          onClick={() => setIsApkGuideOpen(true)}
-                          className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3.5 text-xs active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center animate-pulse"
-                          id="view-apk-guide-action"
-                        >
-                          <Smartphone className="h-4 w-4 text-slate-950 stroke-[2.5]" />
-                          <span>{t('installAppButton')}</span>
-                        </button>
+                      <div className="flex flex-col sm:flex-row gap-4 justify-center w-full lg:w-auto shrink-0 z-10">
+                        {showInstallBtn && (
+                          <button
+                            onClick={handleInstallClick}
+                            className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-6 py-3.5 text-xs active:scale-98 transition-all cursor-pointer shadow-lg shadow-amber-500/20 text-center animate-pulse"
+                            id="pwa-install-hero-action"
+                          >
+                            <Smartphone className="h-4 w-4 text-slate-950 stroke-[2.5]" />
+                            <span>تثبيت تطبيق المتجر الملكي 📱</span>
+                          </button>
+                        )}
+                        
+                        {!showInstallBtn && (
+                          <div className="flex-1 lg:flex-none flex items-center justify-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-black px-6 py-3.5 text-xs">
+                            <Check className="h-4 w-4" />
+                            <span>التطبيق مثبت بالفعل على جهازك ✨</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2522,6 +2565,19 @@ function AppContent() {
             {t('footerDesc')}
           </p>
 
+          {/* PWA Install Link in Footer */}
+          {showInstallBtn && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center justify-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 font-bold px-4 py-2.5 text-[10px] transition-all cursor-pointer"
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>تثبيت تطبيق المتجر 📱</span>
+              </button>
+            </div>
+          )}
+
           <div className="flex gap-4 text-xs text-slate-400 font-bold">
             <span className="hover:text-amber-400 cursor-pointer transition-colors">{t('termsAndConditions')}</span>
             <span>•</span>
@@ -2621,90 +2677,6 @@ function AppContent() {
         onOpenAuth={() => setIsAuthModalOpen(true)}
         showToast={showToast}
       />
-
-      {/* 7. Mobile App Installation & Generation Guide Modal */}
-      {isApkGuideOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 flex items-center justify-center p-4" dir={dir}>
-          <div 
-            className="relative bg-slate-900 rounded-3xl border border-amber-500/20 max-w-2xl w-full overflow-hidden shadow-2xl animate-fade-in text-zinc-100"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-950 to-slate-900 p-5 text-white flex items-center justify-between border-b border-amber-500/10">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
-                  <Smartphone className="h-5 w-5 text-amber-400" />
-                </div>
-                <div className={dir === 'rtl' ? 'text-right' : 'text-left'}>
-                  <span className="text-[10px] font-extrabold text-amber-400 block uppercase tracking-wide">{texts.apkGuideTitle}</span>
-                  <h4 className="text-sm sm:text-base font-black flex items-center gap-1.5 mt-0.5">
-                    <span>{texts.apkGuideSubTitle}</span>
-                  </h4>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsApkGuideOpen(false)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
-              <div className={`space-y-4 ${dir === 'rtl' ? 'text-right' : 'text-left'}`}>
-                <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl">
-                  <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed font-semibold">
-                    {texts.pwaDesc}
-                  </p>
-                  <ul className="list-disc list-inside mt-2 text-[11px] sm:text-xs text-amber-400 font-bold space-y-1">
-                    <li>{texts.pwaBenefit1}</li>
-                    <li>{texts.pwaBenefit2}</li>
-                    <li>{texts.pwaBenefit3}</li>
-                  </ul>
-                </div>
-
-                <div className="space-y-3">
-                  <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">1</span>
-                    <span>{texts.androidInstallSteps}</span>
-                  </h5>
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                    <p>{texts.androidStep1}</p>
-                    <p>{texts.androidStep2}</p>
-                    <p>{texts.androidStep3}</p>
-                    <p>{texts.androidStep4}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h5 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">2</span>
-                    <span>{texts.iosInstallSteps}</span>
-                  </h5>
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 text-xs sm:text-sm text-zinc-300 leading-relaxed space-y-1.5">
-                    <p>{texts.iosStep1}</p>
-                    <p>{texts.iosStep2}</p>
-                    <p>{texts.iosStep3}</p>
-                    <p>{texts.iosStep4}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-950 border-t border-slate-800/60 flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs text-zinc-400">{texts.footerPlatformName}</span>
-              <button
-                onClick={() => setIsApkGuideOpen(false)}
-                className="px-5 py-2 text-xs font-extrabold text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all cursor-pointer"
-              >
-                {texts.close}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Floating Active Toast Notification Overlay */}
       <div className={`fixed top-24 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none ${dir === 'rtl' ? 'left-6' : 'right-6'}`} dir={dir}>
