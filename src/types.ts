@@ -109,6 +109,8 @@ export interface Order {
   amount_paid_advance?: number;
   amount_due_on_delivery?: number;
   payment_status?: 'fully_paid' | 'partially_paid' | 'unpaid';
+  couponCode?: string;
+  couponDiscount?: number;
 }
 
 export interface CartItem {
@@ -168,4 +170,13 @@ export interface Coupon {
   usageCount: number;
   createdAt: string;
 }
+
+export interface Policy {
+  id: string;
+  title: string;
+  content: string;
+  isActive: boolean;
+  updatedAt: string;
+}
+
 

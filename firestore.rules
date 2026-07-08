@@ -96,6 +96,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Rules for policies
+    match /policies/{policyId} {
+      allow read, write: if true;
+    }
+
     // Rules for agents
     match /agents/{agentId} {
       allow read: if true;

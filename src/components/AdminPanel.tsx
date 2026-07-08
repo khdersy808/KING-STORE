@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, User, DeliverySettings } from '../types';
+import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, User, DeliverySettings, Policy } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import CustomSelect from './CustomSelect';
 import AIImageLab from './AIImageLab';
@@ -62,7 +62,8 @@ import {
   Crown,
   MessageSquare,
   Percent,
-  Link as LinkIcon
+  Link as LinkIcon,
+  RotateCcw
 } from 'lucide-react';
 import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
@@ -88,7 +89,7 @@ interface AdminPanelProps {
   onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies';
 
 export default function AdminPanel({
   products,
@@ -321,6 +322,105 @@ export default function AdminPanel({
     seaDailyDecay: 0.5,
     seaMinBaseline: 5
   });
+
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+    confirmText?: string;
+    cancelText?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const triggerConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    confirmText = 'تأكيد',
+    cancelText = 'إلغاء'
+  ) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: async () => {
+        try {
+          await onConfirm();
+        } catch (err) {
+          console.error("Error in confirm action:", err);
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      },
+      confirmText,
+      cancelText
+    });
+  };
+
+  // Policies States
+  const [policies, setPolicies] = useState<Policy[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_policies');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    
+    return [
+      {
+        id: 'pol-terms',
+        title: 'شروط الخدمة والأحكام (Terms of Service)',
+        content: `مرحباً بكم في KING STORE. يرجى قراءة الشروط والأحكام التالية بعناية قبل استخدام موقعنا أو إجراء أي عملية شراء:
+
+1. قبول الشروط: باستخدامك للموقع، فإنك توافق تماماً على الالتزام بهذه الشروط وبسياساتنا المعمول بها.
+2. الحسابات والطلبات: تلتزم بتقديم معلومات صحيحة ودقيقة عند التسجيل أو الشراء. تحتفظ الإدارة بالحق في إلغاء أو تعليق أي طلب يخضع للشك أو عدم مطابقة البيانات.
+3. تفاصيل الدفع: يجب على العميل دفع العربون أو قيمة الفاتورة المحددة بناءً على طريقة الدفع التي تم اختيارها ورفع إيصال تحويل صحيح ومطابق ليتم مراجعة الطلب وشحنه.
+4. حقوق الملكية: جميع المحتويات والعلامات التجارية والرموز البرمجية المعروضة على المتجر هي ملك حصري لـ KING STORE.`,
+        isActive: true,
+        updatedAt: new Date().toLocaleDateString('ar-EG')
+      },
+      {
+        id: 'pol-privacy',
+        title: 'سياسة الخصوصية وحماية البيانات (Privacy Policy)',
+        content: `نحن في KING STORE نضع سرية وحماية بيانات عملائنا على رأس أولوياتنا:
+
+1. جمع المعلومات: نقوم بجمع الاسم، البريد الإلكتروني، ورقم الهاتف، وعنوان الشحن لتسهيل توصيل الطلبات والتواصل معك.
+2. حماية البيانات: نستخدم معايير تشفير وأمان قوية لحماية بياناتك من الوصول غير المصرح به.
+3. مشاركة البيانات: نحن لا نبيع، ولا نؤجر، ولا نشارك بياناتك الشخصية مع أي جهات خارجية أو أطراف ثالثة لأغراض تسويقية على الإطلاق.
+4. التحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
+        isActive: true,
+        updatedAt: new Date().toLocaleDateString('ar-EG')
+      },
+      {
+        id: 'pol-return',
+        title: 'سياسة الشحن والاسترجاع (Shipping & Returns)',
+        content: `سياسات تسليم البضائع الملموسة والمنتجات الرقمية:
+
+1. المنتجات الرقمية: يتم تسليمها فوراً أو خلال ساعات معدودة عبر البريد الإلكتروني أو الواتساب، وبسبب طبيعتها الفورية فهي غير قابلة للإرجاع أو الاستبدال بعد استلام البيانات أو الرمز.
+2. المنتجات الملموسة: نقوم بتوفير خيار تقسيم الفاتورة (50% مقدماً و50% عند الاستلام). يلتزم العميل بفحص البضائع فور وصولها.
+3. سياسة الاستبدال: يمكن للعميل تقديم طلب استبدال للمنتجات الملموسة في حال وجود عيب مصنعي أو تلف واضح أثناء الشحن، وذلك خلال مدة لا تتجاوز 3 أيام من تاريخ الاستلام مع إرفاق صور واضحة للتلف.`,
+        isActive: true,
+        updatedAt: new Date().toLocaleDateString('ar-EG')
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('king_store_policies', JSON.stringify(policies));
+  }, [policies]);
+
+  const [isAddingPolicy, setIsAddingPolicy] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
+  const [policyTitle, setPolicyTitle] = useState('');
+  const [policyContent, setPolicyContent] = useState('');
+  const [policyIsActive, setPolicyIsActive] = useState(true);
+  const [policyFormError, setPolicyFormError] = useState('');
+  const [policyFormSuccess, setPolicyFormSuccess] = useState('');
+
   const [newRuleDays, setNewRuleDays] = useState<number>(10);
   const [newRuleType, setNewRuleType] = useState<'discount_percentage' | 'multiplier' | 'fixed_discount'>('discount_percentage');
   const [newRuleValue, setNewRuleValue] = useState<number>(10);
@@ -379,6 +479,79 @@ export default function AdminPanel({
       return () => unsubscribe();
     } catch (e) {
       console.warn("Firebase coupons sync not active.", e);
+    }
+  }, []);
+
+  // Synchronize Policies from Firestore
+  useEffect(() => {
+    try {
+      const q = collection(db, 'policies');
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
+        const list: Policy[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Policy);
+        });
+
+        // If Firestore policies collection is completely empty,
+        // automatically seed it with the default policies so they are editable immediately
+        if (snapshot.empty) {
+          const defaultPolicies = [
+            {
+              id: 'pol-terms',
+              title: 'شروط الخدمة والأحكام (Terms of Service)',
+              content: `مرحباً بكم في KING STORE. يرجى قراءة الشروط والأحكام التالية بعناية قبل استخدام موقعنا أو إجراء أي عملية شراء:
+
+1. قبول الشروط: باستخدامك للموقع، فإنك توافق تماماً على الالتزام بهذه الشروط وبسياساتنا المعمول بها.
+2. الحسابات والطلبات: تلتزم بتقديم معلومات صحيحة ودقيقة عند التسجيل أو الشراء. تحتفظ الإدارة بالحق في إلغاء أو تعليق أي طلب يخضع للشك أو عدم مطابقة البيانات.
+3. تفاصيل الدفع: يجب على العميل دفع العربون أو قيمة الفاتورة المحددة بناءً على طريقة الدفع التي تم اختيارها ورفع إيصال تحويل صحيح ومطابق ليتم مراجعة الطلب وشحنه.
+4. حقوق الملكية: جميع المحتويات والعلامات التجارية والرموز البرمجية المعروضة على المتجر هي ملك حصري لـ KING STORE.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            },
+            {
+              id: 'pol-privacy',
+              title: 'سياسة الخصوصية وحماية البيانات (Privacy Policy)',
+              content: `نحن في KING STORE نضع سرية وحماية بيانات عملائنا على رأس أولوياتنا:
+
+1. جمع المعلومات: نقوم بجمع الاسم، البريد الإلكتروني، ورقم الهاتف، وعنوان الشحن لتسهيل توصيل الطلبات والتواصل معك.
+2. حماية البيانات: نستخدم معايير تشفير وأمان قوية لحماية بياناتك من الوصول غير المصرح به.
+3. مشاركة البيانات: نحن لا نبيع، ولا نؤجر، ولا نشارك بياناتك الشخصية مع أي جهات خارجية أو أطراف ثالثة لأغراض تسويقية على الإطلاق.
+4. التحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            },
+            {
+              id: 'pol-return',
+              title: 'سياسة الشحن والاسترجاع (Shipping & Returns)',
+              content: `سياسات تسليم البضائع الملموسة والمنتجات الرقمية:
+
+1. المنتجات الرقمية: يتم تسليمها فوراً أو خلال ساعات معدودة عبر البريد الإلكتروني أو الواتساب، وبسبب طبيعتها الفورية فهي غير قابلة للإرجاع أو الاستبدال بعد استلام البيانات أو الرمز.
+2. المنتجات الملموسة: نقوم بتوفير خيار تقسيم الفاتورة (50% مقدماً و50% عند الاستلام). يلتزم العميل بفحص البضائع فور وصولها.
+3. سياسة الاستبدال: يمكن للعميل تقديم طلب استبدال للمنتجات الملموسة في حال وجود عيب مصنعي أو تلف واضح أثناء الشحن، وذلك خلال مدة لا تتجاوز 3 أيام من تاريخ الاستلام مع إرفاق صور واضحة للتلف.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            }
+          ];
+
+          try {
+            for (const policy of defaultPolicies) {
+              const docRef = doc(db, 'policies', policy.id);
+              const { id, ...policyData } = policy;
+              await setDoc(docRef, policyData);
+            }
+          } catch (err) {
+            console.warn("Could not auto-seed default policies:", err);
+          }
+          return;
+        }
+
+        setPolicies(list);
+      }, (error) => {
+        console.warn("Error loading policies from Firestore:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Firebase policies sync not active.", e);
     }
   }, []);
 
@@ -663,14 +836,19 @@ export default function AdminPanel({
   };
 
   // Delete Coupon
-  const handleDeleteCoupon = async (id: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف كود الخصم هذا نهائياً؟')) return;
-    try {
-      const docRef = doc(db, 'coupons', id);
-      await deleteDoc(docRef);
-    } catch (err) {
-      console.error("Error deleting coupon:", err);
-    }
+  const handleDeleteCoupon = (id: string) => {
+    triggerConfirm(
+      'حذف كود الخصم',
+      'هل أنت متأكد من حذف كود الخصم هذا نهائياً؟ لا يمكن التراجع عن هذا الإجراء.',
+      async () => {
+        try {
+          const docRef = doc(db, 'coupons', id);
+          await deleteDoc(docRef);
+        } catch (err) {
+          console.error("Error deleting coupon:", err);
+        }
+      }
+    );
   };
 
   // Load Coupon for Edit
@@ -684,6 +862,167 @@ export default function AdminPanel({
     setCouponIsActive(coupon.isActive);
     setIsAddingCoupon(true);
   };
+
+  // ==========================================
+  // WEBSITE POLICIES MANAGEMENT
+  // ==========================================
+
+  // Save / Update Policy
+  const handleSavePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPolicyFormError('');
+    setPolicyFormSuccess('');
+
+    const titleClean = policyTitle.trim();
+    const contentClean = policyContent.trim();
+    if (!titleClean) {
+      setPolicyFormError('الرجاء إدخال عنوان السياسة');
+      return;
+    }
+    if (!contentClean) {
+      setPolicyFormError('الرجاء إدخال محتوى السياسة');
+      return;
+    }
+
+    try {
+      const policyData = {
+        title: titleClean,
+        content: contentClean,
+        isActive: policyIsActive,
+        updatedAt: new Date().toLocaleDateString('ar-EG'),
+      };
+
+      if (editingPolicy) {
+        const docRef = doc(db, 'policies', editingPolicy.id);
+        await setDoc(docRef, policyData, { merge: true });
+        // Fallback update
+        setPolicies(policies.map(p => p.id === editingPolicy.id ? { ...p, ...policyData } : p));
+        setPolicyFormSuccess('تم تعديل السياسة بنجاح! 📜');
+      } else {
+        const isDuplicate = policies.some(p => p.title.toLowerCase() === titleClean.toLowerCase());
+        if (isDuplicate) {
+          setPolicyFormError('سياسة بنفس هذا العنوان موجودة بالفعل!');
+          return;
+        }
+        const collectionRef = collection(db, 'policies');
+        await addDoc(collectionRef, policyData);
+        setPolicyFormSuccess('تم إضافة السياسة الجديدة بنجاح! 🎉');
+      }
+
+      // Reset Form
+      setPolicyTitle('');
+      setPolicyContent('');
+      setPolicyIsActive(true);
+      setEditingPolicy(null);
+      setIsAddingPolicy(false);
+
+      setTimeout(() => setPolicyFormSuccess(''), 3000);
+    } catch (err: any) {
+      console.error("Error saving policy:", err);
+      setPolicyFormError('حدث خطأ أثناء حفظ السياسة.');
+    }
+  };
+
+  const handleDeletePolicy = (id: string) => {
+    triggerConfirm(
+      'حذف السياسة',
+      'هل أنت متأكد من رغبتك في حذف هذه السياسة بشكل نهائي؟ لا يمكن التراجع عن هذا الإجراء.',
+      async () => {
+        try {
+          const docRef = doc(db, 'policies', id);
+          await deleteDoc(docRef);
+          setPolicies(policies.filter(p => p.id !== id));
+          onShowToast('نجاح', 'تم حذف السياسة بنجاح من قاعدة البيانات', 'success');
+        } catch (err) {
+          console.error("Error deleting policy:", err);
+          onShowToast('خطأ', 'فشل حذف السياسة من قاعدة البيانات', 'error');
+        }
+      }
+    );
+  };
+
+  const handleTogglePolicyActive = async (policy: Policy) => {
+    try {
+      const docRef = doc(db, 'policies', policy.id);
+      // To prevent losing title or content if it is a default/fallback policy not yet fully initialized in Firestore,
+      // we save the full policy data.
+      const policyData = {
+        title: policy.title,
+        content: policy.content,
+        isActive: !policy.isActive,
+        updatedAt: new Date().toLocaleDateString('ar-EG'),
+      };
+      await setDoc(docRef, policyData, { merge: true });
+      setPolicies(policies.map(p => p.id === policy.id ? { ...p, isActive: !p.isActive, updatedAt: policyData.updatedAt } : p));
+      onShowToast('نجاح', 'تم تحديث حالة تفعيل السياسة بنجاح', 'success');
+    } catch (err) {
+      console.error("Error toggling policy status:", err);
+      onShowToast('خطأ', 'فشل تحديث حالة السياسة في قاعدة البيانات', 'error');
+    }
+  };
+
+  const handleRestoreDefaultPolicies = () => {
+    triggerConfirm(
+      'استعادة السياسات الافتراضية',
+      'هل أنت متأكد من رغبتك في استعادة السياسات الافتراضية الثلاثة (الشروط والأحكام، الخصوصية، الاسترجاع) وإضافتها لقاعدة البيانات؟ سيؤدي ذلك إلى إنشاء أو استبدال السياسات الافتراضية ببياناتها الأصلية.',
+      async () => {
+        try {
+          // Explicitly restore each policy with fixed, static document references in Firestore
+          const termsDoc = doc(db, 'policies', 'pol-terms');
+          await setDoc(termsDoc, {
+            title: 'شروط الخدمة والأحكام (Terms of Service)',
+            content: `مرحباً بكم في KING STORE. يرجى قراءة الشروط والأحكام التالية بعناية قبل استخدام موقعنا أو إجراء أي عملية شراء:
+
+1. قبول الشروط: باستخدامك للموقع، فإنك توافق تماماً على الالتزام بهذه الشروط وبسياساتنا المعمول بها.
+2. الحسابات والطلبات: تلتزم بتقديم معلومات صحيحة ودقيقة عند التسجيل أو الشراء. تحتفظ الإدارة بالحق في إلغاء أو تعليق أي طلب يخضع للشك أو عدم مطابقة البيانات.
+3. تفاصيل الدفع: يجب على العميل دفع العربون أو قيمة الفاتورة المحددة بناءً على طريقة الدفع التي تم اختيارها ورفع إيصال تحويل صحيح ومطابق ليتم مراجعة الطلب وشحنه.
+4. حقوق الملكية: جميع المحتويات والعلامات التجارية والرموز البرمجية المعروضة على المتجر هي ملك حصري لـ KING STORE.`,
+            isActive: true,
+            updatedAt: new Date().toLocaleDateString('ar-EG')
+          });
+
+          const privacyDoc = doc(db, 'policies', 'pol-privacy');
+          await setDoc(privacyDoc, {
+            title: 'سياسة الخصوصية وحماية البيانات (Privacy Policy)',
+            content: `نحن في KING STORE نضع سرية وحماية بيانات عملائنا على رأس أولوياتنا:
+
+1. جمع المعلومات: نقوم بجمع الاسم، البريد الإلكتروني، ورقم الهاتف، وعنوان الشحن لتسهيل توصيل الطلبات والتواصل معك.
+2. حماية البيانات: نستخدم معايير تشفير وأمان قوية لحماية بياناتك من الوصول غير المصرح به.
+3. مشاركة البيانات: نحن لا نبيع، ولا نؤجر، ولا نشارك بياناتك الشخصية مع أي جهات خارجية أو أطراف ثالثة لأغراض تسويقية على الإطلاق.
+4. التحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
+            isActive: true,
+            updatedAt: new Date().toLocaleDateString('ar-EG')
+          });
+
+          const returnDoc = doc(db, 'policies', 'pol-return');
+          await setDoc(returnDoc, {
+            title: 'سياسة الشحن والاسترجاع (Shipping & Returns)',
+            content: `سياسات تسليم البضائع الملموسة والمنتجات الرقمية:
+
+1. المنتجات الرقمية: يتم تسليمها فوراً أو خلال ساعات معدودة عبر البريد الإلكتروني أو الواتساب، وبسبب طبيعتها الفورية فهي غير قابلة للإرجاع أو الاستبدال بعد استلام البيانات أو الرمز.
+2. المنتجات الملموسة: نقوم بتوفير خيار تقسيم الفاتورة (50% مقدماً و50% عند الاستلام). يلتزم العميل بفحص البضائع فور وصولها.
+3. سياسة الاستبدال: يمكن للعميل تقديم طلب استبدال للمنتجات الملموسة في حال وجود عيب مصنعي أو تلف واضح أثناء الشحن، وذلك خلال مدة لا وتتجاوز 3 أيام من تاريخ الاستلام مع إرفاق صور واضحة للتلف.`,
+            isActive: true,
+            updatedAt: new Date().toLocaleDateString('ar-EG')
+          });
+          
+          onShowToast('نجاح', 'تم استعادة وإضافة السياسات الافتراضية للمتجر بنجاح! 📜', 'success');
+        } catch (err) {
+          console.error("Error restoring default policies:", err);
+          onShowToast('خطأ', 'فشل استعادة السياسات في قاعدة البيانات', 'error');
+        }
+      }
+    );
+  };
+
+  const handleEditPolicy = (policy: Policy) => {
+    setEditingPolicy(policy);
+    setPolicyTitle(policy.title);
+    setPolicyContent(policy.content);
+    setPolicyIsActive(policy.isActive);
+    setIsAddingPolicy(true);
+  };
+
 
   // Reset product form
   const resetProductForm = () => {
@@ -1377,6 +1716,17 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
           >
             <Sparkles className="h-4 w-4 text-amber-500" />
             <span>معمل الصور الملكي 🤖</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('policies'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'policies'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <FileText className="h-4 w-4 text-amber-500" />
+            <span>سياسات الموقع 📜</span>
           </button>
         </div>
       </div>
@@ -2569,15 +2919,26 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                           </button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (count > 0) {
-                                if (!confirm(`تحذير: الفئة "${cat}" تحتوي على ${count} منتج(منتجات) مرتبطة بها. حذف هذه الفئة لن يحذف المنتجات ولكن قد يؤثر على فلترتها. هل تود الاستمرار بالحذف؟`)) {
-                                  return;
+                            onClick={() => {
+                              const performDelete = async () => {
+                                await onDeleteCategory(cat);
+                                if (editingCategoryName === cat) {
+                                  setEditingCategoryName(null);
                                 }
-                              }
-                              await onDeleteCategory(cat);
-                              if (editingCategoryName === cat) {
-                                setEditingCategoryName(null);
+                              };
+
+                              if (count > 0) {
+                                triggerConfirm(
+                                  'تحذير حذف الفئة',
+                                  `تحذير: الفئة "${cat}" تحتوي على ${count} منتج(منتجات) مرتبطة بها. حذف هذه الفئة لن يحذف المنتجات ولكن قد يؤثر على فلترتها. هل تود الاستمرار بالحذف؟`,
+                                  performDelete
+                                );
+                              } else {
+                                triggerConfirm(
+                                  'حذف الفئة',
+                                  `هل أنت متأكد من رغبتك في حذف الفئة "${cat}" نهائياً؟`,
+                                  performDelete
+                                );
                               }
                             }}
                             title="حذف الفئة"
@@ -3372,9 +3733,13 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                                 {/* Quick Cancel */}
                                 <button
                                   onClick={() => {
-                                    if (confirm('هل أنت متأكد من إلغاء هذا الطلب؟')) {
-                                      onUpdateOrderStatus(order.id, 'cancelled');
-                                    }
+                                    triggerConfirm(
+                                      'إلغاء الطلب',
+                                      'هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.',
+                                      () => {
+                                        onUpdateOrderStatus(order.id, 'cancelled');
+                                      }
+                                    );
                                   }}
                                   className="text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-1.5 py-1.5 text-[10px] font-bold transition-all cursor-pointer"
                                 >
@@ -3460,10 +3825,14 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                       </button>
                       <button
                         onClick={() => {
-                          if (confirm('هل أنت متأكد من إلغاء هذا الطلب؟')) {
-                            onUpdateOrderStatus(selectedOrderForModal.id, 'cancelled');
-                            setSelectedOrderForModal(prev => prev ? { ...prev, status: 'cancelled' } : null);
-                          }
+                          triggerConfirm(
+                            'إلغاء الطلب',
+                            'هل أنت متأكد من إلغاء هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.',
+                            () => {
+                              onUpdateOrderStatus(selectedOrderForModal.id, 'cancelled');
+                              setSelectedOrderForModal(prev => prev ? { ...prev, status: 'cancelled' } : null);
+                            }
+                          );
                         }}
                         className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-[10px] font-black shadow-sm transition-all cursor-pointer"
                       >
@@ -4844,9 +5213,13 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                               ) : (
                                 <button
                                   onClick={() => {
-                                    if (confirm(texts.revokeConfirm.replace('{name}', u.name))) {
-                                      onDeleteUser(u.id);
-                                    }
+                                    triggerConfirm(
+                                      texts.revokePermissions,
+                                      texts.revokeConfirm.replace('{name}', u.name),
+                                      () => {
+                                        onDeleteUser(u.id);
+                                      }
+                                    );
                                   }}
                                   className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors cursor-pointer"
                                 >
@@ -4870,6 +5243,241 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
 
       {activeTab === 'ai-lab' && (
         <AIImageLab products={products} onShowToast={onShowToast} />
+      )}
+
+      {activeTab === 'policies' && (
+        <div className="space-y-8 animate-fade-in text-slate-800" dir="rtl">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="text-right">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 justify-start">
+                <FileText className="h-5 w-5 text-amber-500" />
+                <span>سياسات وأحكام الموقع الإلكتروني 📜</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 font-semibold">
+                هنا يمكنك صياغة وتعديل شروط الاستخدام، سياسة الخصوصية، وقوانين الشراء والتوصيل التي تظهر للعملاء في صندوق الدفع.
+              </p>
+            </div>
+            
+            {!isAddingPolicy && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleRestoreDefaultPolicies}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all border border-slate-200 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="استعادة السياسات الافتراضية الثلاثة للمتجر (الشروط، الخصوصية، الاسترجاع)"
+                >
+                  <RotateCcw className="h-4 w-4 text-slate-500" />
+                  <span>استعادة السياسات الافتراضية</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPolicy(null);
+                    setPolicyTitle('');
+                    setPolicyContent('');
+                    setPolicyIsActive(true);
+                    setPolicyFormError('');
+                    setPolicyFormSuccess('');
+                    setIsAddingPolicy(true);
+                  }}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md shadow-amber-500/10 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>إضافة سياسة جديدة</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Form to Add/Edit Policy */}
+          {isAddingPolicy && (
+            <form onSubmit={handleSavePolicy} className="bg-white border border-slate-200 rounded-[2rem] p-6 md:p-8 shadow-xl space-y-6 animate-slide-up relative overflow-hidden text-right">
+              <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-amber-500 to-yellow-500" />
+              
+              <div className="flex items-center justify-between">
+                <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Edit2 className="h-4 w-4 text-amber-500" />
+                  <span>{editingPolicy ? 'تعديل السياسة الحالية' : 'إضافة سياسة جديدة للمتجر'}</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingPolicy(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {policyFormError && (
+                <div className="bg-red-50 border border-red-100 text-red-600 p-4 rounded-xl text-xs font-bold flex items-center gap-2 justify-start">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{policyFormError}</span>
+                </div>
+              )}
+
+              {policyFormSuccess && (
+                <div className="bg-emerald-50 border border-emerald-100 text-emerald-600 p-4 rounded-xl text-xs font-bold flex items-center gap-2 justify-start">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{policyFormSuccess}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 text-right">عنوان السياسة (مثال: سياسة الاسترجاع والتبديل)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="اكتب عنواناً واضحاً للسياسة..."
+                    value={policyTitle}
+                    onChange={(e) => setPolicyTitle(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-800 font-bold focus:bg-white focus:border-amber-500 focus:outline-none transition-colors text-right"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 text-right">محتوى السياسة بالتفصيل</label>
+                  <textarea
+                    required
+                    rows={8}
+                    placeholder="اكتب بنود وقوانين السياسة هنا بالتفصيل وبشكل مرقم وواضح لعملائك..."
+                    value={policyContent}
+                    onChange={(e) => setPolicyContent(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-800 font-semibold focus:bg-white focus:border-amber-500 focus:outline-none transition-colors leading-relaxed text-right"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 justify-start">
+                  <input
+                    type="checkbox"
+                    id="policyIsActive"
+                    checked={policyIsActive}
+                    onChange={(e) => setPolicyIsActive(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <label htmlFor="policyIsActive" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    تفعيل السياسة فوراً وعرضها في المتجر للزبائن عند الدفع
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingPolicy(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  إلغاء التعديل
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-black hover:bg-amber-600 transition-colors cursor-pointer shadow-md shadow-amber-500/10 flex items-center gap-1.5"
+                >
+                  <Check className="h-4 w-4" />
+                  <span>حفظ وإقرار السياسة</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Policies Cards Grid */}
+          <div className="grid grid-cols-1 gap-6">
+            {policies.map((policy) => (
+              <div 
+                key={policy.id} 
+                className={`bg-white border rounded-3xl p-6 transition-all shadow-sm flex flex-col justify-between text-right ${
+                  policy.isActive ? 'border-slate-100 hover:border-amber-500/20 shadow-sm' : 'border-slate-200 opacity-75'
+                }`}
+              >
+                <div>
+                  <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-50 pb-4 mb-4">
+                    <div className="text-right">
+                      <h4 className="text-base font-extrabold text-slate-950 flex items-center gap-2 justify-start">
+                        <Shield className={`h-4 w-4 ${policy.isActive ? 'text-amber-500' : 'text-slate-400'}`} />
+                        <span>{policy.title}</span>
+                      </h4>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold mt-1.5 justify-start">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        <span>آخر تحديث: {policy.updatedAt}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border ${
+                        policy.isActive 
+                          ? 'text-emerald-700 bg-emerald-50 border-emerald-100' 
+                          : 'text-slate-500 bg-slate-100 border-slate-200'
+                      }`}>
+                        {policy.isActive ? 'نشطة وتظهر للزبائن ●' : 'مسودة / غير نشطة ○'}
+                      </span>
+                      
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePolicyActive(policy)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                          policy.isActive
+                            ? 'text-amber-600 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                            : 'text-emerald-600 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                        }`}
+                        title={policy.isActive ? 'تعطيل السياسة مؤقتاً' : 'تفعيل السياسة وعرضها'}
+                      >
+                        {policy.isActive ? 'تعطيل' : 'تفعيل'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-semibold whitespace-pre-wrap bg-slate-50/50 p-4 rounded-2xl border border-slate-50 mb-6 max-h-[220px] overflow-y-auto text-right">
+                    {policy.content}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-slate-50 pt-4">
+                  <span className="text-[10px] text-slate-400 font-bold font-mono uppercase">ID: {policy.id}</span>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEditPolicy(policy)}
+                      className="text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                      <span>تعديل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePolicy(policy.id)}
+                      className="text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>حذف</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {policies.length === 0 && (
+              <div className="text-center py-12 bg-white rounded-[2rem] border border-dashed border-slate-200 p-8 text-slate-400 space-y-4 shadow-sm flex flex-col items-center">
+                <FileText className="h-12 w-12 text-slate-300 animate-pulse" />
+                <div className="space-y-1">
+                  <h5 className="text-sm font-bold text-slate-700">لا يوجد أي سياسات للموقع حالياً</h5>
+                  <p className="text-xs text-slate-500 font-semibold max-w-xs mx-auto">
+                    تم حذف جميع السياسات بنجاح. يمكنك إضافتها يدوياً أو استعادتها تلقائياً بالكامل في قاعدة البيانات بضغطة زر واحدة.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreDefaultPolicies}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs px-5 py-3 rounded-xl transition-all shadow-md shadow-amber-500/10 flex items-center gap-1.5 cursor-pointer mt-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span>استعادة وإنشاء السياسات الافتراضية الآن 👑</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* 6. Delete Gateway Confirmation Modal */}
@@ -4911,6 +5519,44 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
               >
                 <Trash2 className="h-4 w-4" />
                 <span>{texts.confirmDeletePermanent}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Generic Confirmation Modal for Sandbox Environment Safeness */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4" dir="rtl">
+          <div 
+            className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-amber-500 mb-4 justify-start">
+              <div className="bg-amber-50 p-3 rounded-full text-amber-500">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">{confirmModal.title}</h3>
+            </div>
+            
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6 font-medium">
+              {confirmModal.message}
+            </p>
+            
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                {confirmModal.cancelText || 'إلغاء'}
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-500/10"
+              >
+                <span>{confirmModal.confirmText || 'تأكيد'}</span>
               </button>
             </div>
           </div>

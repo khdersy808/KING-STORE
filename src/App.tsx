@@ -931,9 +931,6 @@ function AppContent() {
   };
 
   const handleDeleteCategory = async (categoryName: string) => {
-    if (!confirm(`هل أنت متأكد من حذف الفئة "${categoryName}"؟`)) {
-      return;
-    }
     const updated = categories.filter((c) => c !== categoryName);
     setCategories(updated);
 

@@ -17,9 +17,16 @@ async function startServer() {
         return res.status(400).json({ error: "Missing prompt or imageBase64" });
       }
 
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
+        return res.status(400).json({ 
+          error: "لم يتم العثور على مفتاح API الخاص بـ Gemini. يرجى إضافته عبر خيار Settings > Secrets في منصة AI Studio وحفظ التغييرات لإتمام المعالجة." 
+        });
+      }
+
       // Initialize Gemini AI
       const ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
+        apiKey: apiKey,
         httpOptions: {
           headers: {
             'User-Agent': 'aistudio-build',

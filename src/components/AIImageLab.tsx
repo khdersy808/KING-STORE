@@ -16,6 +16,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
   const [editedImageBase64, setEditedImageBase64] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [processingError, setProcessingError] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,6 +49,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
     }
 
     setIsProcessing(true);
+    setProcessingError('');
     try {
       const res = await fetch('/api/gemini/edit-image', {
         method: 'POST',
@@ -67,6 +69,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
       onShowToast('نجاح', 'تم معالجة الصورة بنجاح بواسطة الذكاء الاصطناعي', 'success');
     } catch (err: any) {
       console.error(err);
+      setProcessingError(err.message || 'حدث خطأ أثناء معالجة الصورة');
       onShowToast('خطأ', err.message || 'حدث خطأ أثناء معالجة الصورة', 'error');
     } finally {
       setIsProcessing(false);
@@ -238,16 +241,35 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
                   </div>
                   <p className="text-slate-600 font-bold animate-pulse">جاري دمج الفخامة مع صورتك...</p>
                 </div>
+              ) : processingError ? (
+                <div className="text-center p-6 space-y-4 max-w-md">
+                  <div className="p-4 bg-red-50 text-red-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto border border-red-200">
+                    <AlertCircle className="h-8 w-8" />
+                  </div>
+                  <h4 className="text-sm font-bold text-red-600">فشلت عملية التعديل بالذكاء الاصطناعي</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed bg-red-50/50 border border-red-100 p-3 rounded-xl font-mono">
+                    {processingError}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    يرجى التحقق من تفعيل وربط مفتاح الـ API الخاص بك من نافذة الإعدادات (Settings &gt; Secrets) في منصة AI Studio.
+                  </p>
+                </div>
               ) : editedImageBase64 ? (
                 <div className="w-full h-full flex flex-col">
                   <div className="relative flex-1 rounded-xl overflow-hidden shadow-md border border-slate-200 bg-white">
                     <img src={editedImageBase64} alt="Edited AI Result" className="w-full h-full object-contain" />
                   </div>
                 </div>
+              ) : originalImageBase64 ? (
+                <div className="w-full h-full flex flex-col">
+                  <div className="relative flex-1 rounded-xl overflow-hidden shadow-md border border-slate-200 bg-white">
+                    <img src={originalImageBase64} alt="Original Preview" className="w-full h-full object-contain" />
+                  </div>
+                </div>
               ) : (
                 <div className="text-slate-400 text-center space-y-3">
                   <ImageIcon className="h-12 w-12 mx-auto opacity-20" />
-                  <p>النتيجة ستظهر هنا بعد المعالجة</p>
+                  <p>الرجاء رفع صورة للمنتج للبدء بالتعديل والمعاينة المباشرة 👑</p>
                 </div>
               )}
             </div>

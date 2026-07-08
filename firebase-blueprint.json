@@ -31,7 +31,9 @@
         "payment_type": "string",
         "amount_paid_advance": "number",
         "amount_due_on_delivery": "number",
-        "payment_status": "string"
+        "payment_status": "string",
+        "couponCode": "string",
+        "couponDiscount": "number"
       }
     },
     "notifications": {
@@ -98,6 +100,15 @@
         "seaBaseCost": "number",
         "seaDailyDecay": "number",
         "seaMinBaseline": "number"
+      }
+    },
+    "policies": {
+      "fields": {
+        "id": "string",
+        "title": "string",
+        "content": "string",
+        "isActive": "boolean",
+        "updatedAt": "string"
       }
     }
   }

@@ -4,10 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySettings } from '../types';
+import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySettings, Coupon, Policy } from '../types';
 import PaymentReceipt from './PaymentReceipt';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { db, collection, query, where, getDocs, doc, updateDoc } from '../lib/firebase';
 import {
   X,
   Minus,
@@ -27,7 +28,11 @@ import {
   Download,
   Copy,
   AlertCircle,
-  ShoppingBag
+  ShoppingBag,
+  Tag,
+  Shield,
+  FileText,
+  CheckSquare
 } from 'lucide-react';
 
 interface CartProps {
@@ -102,6 +107,12 @@ export default function Cart({
   const [receiptFileName, setReceiptFileName] = useState<string>('');
   const [zoomedQrUrl, setZoomedQrUrl] = useState<string | null>(null);
 
+  // Coupon state variables
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponFeedback, setCouponFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
   // MTN Cash state variables
   const [mtnSenderName, setMtnSenderName] = useState<string>('');
   const [mtnPhone, setMtnPhone] = useState<string>('');
@@ -112,6 +123,86 @@ export default function Cart({
   const [syriatelPhone, setSyriatelPhone] = useState<string>('');
   const [syriatelTransactionId, setSyriatelTransactionId] = useState<string>('');
 
+  // Store Policies & Confirmation Checkbox State
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [isAgreedToPolicies, setIsAgreedToPolicies] = useState<boolean>(false);
+  const [activePolicyToRead, setActivePolicyToRead] = useState<Policy | null>(null);
+  const [isViewingPoliciesModal, setIsViewingPoliciesModal] = useState<boolean>(false);
+
+  // Load active policies from Firestore and local backup
+  React.useEffect(() => {
+    const fetchPolicies = async () => {
+      let loadedPolicies: Policy[] = [];
+      let fetchSuccess = false;
+      try {
+        const qSnapshot = await getDocs(collection(db, 'policies'));
+        if (!qSnapshot.empty) {
+          loadedPolicies = qSnapshot.docs.map(doc => ({
+            id: doc.id,
+            title: doc.data().title,
+            content: doc.data().content,
+            isActive: doc.data().isActive !== false,
+            updatedAt: doc.data().updatedAt || ''
+          })) as Policy[];
+        }
+        fetchSuccess = true;
+      } catch (err) {
+        console.warn("Could not fetch policies from Firestore, using local fallback...", err);
+      }
+
+      if (loadedPolicies.length === 0) {
+        const localRaw = localStorage.getItem('king_store_policies');
+        if (localRaw) {
+          loadedPolicies = JSON.parse(localRaw) as Policy[];
+        } else {
+          // Default seeded Arabic policies (matching Admin Panel defaults)
+          loadedPolicies = [
+            {
+              id: 'pol-terms',
+              title: 'شروط الخدمة والأحكام (Terms of Service)',
+              content: `مرحباً بكم في KING STORE. يرجى قراءة الشروط والأحكام التالية بعناية قبل استخدام موقعنا أو إجراء أي عملية شراء:
+
+1. قبول الشروط: باستخدامك للموقع، فإنك توافق تماماً على الالتزام بهذه الشروط وبسياساتنا المعمول بها.
+2. الحسابات والطلبات: تلتزم بتقديم معلومات صحيحة ودقيقة عند التسجيل أو الشراء. تحتفظ الإدارة بالحق في إلغاء أو تعليق أي طلب يخضع للشك أو عدم مطابقة البيانات.
+3. تفاصيل الدفع: يجب على العميل دفع العربون أو قيمة الفاتورة المحددة بناءً على طريقة الدفع التي تم اختيارها ورفع إيصال تحويل صحيح ومطابق ليتم مراجعة الطلب وشحنه.
+4. حقوق الملكية: جميع المحتويات والعلامات التجارية والرموز البرمجية المعروضة على المتجر هي ملك حصري لـ KING STORE.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            },
+            {
+              id: 'pol-privacy',
+              title: 'سياسة الخصوصية وحماية البيانات (Privacy Policy)',
+              content: `نحن في KING STORE نضع سرية وحماية بيانات عملائنا على رأس أولوياتنا:
+
+1. جمع المعلومات: نقوم بجمع الاسم، البريد الإلكتروني، ورقم الهاتف، وعنوان الشحن لتسهيل توصيل الطلبات والتواصل معك.
+2. حماية البيانات: نستخدم معايير تشفير وأمان قوية لحماية بياناتك من الوصول غير المصرح به.
+3. مشاركة البيانات: نحن لا نبيع، ولا نؤجر، ولا نشارك بياناتك الشخصية مع أي جهات خارجية أو أطراف ثالثة لأغراض تسويقية على الإطلاق.
+4. التحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            },
+            {
+              id: 'pol-return',
+              title: 'سياسة الشحن والاسترجاع (Shipping & Returns)',
+              content: `سياسات تسليم البضائع الملموسة والمنتجات الرقمية:
+
+1. المنتجات الرقمية: يتم تسليمها فوراً أو خلال ساعات معدودة عبر البريد الإلكتروني أو الواتساب، وبسبب طبيعتها الفورية فهي غير قابلة للإرجاع أو الاستبدال بعد استلام البيانات أو الرمز.
+2. المنتجات الملموسة: نقوم بتوفير خيار تقسيم الفاتورة (50% مقدماً و50% عند الاستلام). يلتزم العميل بفحص البضائع فور وصولها.
+3. سياسة الاستبدال: يمكن للعميل تقديم طلب استبدال للمنتجات الملموسة في حال وجود عيب مصنعي أو تلف واضح أثناء الشحن، وذلك خلال مدة لا تتجاوز 3 أيام من تاريخ الاستلام مع إرفاق صور واضحة للتلف.`,
+              isActive: true,
+              updatedAt: new Date().toLocaleDateString('ar-EG')
+            }
+          ];
+          localStorage.setItem('king_store_policies', JSON.stringify(loadedPolicies));
+        }
+      }
+
+      setPolicies(loadedPolicies.filter(p => p.isActive));
+    };
+
+    fetchPolicies();
+  }, []);
+
   // Pre-populate user details if logged in
   React.useEffect(() => {
     if (currentUser) {
@@ -119,6 +210,98 @@ export default function Cart({
       setCustomerEmail(prev => prev || currentUser.email);
     }
   }, [currentUser]);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCodeInput.trim()) {
+      setCouponFeedback({ message: 'الرجاء إدخال كود الخصم أولاً.', type: 'error' });
+      return;
+    }
+
+    setIsValidatingCoupon(true);
+    setCouponFeedback(null);
+
+    const codeClean = couponCodeInput.trim().toUpperCase();
+    const currentSubTotal = cartItems.reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
+
+    try {
+      // 1. Try to fetch from Firestore
+      let foundCoupon: Coupon | null = null;
+      try {
+        const q = query(collection(db, 'coupons'), where('code', '==', codeClean));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const docData = querySnapshot.docs[0].data();
+          foundCoupon = {
+            id: querySnapshot.docs[0].id,
+            code: docData.code,
+            type: docData.type,
+            value: Number(docData.value),
+            minAmount: Number(docData.minAmount || 0),
+            isActive: docData.isActive !== false,
+            expiryDate: docData.expiryDate || 'لا ينتهي',
+            usageCount: Number(docData.usageCount || 0),
+            createdAt: docData.createdAt || '',
+          } as Coupon;
+        }
+      } catch (firestoreError) {
+        console.warn("Could not fetch coupon from Firestore, checking localStorage...", firestoreError);
+      }
+
+      // 2. Fallback to localStorage if not found or firestore failed
+      if (!foundCoupon) {
+        const localCouponsRaw = localStorage.getItem('king_store_coupons');
+        if (localCouponsRaw) {
+          const localCoupons = JSON.parse(localCouponsRaw) as Coupon[];
+          const localMatch = localCoupons.find(c => c.code.toUpperCase() === codeClean);
+          if (localMatch) {
+            foundCoupon = localMatch;
+          }
+        }
+      }
+
+      // Check validations
+      if (!foundCoupon) {
+        setCouponFeedback({ message: 'كود الخصم غير صحيح أو غير موجود.', type: 'error' });
+        setAppliedCoupon(null);
+        return;
+      }
+
+      if (!foundCoupon.isActive) {
+        setCouponFeedback({ message: 'كود الخصم هذا لم يعد نشطاً.', type: 'error' });
+        setAppliedCoupon(null);
+        return;
+      }
+
+      // Check minAmount
+      if (currentSubTotal < foundCoupon.minAmount) {
+        setCouponFeedback({
+          message: `الحد الأدنى لاستخدام هذا الكود هو $${foundCoupon.minAmount.toLocaleString()}`,
+          type: 'error'
+        });
+        setAppliedCoupon(null);
+        return;
+      }
+
+      // Success
+      setAppliedCoupon(foundCoupon);
+      const discountVal = foundCoupon.type === 'percentage' ? `${foundCoupon.value}%` : `$${foundCoupon.value}`;
+      setCouponFeedback({
+        message: `تم تطبيق كود الخصم بنجاح! خصم بقيمة ${discountVal}`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error("Error validating coupon:", err);
+      setCouponFeedback({ message: 'حدث خطأ أثناء التحقق من كود الخصم.', type: 'error' });
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+    setCouponFeedback(null);
+  };
 
   if (!isOpen) return null;
 
@@ -158,10 +341,22 @@ export default function Cart({
     .filter(item => item.product.type === 'physical')
     .reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
 
+  // Coupon Discount calculation
+  let couponDiscountAmount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.type === 'percentage') {
+      couponDiscountAmount = subTotal * (appliedCoupon.value / 100);
+    } else {
+      couponDiscountAmount = Math.min(subTotal, appliedCoupon.value);
+    }
+  }
+
+  const finalSubTotal = Math.max(0, subTotal - couponDiscountAmount);
+
   // 10% customs/import tax applied strictly on physical/tangible products
   const physicalImportTax = hasPhysicalProducts ? (physicalSubTotal * 0.10) : 0;
 
-  const totalAmount = subTotal + finalDeliveryFee + physicalImportTax;
+  const totalAmount = finalSubTotal + finalDeliveryFee + physicalImportTax;
 
   // Split payment calculations
   const effectiveIsSplitPayment = hasPhysicalProducts && isSplitPayment;
@@ -170,10 +365,15 @@ export default function Cart({
     .filter(item => item.product.type === 'digital')
     .reduce((acc, item) => acc + getCartItemPrice(item) * item.quantity, 0);
 
-  const totalPhysical = physicalSubTotal + finalDeliveryFee + physicalImportTax;
+  // Apply the coupon discount proportionally to digital and physical subtotals for split payment
+  const physicalRatio = subTotal > 0 ? (physicalSubTotal / subTotal) : 0;
+  const discountedPhysicalSubTotal = Math.max(0, physicalSubTotal - (couponDiscountAmount * physicalRatio));
+  const discountedDigitalSubTotal = Math.max(0, digitalSubTotal - (couponDiscountAmount * (1 - physicalRatio)));
+
+  const totalPhysical = discountedPhysicalSubTotal + finalDeliveryFee + physicalImportTax;
 
   const amountPaidAdvance = effectiveIsSplitPayment
-    ? digitalSubTotal + (0.50 * totalPhysical)
+    ? discountedDigitalSubTotal + (0.50 * totalPhysical)
     : totalAmount;
 
   const amountDueOnDelivery = effectiveIsSplitPayment
@@ -235,8 +435,13 @@ export default function Cart({
   };
 
   // Process checkout submission
-  const handleSubmitCheckout = (e: React.FormEvent) => {
+  const handleSubmitCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isAgreedToPolicies) {
+      setCheckoutError('⚠️ يرجى الموافقة على الشروط والأحكام وسياسة خصوصية المتجر لمتابعة عملية الدفع.');
+      return;
+    }
 
     if (!customerName.trim() || !customerEmail.trim() || !customerPhone.trim()) {
       setCheckoutError('يرجى ملء جميع البيانات الأساسية المطلوبة.');
@@ -362,8 +567,33 @@ export default function Cart({
       payment_type: effectiveIsSplitPayment ? 'split_50_50' : 'standard',
       amount_paid_advance: amountPaidAdvance,
       amount_due_on_delivery: amountDueOnDelivery,
-      payment_status: effectiveIsSplitPayment ? 'partially_paid' : 'unpaid'
+      payment_status: effectiveIsSplitPayment ? 'partially_paid' : 'unpaid',
+      couponCode: appliedCoupon ? appliedCoupon.code : undefined,
+      couponDiscount: appliedCoupon ? couponDiscountAmount : undefined
     };
+
+    // If coupon is used, increment usageCount in Firestore & local storage
+    if (appliedCoupon) {
+      try {
+        const couponRef = doc(db, 'coupons', appliedCoupon.id);
+        await updateDoc(couponRef, {
+          usageCount: (appliedCoupon.usageCount || 0) + 1
+        });
+      } catch (err) {
+        console.warn("Could not update coupon usage count in Firestore, trying localStorage...", err);
+      }
+
+      try {
+        const localCouponsRaw = localStorage.getItem('king_store_coupons');
+        if (localCouponsRaw) {
+          const localCoupons = JSON.parse(localCouponsRaw) as Coupon[];
+          const updated = localCoupons.map(c => c.id === appliedCoupon.id ? { ...c, usageCount: (c.usageCount || 0) + 1 } : c);
+          localStorage.setItem('king_store_coupons', JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.warn("Could not update local storage coupon:", e);
+      }
+    }
 
     setCreatedOrder(newOrder);
     onPlaceOrder(newOrder);
@@ -1006,6 +1236,49 @@ export default function Cart({
                   )}
                 </div>
 
+                {/* Website Policies Confirmation Block */}
+                {policies.length > 0 && (
+                  <div className="space-y-3 bg-slate-950/40 border border-amber-500/10 p-4 rounded-xl text-right">
+                    <h3 className="text-xs font-bold text-white border-b border-amber-500/10 pb-1.5 flex items-center gap-1.5 justify-start">
+                      <Shield className="h-4 w-4 text-amber-500" />
+                      <span>سياسات المتجر والأحكام القانونية</span>
+                    </h3>
+                    <p className="text-[10px] text-amber-100/60 leading-relaxed text-right">
+                      يرجى قراءة والموافقة على سياسات المتجر وأحكام الاستخدام والخصوصية لمتابعة إتمام الطلب والدفع بأمان.
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-2 pt-1 pb-2 justify-start">
+                      {policies.map((policy) => (
+                        <button
+                          key={policy.id}
+                          type="button"
+                          onClick={() => {
+                            setActivePolicyToRead(policy);
+                            setIsViewingPoliciesModal(true);
+                          }}
+                          className="inline-flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 hover:text-amber-300 border border-amber-500/20 rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all cursor-pointer"
+                        >
+                          <FileText className="h-3 w-3" />
+                          <span>إطلاع على {policy.title}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none justify-start">
+                      <input
+                        type="checkbox"
+                        checked={isAgreedToPolicies}
+                        onChange={(e) => setIsAgreedToPolicies(e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-amber-500/20 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                        id="agree-to-policies-checkbox"
+                      />
+                      <span className="text-[11px] font-bold text-slate-200 leading-tight text-right">
+                        أوافق بالكامل وأقر بالتزامي بجميع <span className="text-amber-400 underline hover:text-amber-300 cursor-pointer" onClick={(e) => { e.preventDefault(); setIsViewingPoliciesModal(true); if(policies.length > 0) setActivePolicyToRead(policies[0]); }}>الشروط والسياسات</span> الموضحة أعلاه لشراء المنتجات. *
+                      </span>
+                    </label>
+                  </div>
+                )}
+
                 {checkoutError && (
                   <div className="p-3 bg-red-950/20 text-red-400 border border-red-950/40 rounded-xl text-xs flex items-center gap-2">
                     <AlertCircle className="h-4 w-4" />
@@ -1139,11 +1412,68 @@ export default function Cart({
                 </div>
               )}
 
+              {/* Coupon Section */}
+              <div className="mb-4 bg-slate-950/40 p-3.5 rounded-xl border border-amber-500/10 text-right space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
+                  <Tag className="h-4 w-4 text-amber-500" />
+                  <span>هل لديك كود خصم أو قسيمة شراء؟</span>
+                </div>
+                
+                {!appliedCoupon ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="أدخل الكود (مثال: SAVE10)"
+                      value={couponCodeInput}
+                      onChange={(e) => {
+                        setCouponCodeInput(e.target.value);
+                        if (couponFeedback) setCouponFeedback(null);
+                      }}
+                      className="flex-1 bg-slate-950/60 border border-amber-500/10 rounded-lg px-3 py-1.5 text-xs text-slate-100 text-center uppercase focus:border-amber-500/40 focus:outline-none placeholder-slate-500 font-black"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={isValidatingCoupon}
+                      className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:opacity-50 text-slate-950 font-black px-4 py-1.5 rounded-lg text-xs transition-colors cursor-pointer"
+                    >
+                      {isValidatingCoupon ? 'جاري التحقق...' : 'تطبيق'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-emerald-950/20 border border-emerald-500/20 p-2 rounded-lg">
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span>تم تطبيق الكود: <span className="underline font-mono text-amber-400 font-black">{appliedCoupon.code}</span></span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-red-400 hover:text-red-300 text-[10px] font-bold border border-red-500/20 px-2 py-1 rounded-md bg-red-950/10 transition-colors"
+                    >
+                      إلغاء الكود
+                    </button>
+                  </div>
+                )}
+
+                {couponFeedback && (
+                  <p className={`text-[10px] font-bold ${couponFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {couponFeedback.message}
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-1.5 mb-4 text-xs font-semibold text-slate-400">
                 <div className="flex justify-between">
                   <span>قيمة المنتجات:</span>
                   <span className="text-slate-200">{formatPrice(subTotal)}</span>
                 </div>
+                {appliedCoupon && couponDiscountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-400 font-bold">
+                    <span>خصم الكود الترويجي ({appliedCoupon.code}):</span>
+                    <span>- {formatPrice(couponDiscountAmount)}</span>
+                  </div>
+                )}
                 {hasPhysicalProducts && (
                   <div className="flex justify-between">
                     <span>تكلفة خدمة التوصيل والشحن الدولي:</span>
@@ -1262,6 +1592,60 @@ export default function Cart({
               <img src={zoomedQrUrl} alt="رمز الدفع مكبر" className="w-full h-auto object-contain max-h-[450px]" referrerPolicy="no-referrer" />
             </div>
             <p className="text-xs text-amber-100/60">قم بمسح الرمز ضوئياً من هاتفك لإتمام عملية التحويل الفوري بكل سهولة.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Store Policy Viewer Modal Overlay */}
+      {isViewingPoliciesModal && activePolicyToRead && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/90 p-4 animate-fade-in" dir="rtl" onClick={() => setIsViewingPoliciesModal(false)}>
+          <div 
+            className="relative max-w-xl w-full bg-slate-900 border border-amber-500/20 rounded-[2rem] overflow-hidden shadow-2xl p-6 text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-l from-amber-500 to-yellow-500" />
+            
+            <button
+              type="button"
+              onClick={() => setIsViewingPoliciesModal(false)}
+              className="absolute top-4 left-4 text-slate-400 hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-800 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-2 text-amber-400 mb-4 border-b border-slate-800 pb-3 justify-start">
+              <Shield className="h-5 w-5 text-amber-500" />
+              <h3 className="text-base font-black text-white">{activePolicyToRead.title}</h3>
+            </div>
+
+            <div className="text-xs sm:text-sm text-slate-300 leading-relaxed font-semibold max-h-[350px] overflow-y-auto whitespace-pre-wrap bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner mb-6 text-right">
+              {activePolicyToRead.content}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-800 pt-4 flex-wrap gap-3">
+              <span className="text-[10px] text-slate-500 font-bold">آخر تحديث للسياسة: {activePolicyToRead.updatedAt}</span>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsViewingPoliciesModal(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  إغلاق النافذة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAgreedToPolicies(true);
+                    setIsViewingPoliciesModal(false);
+                  }}
+                  className="px-4.5 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 rounded-xl text-xs font-black transition-colors flex items-center gap-1 shadow-md shadow-amber-500/10 cursor-pointer animate-pulse"
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  <span>الموافقة والالتزام بالشروط</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
