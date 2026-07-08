@@ -85,7 +85,7 @@ export interface OrderItem {
   selectedOptions?: Record<string, string>; // الخيارات الأخرى المختارة
 }
 
-export type OrderStatus = 'pending' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'processing' | 'shipping' | 'delivered' | 'completed' | 'cancelled';
 
 export interface Order {
   id: string;
@@ -127,6 +127,20 @@ export interface User {
   email: string;
   password?: string;
   role: 'admin' | 'customer' | 'agent';
+  referralCode?: string;
+  points?: number;
+  coupons?: string[];
+  deviceId?: string;
+  referredBy?: string;
+  referralApplied?: boolean;
+  paymentPin?: string;
+  wishlist?: string[];
+  tempPassword?: string;
+  tempPasswordExpiry?: string;
+  tempPin?: string;
+  tempPinExpiry?: string;
+  mustChangePassword?: boolean;
+  mustChangePin?: boolean;
 }
 
 export interface Agent {

@@ -9,6 +9,7 @@ import {
   sendPasswordResetEmail, 
   signOut, 
   updateProfile, 
+  updatePassword,
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
@@ -39,6 +40,130 @@ export const ORDERS_COLLECTION = 'orders';
 export const NOTIFICATIONS_COLLECTION = 'notifications';
 export const USERS_COLLECTION = 'users';
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export async function convertPointsToCoupons(userEmail: string, currentPoints: number, currentCoupons: string[] = []): Promise<{ points: number; coupons: string[]; generated: string[] }> {
+  if (currentPoints < 1000) {
+    return { points: currentPoints, coupons: currentCoupons, generated: [] };
+  }
+  
+  const couponsToGenerate = Math.floor(currentPoints / 1000);
+  const remainingPoints = currentPoints % 1000;
+  const newCoupons = [...currentCoupons];
+  const generatedCodes: string[] = [];
+  
+  for (let i = 0; i < couponsToGenerate; i++) {
+    const code = 'REF1USD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    generatedCodes.push(code);
+    newCoupons.push(code);
+    
+    // Save to global coupons collection
+    const couponDocRef = doc(db, 'coupons', code);
+    await setDoc(couponDocRef, {
+      id: code,
+      code: code,
+      type: 'fixed',
+      value: 1, // $1
+      minAmount: 0,
+      isActive: true,
+      expiryDate: 'لا ينتهي',
+      usageCount: 0,
+      createdAt: new Date().toISOString()
+    });
+  }
+  
+  // Update user document
+  const userDocRef = doc(db, 'users', userEmail);
+  await setDoc(userDocRef, {
+    points: remainingPoints,
+    coupons: newCoupons
+  }, { merge: true });
+
+  // Add system notifications for the coupons generated
+  try {
+    const notificationRef = collection(db, 'notifications');
+    for (const code of generatedCodes) {
+      await addDoc(notificationRef, {
+        userId: userEmail,
+        title: 'قسيمة هدايا ملكية جديدة! 🎁',
+        message: `تهانينا! لقد حصلت على قسيمة خصم بقيمة 1$ بكود: ${code} مقابل 1000 نقطة من نقاط الإحالة الخاصة بك.`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'system'
+      });
+    }
+  } catch (notifErr) {
+    console.warn("Could not create notification for generated coupon:", notifErr);
+  }
+  
+  return { points: remainingPoints, coupons: newCoupons, generated: generatedCodes };
+}
+
+export const encryptPin = (pin: string): string => {
+  if (!pin) return "";
+  try {
+    return btoa("KINGSTORE-SECURE-PIN-" + pin);
+  } catch (e) {
+    console.error("Error encrypting PIN:", e);
+    return pin;
+  }
+};
+
+export const hashPassword = (password: string): string => {
+  if (!password) return "";
+  try {
+    return btoa("KINGSTORE-PASSWORD-SALT-" + password);
+  } catch (e) {
+    console.error("Error hashing password:", e);
+    return password;
+  }
+};
+
 export {
   collection,
   doc,
@@ -61,6 +186,7 @@ export {
   sendPasswordResetEmail,
   signOut,
   updateProfile,
+  updatePassword,
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,

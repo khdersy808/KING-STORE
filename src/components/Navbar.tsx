@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare, Globe } from 'lucide-react';
+import { Crown, ShoppingBag, Settings, Search, Eye, LogOut, User as UserIcon, Bell, Trash2, Check, X, Sparkles, Menu, Truck, ChevronRight, MessageSquare, Globe, Wallet, Heart, Package } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { User, AppNotification } from '../types';
@@ -25,12 +25,13 @@ interface NavbarProps {
   onMarkAllAsRead: () => void;
   onMarkAsRead: (id: string) => void;
   onDeleteNotification: (id: string) => void;
-  activeCustomerView?: 'store' | 'tracking';
-  setActiveCustomerView?: (view: 'store' | 'tracking') => void;
+  activeCustomerView?: 'store' | 'tracking' | 'wishlist' | 'my-orders';
+  setActiveCustomerView?: (view: 'store' | 'tracking' | 'wishlist' | 'my-orders') => void;
   isSypEnabled?: boolean;
   setIsSypEnabled?: (enabled: boolean) => void;
   isMobileMenuOpen?: boolean;
   setIsMobileMenuOpen?: (open: boolean) => void;
+  onOpenWallet: () => void;
 }
 
 export default function Navbar({
@@ -51,6 +52,7 @@ export default function Navbar({
   setActiveCustomerView,
   isMobileMenuOpen: isMobileMenuOpenProp = false,
   setIsMobileMenuOpen: setIsMobileMenuOpenProp,
+  onOpenWallet,
 }: NavbarProps) {
   const { t, language, setLanguage } = useLanguage();
   const { isSypEnabled, setIsSypEnabled } = useCurrency();
@@ -114,6 +116,26 @@ export default function Navbar({
               }`}
             >
               {t('trackOrderRoyal')} 🔍
+            </button>
+            <button
+              onClick={() => setActiveCustomerView('my-orders')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeCustomerView === 'my-orders'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/10'
+                  : 'text-zinc-400 hover:text-amber-300'
+              }`}
+            >
+              طلباتي الملكية 👑
+            </button>
+            <button
+              onClick={() => setActiveCustomerView('wishlist')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeCustomerView === 'wishlist'
+                  ? 'bg-pink-600 text-white font-black shadow-lg shadow-pink-500/20'
+                  : 'text-zinc-400 hover:text-pink-400'
+              }`}
+            >
+              الأمنيات 🤍
             </button>
           </div>
         )}
@@ -290,81 +312,106 @@ export default function Navbar({
             </div>
           )}
 
-          {/* Mobile Track Order Button */}
-          {!isAdminMode && (
-            <button
-              onClick={() => setActiveCustomerView?.(activeCustomerView === 'tracking' ? 'store' : 'tracking')}
-              className={`flex md:hidden h-8 w-8 items-center justify-center rounded-lg bg-[#121212] border transition-all cursor-pointer ${
-                activeCustomerView === 'tracking'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold'
-                  : 'border-zinc-800 text-zinc-300 hover:text-amber-400'
-              }`}
-              title={t('trackOrderRoyal')}
-              id="mobile-track-btn"
-            >
-              <Truck className="h-4 w-4" />
-            </button>
-          )}
+          {/* TOP ROW ACTIONS: Cart & Menu */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Cart Icon (only if not admin mode) */}
+            {!isAdminMode && (
+              <button
+                onClick={onOpenCart}
+                className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
+                  cartCount > 0 
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/10' 
+                    : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
+                }`}
+                title={t('navCart')}
+                id="header-cart-btn"
+              >
+                <ShoppingBag className={`h-4 w-4 sm:h-5 sm:w-5 ${cartCount > 0 ? 'animate-bounce' : ''}`} />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-red-600 text-[8px] sm:text-[11px] font-black text-white ring-1 sm:ring-2 ring-zinc-950 shadow-lg">
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            )}
 
-          {/* Cart Icon (only if not admin mode) */}
-          {!isAdminMode && (
+            {/* Menu Toggle */}
             <button
-              onClick={onOpenCart}
-              className={`relative flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
-                cartCount > 0 
-                  ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/10' 
-                  : 'bg-[#121212] border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400'
-              }`}
-              title={t('navCart')}
-              id="cart-toggle-btn"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
+              title="القائمة"
+              id="mobile-menu-toggle-btn"
             >
-              <ShoppingBag className={`h-4 w-4 sm:h-5 sm:w-5 ${cartCount > 0 ? 'animate-bounce' : ''}`} />
-              {cartCount > 0 && (
-                <span className="absolute -top-1.5 -left-1.5 flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full bg-red-600 text-[8px] sm:text-[11px] font-black text-white ring-1 sm:ring-2 ring-zinc-950 shadow-lg">
-                  {cartCount}
-                </span>
-              )}
+              <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
-          )}
-
-          {/* Mode toggle switch - ONLY VISIBLE ON DESKTOP IF LOGGED IN AND USER ROLE IS ADMIN */}
-          {true && (
-            <button
-              onClick={() => setIsAdminMode(!isAdminMode)}
-              className={`hidden md:flex items-center gap-1 sm:gap-2 rounded-lg sm:rounded-xl px-2.5 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer ${
-                isAdminMode
-                  ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-amber-500/10'
-                  : 'bg-[#121212] text-amber-400 border border-amber-500/30 hover:bg-[#181818]'
-              }`}
-              id="admin-mode-toggle"
-              title={isAdminMode ? t('viewStore') : t('adminDashboard')}
-            >
-              {isAdminMode ? (
-                <>
-                  <Eye className="h-4 w-4" />
-                  <span className="hidden xs:inline">{t('viewStore')}</span>
-                </>
-              ) : (
-                <>
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden xs:inline">{t('adminDashboard')}</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Menu Toggle Button (Navigation Drawer - accessible everywhere) */}
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl bg-[#121212] border border-zinc-800 text-zinc-300 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
-            title="القائمة"
-            id="mobile-menu-toggle-btn"
-          >
-            <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
-          </button>
+          </div>
 
         </div>
       </div>
+
+      {/* SUB-NAVBAR: Shopping Tools (Wallet, Track, Wishlist) */}
+      {!isAdminMode && (
+        <div className="bg-transparent px-4 sm:px-8 py-2 flex items-center justify-start gap-3 sm:gap-4 overflow-x-auto no-scrollbar" id="sub-navbar-tools">
+          {/* My Orders Button */}
+          {currentUser && (
+            <button
+              onClick={() => setActiveCustomerView?.(activeCustomerView === 'my-orders' ? 'store' : 'my-orders')}
+              className={`flex h-9 px-3 items-center gap-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                activeCustomerView === 'my-orders'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
+                  : 'bg-zinc-950/40 border-zinc-800 text-zinc-300 hover:text-amber-400'
+              }`}
+              id="subnav-my-orders-btn"
+            >
+              <Crown className="h-4 w-4" />
+              <span className="text-[10px] font-black">طلباتي الملكية 👑</span>
+            </button>
+          )}
+
+          {/* Wishlist Button */}
+          <button
+            onClick={() => setActiveCustomerView?.(activeCustomerView === 'wishlist' ? 'store' : 'wishlist')}
+            className={`flex h-9 px-3 items-center gap-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+              activeCustomerView === 'wishlist'
+                ? 'bg-pink-600 text-white border-pink-500 font-black'
+                : 'bg-zinc-950/40 border-zinc-800 text-zinc-400 hover:text-pink-400'
+            }`}
+            id="subnav-wishlist-btn"
+          >
+            <Heart className={`h-4 w-4 ${activeCustomerView === 'wishlist' ? 'fill-current' : ''}`} />
+            <span className="text-[10px] font-black">الأمنيات 🤍</span>
+          </button>
+
+          {/* Track Order Button */}
+          <button
+            onClick={() => setActiveCustomerView?.(activeCustomerView === 'tracking' ? 'store' : 'tracking')}
+            className={`flex h-9 px-3 items-center gap-2 rounded-xl border transition-all cursor-pointer shrink-0 ${
+              activeCustomerView === 'tracking'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 font-black'
+                : 'bg-zinc-950/40 border-zinc-800 text-zinc-400 hover:text-amber-400'
+            }`}
+            id="subnav-track-btn"
+          >
+            <Truck className="h-4 w-4" />
+            <span className="text-[10px] font-black">تتبع طلبي 🚚</span>
+          </button>
+
+          {/* Wallet Button - Leftmost in Visual LTR */}
+          <button
+            onClick={onOpenWallet}
+            className="flex h-9 px-3 items-center gap-2 rounded-xl bg-zinc-950/50 border border-amber-500/30 text-amber-400 hover:text-amber-300 transition-all cursor-pointer shrink-0"
+            id="subnav-wallet-btn"
+          >
+            <Wallet className="h-4 w-4" />
+            <span className="text-[10px] font-black">المحفظة 🎁</span>
+            {currentUser && typeof currentUser.points === 'number' && currentUser.points > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-black text-slate-950">
+                {currentUser.points}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Royal Navigation Drawer Overlay */}
       {isMobileMenuOpen && true && (
@@ -524,6 +571,37 @@ export default function Navbar({
                       </button>
                     )}
  
+                    {/* Wallet Button inside Menu Drawer */}
+                    <button
+                      onClick={() => {
+                        onOpenWallet();
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-amber-400 hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Wallet className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                        <span className="text-white text-sm font-bold">المحفظة الملكية 🎁</span>
+                      </div>
+                      {currentUser && typeof currentUser.points === 'number' && (
+                        <span className="bg-amber-400/15 border border-amber-400/30 text-amber-400 rounded-full px-2 py-0.5 text-[10px] font-black">
+                          {currentUser.points} نقطة
+                        </span>
+                      )}
+                    </button>
+
+                     {/* Settings Button */}
+                    <button
+                      onClick={() => {
+                        setActiveCustomerView?.('my-orders');
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
+                    >
+                      <Package className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      <span className="text-white text-sm font-bold">طلباتي الملكية 👑</span>
+                    </button>
+
                     {/* Settings Button */}
                     <button
                       onClick={() => {

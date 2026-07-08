@@ -21,7 +21,8 @@ import {
   ShoppingBag,
   ChevronLeft,
   ChevronRight,
-  Trash2
+  Trash2,
+  Heart
 } from 'lucide-react';
 
 interface ProductDetailsModalProps {
@@ -41,6 +42,8 @@ interface ProductDetailsModalProps {
     selectedColor?: string;
     selectedOptions?: Record<string, string>;
   };
+  isWishlisted?: boolean;
+  onToggleWishlist?: () => void;
 }
 
 export default function ProductDetailsModal({
@@ -53,7 +56,9 @@ export default function ProductDetailsModal({
   globalDiscount = 0,
   isAdminMode,
   onDeleteProduct,
-  initialOptions
+  initialOptions,
+  isWishlisted = false,
+  onToggleWishlist
 }: ProductDetailsModalProps) {
   const { formatPrice } = useCurrency();
   const [reviewerName, setReviewerName] = useState('');
@@ -221,6 +226,23 @@ export default function ProductDetailsModal({
                 </button>
               </>
             )}
+
+            <div className="absolute top-3 left-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleWishlist?.();
+                }}
+                className={`p-2 rounded-full backdrop-blur-md transition-all shadow-lg border group/heart z-10 ${
+                  isWishlisted
+                    ? 'bg-pink-600 border-pink-500 text-white scale-110'
+                    : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:text-pink-400 hover:border-pink-500/30'
+                }`}
+                title={isWishlisted ? 'إزالة من الأمنيات' : 'إضافة للأمنيات'}
+              >
+                <Heart className={`h-4 w-4 ${isWishlisted ? 'fill-current' : 'group-hover/heart:scale-110'}`} />
+              </button>
+            </div>
 
             <div className="absolute top-3 right-3">
               {isPhysical ? (

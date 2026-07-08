@@ -33,15 +33,18 @@ import {
   Code,
   Grid,
   Home,
+  Heart,
   User as UserIcon,
   ShoppingCart,
   Users,
   MessageSquare
 } from 'lucide-react';
 import ProductDetailsModal from './components/ProductDetailsModal';
+import MyOrders from './components/MyOrders';
 import { BottomNav } from './components/BottomNav';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
+import WalletModal from './components/WalletModal';
 import AgentDashboard from './components/AgentDashboard';
 import MessagingSystem from './components/MessagingSystem';
 import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
@@ -61,7 +64,7 @@ export default function App() {
 function AppContent() {
   const { dir, t, language, texts } = useLanguage();
   const { isSypEnabled, setIsSypEnabled, exchangeRate } = useCurrency();
-  const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking'>('store');
+  const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
 
   // --- Pull-to-Refresh State System for Mobile ---
@@ -140,6 +143,37 @@ function AppContent() {
   });
 
   const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
+  const [wishlist, setWishlist] = useState<string[]>([]);
+
+  // Synchronize wishlist with currentUser and localStorage
+  useEffect(() => {
+    if (currentUser) {
+      setWishlist(currentUser.wishlist || []);
+    } else {
+      const saved = localStorage.getItem('king_store_wishlist');
+      setWishlist(saved ? JSON.parse(saved) : []);
+    }
+  }, [currentUser?.email, currentUser?.wishlist?.length]);
+
+  const handleToggleWishlist = async (productId: string) => {
+    const newWishlist = wishlist.includes(productId)
+      ? wishlist.filter((id) => id !== productId)
+      : [...wishlist, productId];
+    
+    setWishlist(newWishlist);
+    localStorage.setItem('king_store_wishlist', JSON.stringify(newWishlist));
+
+    if (currentUser) {
+      try {
+        const userRef = doc(db, 'users', currentUser.email.toLowerCase());
+        await updateDoc(userRef, { wishlist: newWishlist });
+        // Update local currentUser state as well
+        setCurrentUser(prev => prev ? { ...prev, wishlist: newWishlist } : null);
+      } catch (err) {
+        console.error("Error updating wishlist in Firestore:", err);
+      }
+    }
+  };
 
   // --- Dynamic Categories State Engine ---
   const [categories, setCategories] = useState<string[]>(() => {
@@ -369,6 +403,11 @@ function AppContent() {
 
   // Synchronize notifications with Firestore real-time listener
   useEffect(() => {
+    if (!currentUser) {
+      setNotifications([]);
+      return;
+    }
+
     try {
       const q = query(collection(db, 'notifications'), orderBy('date', 'desc'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -397,58 +436,116 @@ function AppContent() {
     } catch (e) {
       console.warn("Firebase not fully configured or active. Fallback to localStorage.", e);
     }
-  }, [currentUser]);
+  }, [currentUser?.email, currentUser?.role]);
 
   useEffect(() => {
     localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
 
+  // URL Referral parameters detection
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refParam = params.get('ref') || params.get('referral');
+    if (refParam) {
+      const cleanRef = refParam.trim().toUpperCase();
+      localStorage.setItem('king_store_pending_referral', cleanRef);
+      // Wait slightly so that toasts engine is ready
+      setTimeout(() => {
+        showToast(
+          'رابط إحالة ملكي نشط 🎁',
+          `أهلاً بك! تم تفعيل كود الدعوة ${cleanRef}. قم بالتسجيل الآن للحصول على مكافآت حصرية.`,
+          'success'
+        );
+      }, 2000);
+    }
+  }, []);
+
   // Synchronize authentication state with Firebase in real-time
   useEffect(() => {
+    let userUnsubscribe: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        // Only set current user if email is verified or it's the default admin
+      if (userUnsubscribe) {
+        userUnsubscribe();
+        userUnsubscribe = null;
+      }
+      if (fbUser && fbUser.email) {
         const adminEmail = 'khdersy808@gmail.com';
         const isVerified = fbUser.emailVerified || fbUser.email?.toLowerCase() === adminEmail;
         
-        if (isVerified && fbUser.email) {
+        if (isVerified) {
           try {
-            const { getDoc } = await import('./lib/firebase');
             const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
-            const userDoc = await getDoc(userDocRef);
             
-            let role = 'customer';
-            let nameVal = fbUser.displayName || fbUser.email.split('@')[0];
-            
-            if (fbUser.email.toLowerCase() === adminEmail.toLowerCase()) {
-              role = 'admin';
-              nameVal = fbUser.displayName || texts.royalAdminName;
-              // Merge/force update role to admin in Firestore
-              const { setDoc } = await import('./lib/firebase');
-              await setDoc(userDocRef, {
-                id: fbUser.uid,
-                name: nameVal,
-                email: fbUser.email.toLowerCase(),
-                role: 'admin',
-                createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
-              }, { merge: true });
-            } else {
-              if (userDoc.exists()) {
-                role = userDoc.data().role || 'customer';
-                nameVal = userDoc.data().name || nameVal;
+            userUnsubscribe = onSnapshot(userDocRef, async (userDocSnap) => {
+              if (userDocSnap.exists()) {
+                const uData = userDocSnap.data();
+                const currentPoints = typeof uData.points === 'number' ? uData.points : 0;
+                const currentCoupons = Array.isArray(uData.coupons) ? uData.coupons : [];
+                const role = uData.role || 'customer';
+                const nameVal = uData.name || fbUser.displayName || fbUser.email!.split('@')[0];
+                let refCode = uData.referralCode || '';
+                
+                // If the user already has an account but has no referral code (older accounts)
+                if (!refCode) {
+                  refCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                  try {
+                    await setDoc(userDocRef, {
+                      referralCode: refCode
+                    }, { merge: true });
+                  } catch (updateErr) {
+                    console.error("Error setting missing referral code:", updateErr);
+                  }
+                }
+                
+                // Real-time automated conversion check - only if currentPoints is high
+                // We use a flag to prevent multiple triggers during the same session if possible, 
+                // but checking currentPoints from snapshot is usually sufficient if the update is atomic.
+                if (currentPoints >= 1000) {
+                  const { convertPointsToCoupons } = await import('./lib/firebase');
+                  // We call it but don't strictly await it here to avoid blocking the state update
+                  convertPointsToCoupons(fbUser.email!.toLowerCase(), currentPoints, currentCoupons).catch(err => {
+                    console.error("Error during automatic points conversion:", err);
+                  });
+                }
+                
+                setCurrentUser({
+                  id: fbUser.uid,
+                  name: nameVal,
+                  email: fbUser.email!.toLowerCase(),
+                  password: '',
+                  role: role as 'admin' | 'customer' | 'agent',
+                  referralCode: refCode,
+                  points: currentPoints,
+                  coupons: currentCoupons,
+                  deviceId: uData.deviceId || '',
+                  referredBy: uData.referredBy || '',
+                  referralApplied: uData.referralApplied || false,
+                  paymentPin: uData.paymentPin || ''
+                });
+              } else {
+                // If profile missing in Firestore, create it
+                const isDefaultAdmin = fbUser.email!.toLowerCase() === adminEmail.toLowerCase();
+                const role = isDefaultAdmin ? 'admin' : 'customer';
+                const nameVal = fbUser.displayName || fbUser.email!.split('@')[0];
+                const referralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                
+                await setDoc(userDocRef, {
+                  id: fbUser.uid,
+                  name: nameVal,
+                  email: fbUser.email!.toLowerCase(),
+                  role: role,
+                  referralCode: referralCode,
+                  points: 0,
+                  coupons: [],
+                  createdAt: new Date().toISOString()
+                });
               }
-            }
-            
-            setCurrentUser({
-              id: fbUser.uid,
-              name: nameVal,
-              email: fbUser.email.toLowerCase(),
-              password: '',
-              role: role as 'admin' | 'customer'
+            }, (error) => {
+              console.warn("Error listening to user document: ", error);
             });
           } catch (err) {
-            console.warn("Error fetching user data from Firestore during auth sync:", err);
+            console.warn("Error in onAuthStateChanged setup:", err);
           }
         }
       } else {
@@ -456,7 +553,10 @@ function AppContent() {
         setCurrentUser(null);
       }
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (userUnsubscribe) userUnsubscribe();
+    };
   }, []);
 
   const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' = 'info') => {
@@ -465,6 +565,36 @@ function AppContent() {
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 6000);
+  };
+
+  const copyToClipboard = (text: string, title: string, message: string) => {
+    let success = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text);
+      success = true;
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        success = true;
+      } catch (err) {
+        console.error('Fallback copy failed', err);
+      }
+      textArea.remove();
+    }
+    
+    if (success) {
+      showToast(title, message, 'success');
+    } else {
+      showToast('خطأ بالنسخ', 'يرجى تحديد الكود ونسخه يدوياً 📋', 'warning');
+    }
   };
 
   const addNotification = async (
@@ -548,6 +678,9 @@ function AppContent() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [copiedCodeApp, setCopiedCodeApp] = useState<boolean>(false);
+  const [copiedLinkApp, setCopiedLinkApp] = useState<boolean>(false);
+  const [copiedCouponCodeApp, setCopiedCouponCodeApp] = useState<string | null>(null);
   
   // --- User Authentication / Registry State Engine ---
   const [users, setUsers] = useState<User[]>(() => {
@@ -577,6 +710,7 @@ function AppContent() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isApkGuideOpen, setIsApkGuideOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
 
 
   // --- Admin Invitation Detection Engine ---
@@ -1148,18 +1282,24 @@ function AppContent() {
       const existingOrder = prev.find((o) => o.id === orderId);
       if (existingOrder) {
         let statusAr = 'قيد المراجعة';
+        if (status === 'processing') statusAr = 'جاري التجهيز 📦';
+        if (status === 'shipping') statusAr = 'جاري الشحن 🚚';
+        if (status === 'delivered') statusAr = 'تم التسليم 🎉';
         if (status === 'completed') statusAr = 'مكتمل ومسلّم ✅';
         if (status === 'cancelled') statusAr = 'ملغي ❌';
 
         // Notify customer
+        let message = `تم تحديث حالة طلبك رقم #${orderId} إلى (${statusAr}).`;
+        if (status === 'processing') message += ' نحن الآن نجهز طلبك بكل حب لتسليمه لشركة الشحن في أسرع وقت. 📦';
+        else if (status === 'shipping') message += ' طلبك الآن في الطريق إليك! سيقوم مندوب التوصيل بالتواصل معك قريباً. 🚚';
+        else if (status === 'delivered') message += ' لقد تم تسليم طلبك بنجاح! نأمل أن تستمتع بمشترياتك الملكية. 🎉';
+        else if (status === 'completed') message += ' تمت الموافقة وتفعيل طلبك بنجاح! شكراً لثقتك بـ KING STORE. ✅';
+        else if (status === 'cancelled') message += ' للأسف تم إلغاء الطلب. يرجى مراجعة الدعم الفني لأي استفسار. ❌';
+
         addNotification(
           existingOrder.customerEmail,
           `🔄 تحديث حالة طلبك #${orderId}`,
-          `تم تحديث حالة طلبك رقم #${orderId} إلى (${statusAr}). ${
-            status === 'completed'
-              ? 'تمت الموافقة وتفعيل طلبك بنجاح! شكراً لثقتك بـ KING STORE.'
-              : 'تم إلغاء الطلب. يرجى مراجعة الدعم الفني لأي استفسار.'
-          }`,
+          message,
           'order_status_updated',
           orderId
         );
@@ -1271,13 +1411,14 @@ function AppContent() {
         setIsSypEnabled={setIsSypEnabled}
         isMobileMenuOpen={isMobileMenuOpen}
         setIsMobileMenuOpen={setIsMobileMenuOpen}
+        onOpenWallet={() => setIsWalletModalOpen(true)}
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24" style={{ contain: 'content' }}>
+      <div className="flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24 pt-32 sm:pt-40" style={{ contain: 'content' }}>
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
-            key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : currentTab}
+            key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : activeCustomerView === 'wishlist' ? 'wishlist' : currentTab}
             custom={direction}
             variants={slideVariants}
             initial="enter"
@@ -1337,6 +1478,57 @@ function AppContent() {
                 onDeleteCategory={handleDeleteCategory}
                 onUpdateCategory={handleUpdateCategory}
                 onShowToast={showToast}
+              />
+            ) : activeCustomerView === 'wishlist' ? (
+              <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 text-right" dir="rtl">
+                <div className="mb-8 space-y-2">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-pink-500/10 px-3 py-1 text-xs font-bold text-pink-500">
+                    <Heart className="h-4 w-4 fill-current" />
+                    <span>قائمة أمنياتك الملكية 🤍</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-white tracking-wide drop-shadow-sm">المنتجات التي نالت إعجابك</h3>
+                  <p className="text-xs sm:text-sm text-slate-500">
+                    احتفظ بمنتجاتك المفضلة هنا للرجوع إليها لاحقاً أو إضافتها للسلة بضغطة واحدة.
+                  </p>
+                </div>
+
+                {wishlist.length === 0 ? (
+                  <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-12 text-center space-y-4">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-600">
+                      <Heart className="h-8 w-8" />
+                    </div>
+                    <h4 className="text-lg font-bold text-white">قائمة الأمنيات فارغة</h4>
+                    <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                      لم تقم بإضافة أي منتجات لقائمة أمنياتك بعد. تصفح المتجر وأضف ما يعجبك!
+                    </p>
+                    <button
+                      onClick={() => setActiveCustomerView('store')}
+                      className="bg-amber-500 text-slate-950 px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-amber-400 transition-all cursor-pointer"
+                    >
+                      تصفح المتجر الآن
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                    {products.filter(p => wishlist.includes(p.id)).map((product) => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        onAddToCart={handleAddToCart}
+                        onViewDetails={(prod) => setSelectedProduct(prod)}
+                        globalDiscount={globalDiscount}
+                        isWishlisted={true}
+                        onToggleWishlist={() => handleToggleWishlist(product.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : activeCustomerView === 'my-orders' && currentUser ? (
+              <MyOrders 
+                currentUser={currentUser}
+                gateways={gateways}
+                onBack={() => setActiveCustomerView('store')}
               />
             ) : activeCustomerView === 'tracking' ? (
               <OrderTracking
@@ -1671,6 +1863,8 @@ function AppContent() {
                           onAddToCart={handleAddToCart}
                           onViewDetails={(prod) => setSelectedProduct(prod)}
                           globalDiscount={globalDiscount}
+                          isWishlisted={wishlist.includes(product.id)}
+                          onToggleWishlist={() => handleToggleWishlist(product.id)}
                         />
                       ))}
                     </div>
@@ -2024,6 +2218,187 @@ function AppContent() {
                       </div>
                     </div>
 
+                    {/* Royal Gift Wallet & Referral System */}
+                    <div className="bg-slate-950 border border-amber-500/25 rounded-3xl p-6 shadow-xl space-y-6 text-right text-zinc-100">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+                        <div className="flex items-center gap-2">
+                          <Crown className="h-5 w-5 text-amber-400 animate-pulse" />
+                          <h4 className="text-base font-black text-amber-400 tracking-wide">محفظة الهدايا الملكية 🎁</h4>
+                        </div>
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Referrals & Rewards</span>
+                      </div>
+
+                      {/* Bento grid layout */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* Box 1: Referral Link & Code */}
+                        <div className="bg-slate-900 rounded-2xl border border-zinc-800 p-4.5 space-y-3.5">
+                          <span className="text-xs font-bold text-zinc-400 block">نظام الإحالة الفيروسي 👥</span>
+                          <p className="text-[11px] leading-relaxed text-zinc-400 font-medium">
+                            شارك الكود أو رابط الإحالة الخاص بك مع أصدقائك؛ عند تسجيلهم ستحصل فوراً على <strong className="text-amber-400">100 نقطة</strong> هدية!
+                          </p>
+                          
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-bold text-zinc-500 uppercase">كود الإحالة الخاص بك</label>
+                            <div className="flex items-center justify-between bg-zinc-950 rounded-xl p-3 border border-zinc-800">
+                              <span className="font-mono text-xs font-extrabold text-amber-400 tracking-wider">
+                                {currentUser.referralCode || 'جاري التوليد...'}
+                              </span>
+                              <motion.button
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => {
+                                  if (currentUser.referralCode) {
+                                    copyToClipboard(currentUser.referralCode, 'نجاح النسخ', 'تم نسخ كود الإحالة بنجاح 📋');
+                                    setCopiedCodeApp(true);
+                                    setTimeout(() => setCopiedCodeApp(false), 2000);
+                                  }
+                                }}
+                                className={`p-1.5 rounded transition-all duration-300 cursor-pointer border ${
+                                  copiedCodeApp
+                                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border-transparent'
+                                }`}
+                                title="نسخ الكود"
+                              >
+                                <AnimatePresence mode="wait" initial={false}>
+                                  {copiedCodeApp ? (
+                                    <motion.div
+                                      key="check"
+                                      initial={{ scale: 0, rotate: -45 }}
+                                      animate={{ scale: 1, rotate: 0 }}
+                                      exit={{ scale: 0 }}
+                                      transition={{ duration: 0.15 }}
+                                    >
+                                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                    </motion.div>
+                                  ) : (
+                                    <motion.div
+                                      key="copy"
+                                      initial={{ scale: 0 }}
+                                      animate={{ scale: 1 }}
+                                      exit={{ scale: 0 }}
+                                      transition={{ duration: 0.15 }}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </motion.button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-[10px] font-bold text-zinc-500 uppercase">رابط الإحالة المباشر</label>
+                            <div className="flex items-center justify-between bg-zinc-950 rounded-xl p-3 border border-zinc-800">
+                              <span className="font-mono text-[10px] text-zinc-400 truncate max-w-[180px] text-left">
+                                {window.location.origin + '/?ref=' + (currentUser.referralCode || '')}
+                              </span>
+                              <motion.button
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => {
+                                  const shareUrl = window.location.origin + '/?ref=' + (currentUser.referralCode || '');
+                                  copyToClipboard(shareUrl, 'نجاح النسخ', 'تم نسخ رابط الإحالة بنجاح وبامكانك مشاركته الآن! 🔗');
+                                  setCopiedLinkApp(true);
+                                  setTimeout(() => setCopiedLinkApp(false), 2000);
+                                }}
+                                className={`p-1 rounded transition-all duration-300 cursor-pointer flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 border ${
+                                  copiedLinkApp
+                                    ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                                    : 'bg-zinc-900 hover:bg-zinc-800 border-transparent text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                {copiedLinkApp ? (
+                                  <>
+                                    <Check className="h-3 w-3 stroke-[3]" />
+                                    <span>تم النسخ!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ExternalLink className="h-3 w-3" />
+                                    <span>نسخ الرابط</span>
+                                  </>
+                                )}
+                              </motion.button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Box 2: Points & Progression */}
+                        <div className="bg-slate-900 rounded-2xl border border-zinc-800 p-4.5 flex flex-col justify-between space-y-4">
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold text-zinc-400 block">رصيد نقاطك الملكي 👑</span>
+                            <div className="flex items-baseline gap-1 mt-1">
+                              <span className="text-3xl font-black text-amber-500">{currentUser.points || 0}</span>
+                              <span className="text-xs font-bold text-zinc-500">نقطة</span>
+                            </div>
+                          </div>
+
+                          {/* Progress bar to 1000 */}
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
+                              <span>الهدف القادم: 1000 نقطة ($1 كوبون)</span>
+                              <span>{Math.min(100, Math.round(((currentUser.points || 0) / 1000) * 100))}%</span>
+                            </div>
+                            <div className="h-2.5 w-full bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                              <div
+                                className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, ((currentUser.points || 0) / 1000) * 100)}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-zinc-500">
+                              يتم خصم 1000 نقطة تلقائياً عند الاكتمال لتوليد كود خصم بقيمة 1 دولار في محفظتك الموضحة أدناه!
+                            </p>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Earned Coupons Wallet */}
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-emerald-400" />
+                          <span className="text-xs font-bold text-zinc-300">القسائم الملكية المكتسبة ($1 Coupons) 🏷️</span>
+                        </div>
+                        
+                        {!currentUser.coupons || currentUser.coupons.length === 0 ? (
+                          <div className="bg-zinc-900/40 border border-dashed border-zinc-800 rounded-2xl p-6 text-center">
+                            <p className="text-xs text-zinc-500 font-medium">
+                              لا توجد قسائم نشطة في محفظتك الملكية حالياً. شارك رابط الإحالة لربح قسائم خصم فورية بقيمة 1$!
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {currentUser.coupons.map((couponCodeStr, index) => (
+                              <div
+                                key={`${couponCodeStr}_${index}`}
+                                className="relative bg-zinc-900 border border-emerald-500/10 rounded-2xl p-4 flex items-center justify-between overflow-hidden shadow-md group hover:border-emerald-500/20 transition-all text-right"
+                              >
+                                <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-slate-950 border-r border-zinc-800 rounded-full" />
+                                <div className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-slate-950 border-l border-zinc-800 rounded-full" />
+                                
+                                <div className="space-y-1.5 pl-6 pr-4">
+                                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-black text-emerald-400">
+                                    خصم $1.00 ثابت
+                                  </span>
+                                  <h5 className="font-mono text-[11px] font-bold text-zinc-300 tracking-wider">
+                                    {couponCodeStr}
+                                  </h5>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    copyToClipboard(couponCodeStr, 'تم النسخ', `تم نسخ كود القسيمة الملكية ${couponCodeStr} لشرائه في السلة! 🏷️`);
+                                  }}
+                                  className="rounded-xl bg-zinc-950 hover:bg-emerald-500 hover:text-slate-950 border border-zinc-800 text-zinc-400 text-[10px] font-bold px-3.5 py-2 cursor-pointer transition-all shrink-0"
+                                >
+                                  نسخ واستعمال
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Order History */}
                     <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
                       <h4 className="text-sm font-black text-slate-950 flex items-center gap-2 pb-3 border-b border-slate-100">
@@ -2120,6 +2495,10 @@ function AppContent() {
         onPlaceOrder={handlePlaceOrder}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        onUpdateUser={(updatedUser) => {
+          setCurrentUser(updatedUser);
+          setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+        }}
         onEditItem={(item) => {
           const index = cartItems.indexOf(item);
           setEditingCartItem(item);
@@ -2138,6 +2517,8 @@ function AppContent() {
         <ProductDetailsModal
           product={selectedProduct}
           isOpen={true}
+          isWishlisted={selectedProduct ? wishlist.includes(selectedProduct.id) : false}
+          onToggleWishlist={() => selectedProduct && handleToggleWishlist(selectedProduct.id)}
           onClose={() => {
             setSelectedProduct(null);
             setEditingCartItem(null);
@@ -2177,6 +2558,15 @@ function AppContent() {
           // Keep local users registry up-to-date
           setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
         }}
+        showToast={showToast}
+      />
+
+      {/* 6.6. Royal Gift Wallet Modal */}
+      <WalletModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
         showToast={showToast}
       />
 

@@ -9,6 +9,134 @@ interface AIImageLabProps {
   onShowToast: (title: string, msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
+// Client-side HTML5 Canvas image filter processing helper
+function applyImageFilters(
+  originalBase64: string,
+  filters: {
+    brightness?: number;
+    contrast?: number;
+    saturation?: number;
+    sepia?: number;
+    hueRotate?: number;
+    blur?: number;
+    grayscale?: number;
+    invert?: number;
+    textOverlay?: {
+      text: string;
+      color: string;
+      position: string;
+      fontSize: number;
+    } | null;
+    border?: {
+      color: string;
+      width: number;
+    } | null;
+  }
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          throw new Error("Could not get 2D canvas context");
+        }
+
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+
+        // Set initial canvas size
+        canvas.width = width;
+        canvas.height = height;
+
+        // Apply CSS filters on 2D context if supported
+        let filterString = "";
+        if (filters.brightness !== undefined) filterString += ` brightness(${filters.brightness})`;
+        if (filters.contrast !== undefined) filterString += ` contrast(${filters.contrast})`;
+        if (filters.saturation !== undefined) filterString += ` saturate(${filters.saturation})`;
+        if (filters.sepia !== undefined) filterString += ` sepia(${filters.sepia})`;
+        if (filters.hueRotate !== undefined) filterString += ` hue-rotate(${filters.hueRotate}deg)`;
+        if (filters.blur !== undefined && filters.blur > 0) filterString += ` blur(${filters.blur}px)`;
+        if (filters.grayscale !== undefined) filterString += ` grayscale(${filters.grayscale})`;
+        if (filters.invert !== undefined) filterString += ` invert(${filters.invert})`;
+
+        if (filterString.trim()) {
+          ctx.filter = filterString.trim();
+        }
+
+        // Draw image onto canvas
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Reset filter so borders and text overlays are drawn crisp without filters
+        ctx.filter = "none";
+
+        // Draw border if defined
+        if (filters.border && filters.border.width > 0) {
+          ctx.strokeStyle = filters.border.color || "#ffffff";
+          ctx.lineWidth = filters.border.width;
+          ctx.strokeRect(filters.border.width / 2, filters.border.width / 2, width - filters.border.width, height - filters.border.width);
+        }
+
+        // Draw text overlay if defined
+        if (filters.textOverlay && filters.textOverlay.text) {
+          const text = filters.textOverlay.text;
+          const fontSize = filters.textOverlay.fontSize || Math.round(height * 0.05);
+          ctx.font = `bold ${fontSize}px sans-serif`;
+          ctx.fillStyle = filters.textOverlay.color || "#ffffff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          // Add clean text shadows for extra visibility
+          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+          ctx.shadowBlur = 10;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          let x = width / 2;
+          let y = height / 2;
+
+          const pos = filters.textOverlay.position || "bottom-center";
+          const margin = fontSize * 1.5;
+
+          if (pos === "top" || pos === "top-center") {
+            y = margin;
+          } else if (pos === "bottom" || pos === "bottom-center") {
+            y = height - margin;
+          } else if (pos === "top-left") {
+            ctx.textAlign = "left";
+            x = margin;
+            y = margin;
+          } else if (pos === "top-right") {
+            ctx.textAlign = "right";
+            x = width - margin;
+            y = margin;
+          } else if (pos === "bottom-left") {
+            ctx.textAlign = "left";
+            x = margin;
+            y = height - margin;
+          } else if (pos === "bottom-right") {
+            ctx.textAlign = "right";
+            x = width - margin;
+            y = height - margin;
+          }
+
+          ctx.fillText(text, x, y);
+        }
+
+        resolve(canvas.toDataURL("image/png"));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      reject(new Error("Failed to load original image into Canvas element"));
+    };
+    img.src = originalBase64;
+  });
+}
+
 export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
@@ -17,6 +145,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [processingError, setProcessingError] = useState<string>('');
+  const [aiExplanation, setAiExplanation] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -33,6 +162,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
       reader.onloadend = () => {
         setOriginalImageBase64(reader.result as string);
         setEditedImageBase64(''); // Reset edited image
+        setAiExplanation('');
       };
       reader.readAsDataURL(file);
     }
@@ -50,6 +180,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
 
     setIsProcessing(true);
     setProcessingError('');
+    setAiExplanation('');
     try {
       const res = await fetch('/api/gemini/edit-image', {
         method: 'POST',
@@ -65,8 +196,18 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
         throw new Error(data.error || 'فشلت عملية التعديل');
       }
 
-      setEditedImageBase64(data.image);
-      onShowToast('نجاح', 'تم معالجة الصورة بنجاح بواسطة الذكاء الاصطناعي', 'success');
+      if (data.instructions) {
+        const processed = await applyImageFilters(originalImageBase64, data.instructions);
+        setEditedImageBase64(processed);
+        setAiExplanation(data.explanation || '');
+      } else if (data.image) {
+        setEditedImageBase64(data.image);
+        setAiExplanation(data.explanation || '');
+      } else {
+        throw new Error('لم يتم تلقي استجابة صالحة للتعديل من السيرفر');
+      }
+
+      onShowToast('نجاح', 'تم معالجة وتعديل الصورة بنجاح بواسطة الذكاء الاصطناعي 🪄', 'success');
     } catch (err: any) {
       console.error(err);
       setProcessingError(err.message || 'حدث خطأ أثناء معالجة الصورة');
@@ -255,10 +396,19 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
                   </p>
                 </div>
               ) : editedImageBase64 ? (
-                <div className="w-full h-full flex flex-col">
+                <div className="w-full h-full flex flex-col space-y-4">
                   <div className="relative flex-1 rounded-xl overflow-hidden shadow-md border border-slate-200 bg-white">
                     <img src={editedImageBase64} alt="Edited AI Result" className="w-full h-full object-contain" />
                   </div>
+                  {aiExplanation && (
+                    <div className="bg-amber-50/40 border border-amber-500/20 rounded-2xl p-4 text-amber-900 text-sm font-semibold flex items-start gap-2.5 animate-in fade-in duration-300">
+                      <Sparkles className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-extrabold text-amber-800 block mb-1">تقرير المعالجة والتعديلات:</span>
+                        <p className="text-slate-700 font-medium leading-relaxed">{aiExplanation}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : originalImageBase64 ? (
                 <div className="w-full h-full flex flex-col">

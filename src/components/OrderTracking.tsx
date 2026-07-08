@@ -96,9 +96,12 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
   // Determine status steps and progress
   const getStatusStep = (status: Order['status']) => {
     switch (status) {
-      case 'completed': return 3;
-      case 'cancelled': return -1;
+      case 'completed': 
+      case 'delivered': return 4;
+      case 'shipping': return 3;
+      case 'processing': return 2;
       case 'pending': default: return 1;
+      case 'cancelled': return -1;
     }
   };
 
@@ -221,7 +224,7 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
                   {/* Vertical Connection Line */}
                   <div className={`absolute ${language === 'ar' ? 'right-[15px]' : 'left-[15px]'} top-4 bottom-4 w-0.5 bg-slate-100 pointer-events-none`}></div>
 
-                  {/* Step 1 */}
+                  {/* Step 1: Pending */}
                   <div className="relative flex gap-4 items-start">
                     <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
                       activeStep >= 1 
@@ -232,52 +235,70 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
                     </div>
                     <div className="space-y-1">
                       <span className={`text-xs font-black block ${activeStep >= 1 ? 'text-slate-900' : 'text-slate-400'}`}>
-                        {t('orderStep1')}
+                        {language === 'ar' ? 'قيد المراجعة 📝' : 'Reviewing Order'}
                       </span>
                       <p className="text-[11px] leading-relaxed text-slate-500">
-                        {t('orderStep1Desc')} <strong>{gateways.find(g => g.id === searchedOrder.paymentMethodId)?.name || searchedOrder.paymentMethodId}</strong>.
+                        {language === 'ar' ? 'طلبك الآن قيد المراجعة من قبل فريقنا الملكي للتأكد من تفاصيل الدفع.' : 'Your order is being reviewed by our royal team to verify payment details.'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Step 2 */}
+                  {/* Step 2: Processing */}
                   <div className="relative flex gap-4 items-start">
                     <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                      searchedOrder.status === 'completed' || activeStep >= 2
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold shadow-md shadow-amber-500/10' 
+                      activeStep >= 2
+                        ? 'bg-blue-600 text-white border-blue-600 font-extrabold shadow-md shadow-blue-500/10' 
                         : 'bg-white border-slate-200 text-slate-400'
                     }`}>
                       <ShoppingBag className="h-4 w-4" />
                     </div>
                     <div className="space-y-1">
-                      <span className={`text-xs font-black block ${searchedOrder.status === 'completed' || activeStep >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>
-                        {t('orderStep2')}
+                      <span className={`text-xs font-black block ${activeStep >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>
+                        {language === 'ar' ? 'جاري التجهيز 📦' : 'Processing Order'}
                       </span>
                       <p className="text-[11px] leading-relaxed text-slate-500">
-                        {t('orderStep2Desc')}
+                        {language === 'ar' ? 'يتم الآن تجهيز منتجاتك وتغليفها بعناية فائقة لتصلك بأفضل حلة.' : 'Your products are being prepared and packaged with extreme care.'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Step 3 */}
+                  {/* Step 3: Shipping */}
                   <div className="relative flex gap-4 items-start">
                     <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                      searchedOrder.status === 'completed' || activeStep >= 3
-                        ? 'bg-emerald-500 text-white border-emerald-500 font-extrabold shadow-md shadow-emerald-500/10' 
+                      activeStep >= 3
+                        ? 'bg-purple-600 text-white border-purple-600 font-extrabold shadow-md shadow-purple-500/10' 
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <Truck className="h-4 w-4" />
+                    </div>
+                    <div className="space-y-1">
+                      <span className={`text-xs font-black block ${activeStep >= 3 ? 'text-slate-900' : 'text-slate-400'}`}>
+                        {language === 'ar' ? 'جاري الشحن 🚚' : 'On the Way'}
+                      </span>
+                      <p className="text-[11px] leading-relaxed text-slate-500">
+                        {language === 'ar' ? 'طلبك الآن في طريقه إليك! ترقب اتصالاً من مندوب التوصيل قريباً.' : 'Your order is on its way! Expect a call from the delivery agent soon.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 4: Delivered */}
+                  <div className="relative flex gap-4 items-start">
+                    <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                      activeStep >= 4
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-md shadow-emerald-500/10' 
                         : 'bg-white border-slate-200 text-slate-400'
                     }`}>
                       <CheckCircle2 className="h-4 w-4" />
                     </div>
                     <div className="space-y-1">
-                      <span className={`text-xs font-black block ${searchedOrder.status === 'completed' || activeStep >= 3 ? 'text-emerald-700' : 'text-slate-400'}`}>
-                        {t('orderStep3')}
+                      <span className={`text-xs font-black block ${activeStep >= 4 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {language === 'ar' ? 'تم التسليم 🎉' : 'Delivered'}
                       </span>
                       <p className="text-[11px] leading-relaxed text-slate-500">
-                        {t('orderStep3Desc')}
+                        {language === 'ar' ? 'تهانينا! تم تسليم طلبك بنجاح. نأمل أن تنال منتجاتنا رضاك.' : 'Congratulations! Your order has been successfully delivered.'}
                       </p>
                     </div>
                   </div>
-
                 </div>
               )}
             </div>

@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Product } from '../types';
-import { ShoppingCart, Smartphone, Package, Zap, Star } from 'lucide-react';
+import { ShoppingCart, Smartphone, Package, Zap, Star, Heart } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 
@@ -17,9 +17,11 @@ interface ProductCardProps {
   exchangeRate?: number;
   isSypEnabled?: boolean;
   key?: string | number;
+  isWishlisted?: boolean;
+  onToggleWishlist?: () => void;
 }
 
-export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0 }: ProductCardProps) {
+export default function ProductCard({ product, onAddToCart, onViewDetails, globalDiscount = 0, isWishlisted = false, onToggleWishlist }: ProductCardProps) {
   const { t } = useLanguage();
   const { formatPrice } = useCurrency();
   const isPhysical = product.type === 'physical';
@@ -98,6 +100,22 @@ export default function ProductCard({ product, onAddToCart, onViewDetails, globa
         <span className="absolute bottom-3 left-3 rounded-md bg-zinc-950/85 px-2 py-0.5 text-[11px] font-bold text-amber-400 border border-zinc-800 uppercase">
           {product.category}
         </span>
+
+        {/* Wishlist Toggle Button 🤍 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWishlist?.();
+          }}
+          className={`absolute bottom-3 right-3 p-2 rounded-full backdrop-blur-md transition-all shadow-lg border group/heart z-10 ${
+            isWishlisted
+              ? 'bg-pink-600 border-pink-500 text-white scale-110'
+              : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:text-pink-400 hover:border-pink-500/30'
+          }`}
+          title={isWishlisted ? 'إزالة من الأمنيات' : 'إضافة للأمنيات'}
+        >
+          <Heart className={`h-4 w-4 ${isWishlisted ? 'fill-current' : 'group-hover/heart:scale-110'}`} />
+        </button>
       </div>
 
       {/* Product Information */}

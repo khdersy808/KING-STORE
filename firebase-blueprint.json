@@ -54,7 +54,10 @@
         "name": "string",
         "email": "string",
         "role": "string",
-        "password": "string"
+        "password": "string",
+        "referralCode": "string",
+        "points": "number",
+        "coupons": "array"
       }
     },
     "categories": {

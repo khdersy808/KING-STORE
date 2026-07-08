@@ -65,7 +65,7 @@ import {
   Link as LinkIcon,
   RotateCcw
 } from 'lucide-react';
-import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from '../lib/firebase';
+import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
 
@@ -89,7 +89,7 @@ interface AdminPanelProps {
   onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users';
 
 export default function AdminPanel({
   products,
@@ -240,7 +240,7 @@ export default function AdminPanel({
 
   // Advanced Order Management States
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | OrderStatus>('all');
   const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'physical' | 'digital'>('all');
   const [selectedOrderForModal, setSelectedOrderForModal] = useState<Order | null>(null);
   const [trackingNotes, setTrackingNotes] = useState<Record<string, string>>(() => {
@@ -822,6 +822,7 @@ export default function AdminPanel({
     } catch (err: any) {
       console.error("Error saving coupon:", err);
       setCouponFormError('حدث خطأ أثناء حفظ كود الخصم.');
+      handleFirestoreError(err, editingCoupon ? OperationType.WRITE : OperationType.CREATE, 'coupons');
     }
   };
 
@@ -832,6 +833,7 @@ export default function AdminPanel({
       await setDoc(docRef, { isActive: !coupon.isActive }, { merge: true });
     } catch (err) {
       console.error("Error toggling coupon:", err);
+      handleFirestoreError(err, OperationType.WRITE, `coupons/${coupon.id}`);
     }
   };
 
@@ -846,6 +848,7 @@ export default function AdminPanel({
           await deleteDoc(docRef);
         } catch (err) {
           console.error("Error deleting coupon:", err);
+          handleFirestoreError(err, OperationType.DELETE, `coupons/${id}`);
         }
       }
     );
@@ -920,6 +923,7 @@ export default function AdminPanel({
     } catch (err: any) {
       console.error("Error saving policy:", err);
       setPolicyFormError('حدث خطأ أثناء حفظ السياسة.');
+      handleFirestoreError(err, editingPolicy ? OperationType.WRITE : OperationType.CREATE, 'policies');
     }
   };
 
@@ -936,6 +940,7 @@ export default function AdminPanel({
         } catch (err) {
           console.error("Error deleting policy:", err);
           onShowToast('خطأ', 'فشل حذف السياسة من قاعدة البيانات', 'error');
+          handleFirestoreError(err, OperationType.DELETE, `policies/${id}`);
         }
       }
     );
@@ -958,6 +963,7 @@ export default function AdminPanel({
     } catch (err) {
       console.error("Error toggling policy status:", err);
       onShowToast('خطأ', 'فشل تحديث حالة السياسة في قاعدة البيانات', 'error');
+      handleFirestoreError(err, OperationType.WRITE, `policies/${policy.id}`);
     }
   };
 
@@ -989,7 +995,7 @@ export default function AdminPanel({
 1. جمع المعلومات: نقوم بجمع الاسم، البريد الإلكتروني، ورقم الهاتف، وعنوان الشحن لتسهيل توصيل الطلبات والتواصل معك.
 2. حماية البيانات: نستخدم معايير تشفير وأمان قوية لحماية بياناتك من الوصول غير المصرح به.
 3. مشاركة البيانات: نحن لا نبيع، ولا نؤجر، ولا نشارك بياناتك الشخصية مع أي جهات خارجية أو أطراف ثالثة لأغراض تسويقية على الإطلاق.
-4. التحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
+4. تزويد بالمعلومات والتحديثات: قد نقوم بتحديث سياسة الخصوصية من وقت لآخر، وسيتم إخطاركم بأي تغييرات جوهرية عبر البريد الإلكتروني أو إشعار بارز في المتجر.`,
             isActive: true,
             updatedAt: new Date().toLocaleDateString('ar-EG')
           });
@@ -1010,6 +1016,7 @@ export default function AdminPanel({
         } catch (err) {
           console.error("Error restoring default policies:", err);
           onShowToast('خطأ', 'فشل استعادة السياسات في قاعدة البيانات', 'error');
+          handleFirestoreError(err, OperationType.WRITE, 'policies');
         }
       }
     );
@@ -1683,6 +1690,17 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
           >
             <Shield className="h-4 w-4" />
             <span>{texts.usersTab} ({users.filter(u => u.role === 'admin').length})</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('users'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'users'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <Users className="h-4 w-4 text-amber-500" />
+            <span>إدارة المستخدمين ({users.length})</span>
           </button>
           <button
             onClick={() => { setActiveTab('agents'); resetProductForm(); }}
@@ -3518,15 +3536,48 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                     : 'bg-white border-slate-200 text-amber-600 hover:bg-amber-50'
                 }`}
               >
-                قيد المعالجة ({orders.filter(o => o.status === 'pending').length})
+                المراجعة ({orders.filter(o => o.status === 'pending').length})
+              </button>
+
+              <button
+                onClick={() => setOrderStatusFilter('processing')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${
+                  orderStatusFilter === 'processing'
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white border-slate-200 text-blue-600 hover:bg-blue-50'
+                }`}
+              >
+                التجهيز ({orders.filter(o => o.status === 'processing').length})
+              </button>
+
+              <button
+                onClick={() => setOrderStatusFilter('shipping')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${
+                  orderStatusFilter === 'shipping'
+                    ? 'bg-purple-600 border-purple-600 text-white'
+                    : 'bg-white border-slate-200 text-purple-600 hover:bg-purple-50'
+                }`}
+              >
+                الشحن ({orders.filter(o => o.status === 'shipping').length})
+              </button>
+
+              <button
+                onClick={() => setOrderStatusFilter('delivered')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${
+                  orderStatusFilter === 'delivered'
+                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                    : 'bg-white border-slate-200 text-emerald-600 hover:bg-emerald-50'
+                }`}
+              >
+                التسليم ({orders.filter(o => o.status === 'delivered').length})
               </button>
 
               <button
                 onClick={() => setOrderStatusFilter('completed')}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${
                   orderStatusFilter === 'completed'
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : 'bg-white border-slate-200 text-emerald-600 hover:bg-emerald-50'
+                    ? 'bg-emerald-800 border-emerald-800 text-white'
+                    : 'bg-white border-slate-200 text-emerald-800 hover:bg-emerald-50'
                 }`}
               >
                 المكتملة ({orders.filter(o => o.status === 'completed').length})
@@ -3686,26 +3737,28 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
                               </span>
                             </td>
 
-                            {/* Order Status Badge */}
+                            {/* Order Status Badge / Select */}
                             <td className="p-4">
-                              {order.status === 'completed' && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                                  <span>مكتمل</span>
-                                </span>
-                              )}
-                              {order.status === 'pending' && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                                  <Clock className="h-3 w-3 text-amber-600 animate-pulse" />
-                                  <span>قيد المعالجة</span>
-                                </span>
-                              )}
-                              {order.status === 'cancelled' && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-700 bg-red-50 px-2.5 py-1 rounded-full border border-red-200">
-                                  <X className="h-3 w-3 text-red-600" />
-                                  <span>ملغي</span>
-                                </span>
-                              )}
+                              <select
+                                value={order.status}
+                                onChange={(e) => onUpdateOrderStatus(order.id, e.target.value as OrderStatus)}
+                                className={`text-[10px] font-black rounded-lg border px-2 py-1.5 focus:outline-none transition-all cursor-pointer w-full min-w-[120px] ${
+                                  order.status === 'completed' ? 'text-emerald-800 bg-emerald-50 border-emerald-200' :
+                                  order.status === 'pending' ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                                  order.status === 'cancelled' ? 'text-red-700 bg-red-50 border-red-200' :
+                                  order.status === 'processing' ? 'text-blue-700 bg-blue-50 border-blue-200' :
+                                  order.status === 'shipping' ? 'text-purple-700 bg-purple-50 border-purple-200' :
+                                  order.status === 'delivered' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+                                  'text-slate-700 bg-slate-50 border-slate-200'
+                                }`}
+                              >
+                                <option value="pending">قيد المراجعة 📝</option>
+                                <option value="processing">جاري التجهيز 📦</option>
+                                <option value="shipping">جاري الشحن 🚚</option>
+                                <option value="delivered">تم التسليم 🎉</option>
+                                <option value="completed">مكتمل ✓</option>
+                                <option value="cancelled">ملغي ❌</option>
+                              </select>
                             </td>
 
                             {/* Actions & Detail Triggers */}
@@ -4993,6 +5046,164 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
       )}
 
       {/* TAB 5: ADMINS & INVITATIONS */}
+      {activeTab === 'users' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500 text-white rounded-2xl shadow-lg shadow-amber-500/20">
+                  <Users className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">إدارة حسابات العملاء والمستخدمين</h3>
+                  <p className="text-xs text-slate-500 font-bold mt-1">عرض جميع المسجلين، التحكم في الصلاحيات، وإعادة تعيين الوصول الآمن.</p>
+                </div>
+              </div>
+              <span className="px-4 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-700 shadow-sm">
+                إجمالي المستخدمين: {users.length}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100/50 text-slate-500 font-black border-b border-slate-100">
+                    <th className="px-6 py-4">المستخدم</th>
+                    <th className="px-6 py-4">البريد الإلكتروني</th>
+                    <th className="px-6 py-4">الدور</th>
+                    <th className="px-6 py-4 text-center">التحكم في الوصول الآمن</th>
+                    <th className="px-6 py-4 text-center">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-black border border-slate-200">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-black text-slate-900 text-sm">{user.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-slate-500">{user.email}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black border ${
+                          user.role === 'admin' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                          user.role === 'agent' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                          'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}>
+                          {user.role === 'admin' ? 'مدير نظام' : user.role === 'agent' ? 'وكيل مبيعات' : 'عميل ملكي'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const tempCode = 'Temp' + Math.floor(100000 + Math.random() * 900000);
+                              const expiry = new Date(Date.now() + 10 * 60000).toISOString();
+                              
+                              triggerConfirm(
+                                'توليد رمز دخول مؤقت',
+                                `هل أنت متأكد من توليد رمز دخول مؤقت للمستخدم ${user.name}؟ هذا الرمز سيكون صالحاً لمدة 10 دقائق فقط وسيتم إجبار المستخدم على تغيير كلمة سره فور الدخول.`,
+                                async () => {
+                                  try {
+                                    const userRef = doc(db, 'users', user.email.toLowerCase());
+                                    await updateDoc(userRef, {
+                                      tempPassword: hashPassword(tempCode),
+                                      tempPasswordExpiry: expiry,
+                                      mustChangePassword: true
+                                    });
+                                    
+                                    // Generate a system notification for the user (though they can't see it if they can't log in, it's good for history)
+                                    await addDoc(collection(db, 'notifications'), {
+                                      userId: user.email.toLowerCase(),
+                                      title: '🔐 تم إصدار رمز دخول مؤقت',
+                                      message: 'لقد طلب مسؤول النظام إصدار رمز دخول مؤقت لحسابك. يرجى استخدامه وتغيير كلمة السر فوراً.',
+                                      date: new Date().toISOString(),
+                                      isRead: false,
+                                      type: 'system'
+                                    });
+
+                                    // Display the code to admin for copying
+                                    const copyMsg = `رمز الدخول المؤقت هو: ${tempCode}\nصالح حتى: ${new Date(expiry).toLocaleTimeString('ar-EG')}`;
+                                    alert(copyMsg);
+                                    navigator.clipboard.writeText(tempCode);
+                                    onShowToast('تم التوليد والنسخ!', 'تم نسخ الرمز المؤقت للحافظة لإرساله للعميل.', 'success');
+                                  } catch (err) {
+                                    console.error("Error generating temp code:", err);
+                                    onShowToast('خطأ!', 'فشل في توليد الرمز المؤقت.', 'error');
+                                  }
+                                }
+                              );
+                            }}
+                            className="w-full max-w-[180px] flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black transition-all shadow-md cursor-pointer"
+                          >
+                            <Shield className="h-3.5 w-3.5 text-amber-500" />
+                            <span>توليد رمز دخول مؤقت 🔐</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const tempPin = Math.floor(1000 + Math.random() * 9000).toString();
+                              const expiry = new Date(Date.now() + 10 * 60000).toISOString();
+                              
+                              triggerConfirm(
+                                'توليد رمز PIN مؤقت',
+                                `هل أنت متأكد من توليد رمز PIN مؤقت للمستخدم ${user.name}؟ هذا الرمز سيكون صالحاً لمدة 10 دقائق فقط لإتمام عمليات الدفع أو الوصول للإعدادات.`,
+                                async () => {
+                                  try {
+                                    const userRef = doc(db, 'users', user.email.toLowerCase());
+                                    await updateDoc(userRef, {
+                                      tempPin: encryptPin(tempPin),
+                                      tempPinExpiry: expiry,
+                                      mustChangePin: true
+                                    });
+                                    
+                                    const copyMsg = `رمز الـ PIN المؤقت هو: ${tempPin}\nصالح حتى: ${new Date(expiry).toLocaleTimeString('ar-EG')}`;
+                                    alert(copyMsg);
+                                    navigator.clipboard.writeText(tempPin);
+                                    onShowToast('تم توليد الـ PIN!', 'تم نسخ الرمز المؤقت للحافظة لإرساله للعميل.', 'success');
+                                  } catch (err) {
+                                    console.error("Error generating temp PIN:", err);
+                                    onShowToast('خطأ!', 'فشل في توليد الرمز المؤقت.', 'error');
+                                  }
+                                }
+                              );
+                            }}
+                            className="w-full max-w-[180px] flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-amber-500/50 text-slate-700 rounded-xl text-[10px] font-black transition-all cursor-pointer"
+                          >
+                            <CreditCard className="h-3.5 w-3.5 text-amber-500" />
+                            <span>توليد PIN مؤقت 💳</span>
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              triggerConfirm(
+                                'حذف المستخدم نهائياً',
+                                `هل أنت متأكد من حذف حساب ${user.name}؟ لا يمكن التراجع عن هذا الإجراء وسيتم مسح كافة بياناته.`,
+                                () => onDeleteUser(user.id)
+                              );
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                            title="حذف المستخدم"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'admins' && (
         <div className="space-y-8" dir="rtl">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Settings, ShieldCheck, Lock, Mail, User, Eye, EyeOff, Save, Sparkles, Loader2 } from 'lucide-react';
+import { X, Settings, ShieldCheck, Lock, Mail, User, Eye, EyeOff, Save, Sparkles, Loader2, Key, Fingerprint } from 'lucide-react';
 import { User as AppUser } from '../types';
-import { auth, db, doc, setDoc, getDoc, deleteDoc, updateDoc } from '../lib/firebase';
+import { auth, db, doc, setDoc, getDoc, deleteDoc, updateDoc, encryptPin } from '../lib/firebase';
 import { EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword, updateProfile } from 'firebase/auth';
 
 interface SettingsModalProps {
@@ -12,7 +12,7 @@ interface SettingsModalProps {
   showToast: (title: string, message: string, type: 'success' | 'info' | 'warning') => void;
 }
 
-type TabType = 'profile' | 'email' | 'password';
+type TabType = 'profile' | 'email' | 'password' | 'security';
 
 export default function SettingsModal({
   isOpen,
@@ -41,6 +41,11 @@ export default function SettingsModal({
   const [showCurrentPasswordForPass, setShowCurrentPasswordForPass] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [isSendingReset, setIsSendingReset] = useState(false);
+
+  // Security / PIN Form State
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
 
   const firebaseUser = auth.currentUser;
   const isGoogleUser = firebaseUser?.providerData.some((p) => p.providerId === 'google.com') || false;
@@ -221,6 +226,45 @@ export default function SettingsModal({
     }
   };
 
+  const handleUpdatePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPin = pin.trim();
+    const cleanConfirmPin = confirmPin.trim();
+
+    if (!/^\d{4}$/.test(cleanPin)) {
+      showToast('رمز PIN غير صالح', 'يجب أن يتكون رمز PIN من 4 أرقام فقط ⚠️', 'warning');
+      return;
+    }
+
+    if (cleanPin !== cleanConfirmPin) {
+      showToast('عدم تطابق', 'رمز PIN وتأكيد الرمز غير متطابقين ❌', 'warning');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const encrypted = encryptPin(cleanPin);
+      const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+      await updateDoc(userDocRef, {
+        paymentPin: encrypted
+      });
+
+      onUpdateUser({
+        ...currentUser,
+        paymentPin: encrypted
+      });
+
+      showToast('تم التحديث بنجاح ✨', 'تم تعيين وتحديث رمز PIN السري للدفع بنجاح! 🛡️', 'success');
+      setPin('');
+      setConfirmPin('');
+    } catch (err: any) {
+      console.error('Error updating payment PIN:', err);
+      showToast('فشل التحديث ❌', err.message || 'حدث خطأ أثناء تحديث رمز PIN الخاص بك.', 'warning');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 flex items-center justify-center p-4" dir="rtl">
       <div 
@@ -251,7 +295,7 @@ export default function SettingsModal({
         </div>
 
         {/* Custom Premium Tabs Navigation */}
-        <div className="flex border-b border-zinc-800 bg-slate-950/40 p-1.5">
+        <div className="flex border-b border-zinc-800 bg-slate-950/40 p-1.5 gap-1">
           <button
             onClick={() => setActiveTab('profile')}
             className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
@@ -270,7 +314,7 @@ export default function SettingsModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            تغيير البريد
+            البريد
           </button>
           <button
             onClick={() => setActiveTab('password')}
@@ -280,7 +324,17 @@ export default function SettingsModal({
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            كلمة المرور
+            المرور
+          </button>
+          <button
+            onClick={() => setActiveTab('security')}
+            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              activeTab === 'security'
+                ? 'bg-amber-400/10 text-amber-400 border border-amber-500/20 shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            أمان الدفع (PIN)
           </button>
         </div>
 
@@ -531,6 +585,87 @@ export default function SettingsModal({
                 </div>
               </div>
             )
+          )}
+
+          {activeTab === 'security' && (
+            <form onSubmit={handleUpdatePin} className="space-y-4">
+              <div className="bg-amber-500/5 rounded-2xl p-4 border border-amber-500/10 mb-2">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <ShieldCheck className="h-4 w-4 text-amber-400" />
+                  <span className="text-xs font-bold text-amber-400">حماية فائقة لعمليات الدفع 🛡️</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
+                  لحماية حسابك ورصيد نقاطك الملكية، يمكنك تعيين رمز PIN سري مكون من 4 أرقام. سيطلب منك المتجر هذا الرمز للتأكيد قبل كل عملية شراء أو تحويل.
+                </p>
+                {currentUser.paymentPin ? (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                    <span>حالة الرمز: مفعل ونشط وبأمان تام ✅</span>
+                  </div>
+                ) : (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold">
+                    <span>حالة الرمز: لم يتم التعيين بعد (غير مفضل) ⚠️</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300 block">رمز PIN الجديد (4 أرقام)</label>
+                <div className="relative">
+                  <span className="absolute right-3 top-3.5 text-zinc-500">
+                    <Key className="h-4 w-4" />
+                  </span>
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    pattern="\d*"
+                    maxLength={4}
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                    placeholder="رمز PIN مكون من 4 أرقام فقط"
+                    className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-10 text-xs sm:text-sm text-white text-center font-mono tracking-[0.5em]"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute left-3 top-3 text-zinc-500 hover:text-zinc-300"
+                  >
+                    {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300 block">تأكيد رمز PIN الجديد</label>
+                <div className="relative">
+                  <span className="absolute right-3 top-3.5 text-zinc-500">
+                    <Key className="h-4 w-4" />
+                  </span>
+                  <input
+                    type={showPin ? 'text' : 'password'}
+                    pattern="\d*"
+                    maxLength={4}
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                    placeholder="أعد إدخال الرمز لتأكيده"
+                    className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-center font-mono tracking-[0.5em]"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs sm:text-sm transition-all shadow-lg hover:shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                <span>حفظ الرمز السري الجديد</span>
+              </button>
+            </form>
           )}
         </div>
 

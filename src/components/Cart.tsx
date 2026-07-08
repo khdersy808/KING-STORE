@@ -8,7 +8,7 @@ import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySett
 import PaymentReceipt from './PaymentReceipt';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
-import { db, collection, query, where, getDocs, doc, updateDoc } from '../lib/firebase';
+import { db, collection, query, where, getDocs, doc, updateDoc, encryptPin } from '../lib/firebase';
 import {
   X,
   Minus,
@@ -32,7 +32,10 @@ import {
   Tag,
   Shield,
   FileText,
-  CheckSquare
+  CheckSquare,
+  Fingerprint,
+  Key,
+  Loader2
 } from 'lucide-react';
 
 interface CartProps {
@@ -53,6 +56,7 @@ interface CartProps {
   exchangeRate?: number;
   isSypEnabled?: boolean;
   deliverySettings: DeliverySettings;
+  onUpdateUser?: (updatedUser: User) => void;
 }
 
 export default function Cart({
@@ -70,7 +74,8 @@ export default function Cart({
   onOpenAuth,
   onEditItem,
   globalDiscount = 0,
-  deliverySettings
+  deliverySettings,
+  onUpdateUser
 }: CartProps) {
   const { t, language } = useLanguage();
   const { isSypEnabled, exchangeRate, formatPrice } = useCurrency();
@@ -106,6 +111,16 @@ export default function Cart({
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [receiptFileName, setReceiptFileName] = useState<string>('');
   const [zoomedQrUrl, setZoomedQrUrl] = useState<string | null>(null);
+
+  // PIN Security / Verification states
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [enteredPin, setEnteredPin] = useState('');
+  const [pinModalError, setPinModalError] = useState('');
+  const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
+  const [isSettingPinInCheckout, setIsSettingPinInCheckout] = useState(false);
+  const [checkoutSetupPin, setCheckoutSetupPin] = useState('');
+  const [checkoutSetupConfirmPin, setCheckoutSetupConfirmPin] = useState('');
+  const [isBiometricScanning, setIsBiometricScanning] = useState(false);
 
   // Coupon state variables
   const [couponCodeInput, setCouponCodeInput] = useState('');
@@ -572,6 +587,24 @@ export default function Cart({
       couponDiscount: appliedCoupon ? couponDiscountAmount : undefined
     };
 
+    if (currentUser) {
+      setPendingOrder(newOrder);
+      setEnteredPin('');
+      setPinModalError('');
+      setCheckoutSetupPin('');
+      setCheckoutSetupConfirmPin('');
+      if (currentUser.paymentPin) {
+        setIsSettingPinInCheckout(false);
+      } else {
+        setIsSettingPinInCheckout(true);
+      }
+      setIsPinModalOpen(true);
+    } else {
+      await executeOrder(newOrder);
+    }
+  };
+
+  const executeOrder = async (orderToPlace: Order) => {
     // If coupon is used, increment usageCount in Firestore & local storage
     if (appliedCoupon) {
       try {
@@ -595,10 +628,102 @@ export default function Cart({
       }
     }
 
-    setCreatedOrder(newOrder);
-    onPlaceOrder(newOrder);
+    setCreatedOrder(orderToPlace);
+    onPlaceOrder(orderToPlace);
     setStep('success');
     onClearCart();
+  };
+
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !pendingOrder) return;
+
+    setPinModalError('');
+
+    if (isSettingPinInCheckout) {
+      // Setup PIN
+      const cleanSetup = checkoutSetupPin.trim();
+      const cleanConfirm = checkoutSetupConfirmPin.trim();
+
+      if (!/^\d{4}$/.test(cleanSetup)) {
+        setPinModalError('يجب أن يتكون رمز PIN من 4 أرقام فقط ⚠️');
+        return;
+      }
+
+      if (cleanSetup !== cleanConfirm) {
+        setPinModalError('رمز PIN وتأكيد الرمز غير متطابقين ❌');
+        return;
+      }
+
+      try {
+        const encrypted = encryptPin(cleanSetup);
+        const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+        const updates: any = {
+          paymentPin: encrypted,
+          tempPin: null,
+          tempPinExpiry: null,
+          mustChangePin: false
+        };
+        await updateDoc(userDocRef, updates);
+
+        if (onUpdateUser) {
+          onUpdateUser({
+            ...currentUser,
+            ...updates
+          });
+        }
+
+        setIsPinModalOpen(false);
+        await executeOrder(pendingOrder);
+      } catch (err: any) {
+        console.error('Error setting PIN during checkout:', err);
+        setPinModalError('فشل حفظ الرمز السري. يرجى المحاولة لاحقاً.');
+      }
+    } else {
+      // Verify PIN
+      const cleanEntered = enteredPin.trim();
+      const encryptedEntered = encryptPin(cleanEntered);
+      const now = new Date().toISOString();
+
+      // Check for permanent PIN
+      const isPermanentMatch = encryptedEntered === currentUser.paymentPin;
+      
+      // Check for temporary PIN
+      const isTempMatch = currentUser.tempPin === encryptedEntered && 
+                          currentUser.tempPinExpiry && 
+                          currentUser.tempPinExpiry > now;
+
+      if (isPermanentMatch || isTempMatch) {
+        if (currentUser.mustChangePin || isTempMatch) {
+          // Force them to change it now if they are using a temp pin or have the flag
+          setPinModalError('تم قبول الرمز المؤقت. لحمايتك، يرجى تعيين رمز PIN دائم جديد الآن 🔐');
+          setIsSettingPinInCheckout(true);
+          setEnteredPin('');
+        } else {
+          setIsPinModalOpen(false);
+          await executeOrder(pendingOrder);
+        }
+      } else {
+        setPinModalError('رمز PIN السري غير صحيح! يرجى التحقق وإعادة المحاولة ❌');
+      }
+    }
+  };
+
+  const handleBiometricAuth = () => {
+    if (!currentUser || !pendingOrder) return;
+    if (isSettingPinInCheckout) {
+      setPinModalError('يرجى أولاً تعيين رمز PIN لإتاحة خيارات المصادقة البيومترية 🔐');
+      return;
+    }
+    
+    setIsBiometricScanning(true);
+    setPinModalError('');
+    
+    setTimeout(async () => {
+      setIsBiometricScanning(false);
+      // Native-like popup warning that it's a placeholder
+      setPinModalError('المصادقة البيومترية (WebAuthn / بصمة الإصبع) ستكون متاحة قريباً كبديل فائق الأمان لرمز الـ PIN! 📲');
+    }, 1500);
   };
 
   const handleCopyText = (text: string, id: string) => {
@@ -1646,6 +1771,145 @@ export default function Cart({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isPinModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/95 p-4 animate-fade-in" dir="rtl" onClick={() => setIsPinModalOpen(false)}>
+          <div 
+            className="relative max-w-md w-full bg-slate-900 border border-amber-500/30 rounded-3xl overflow-hidden shadow-2xl p-6 text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-l from-amber-500 to-yellow-500" />
+            
+            <button
+              type="button"
+              onClick={() => setIsPinModalOpen(false)}
+              className="absolute top-4 left-4 text-slate-400 hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex flex-col items-center text-center mt-3 mb-6">
+              <div className="p-3 bg-amber-500/10 text-amber-400 rounded-2xl border border-amber-500/20 mb-3 animate-pulse">
+                <Lock className="h-6 w-6 text-amber-400" />
+              </div>
+              <h3 className="text-base font-black text-white">
+                {isSettingPinInCheckout ? 'تعيين رمز PIN الأول لحسابك 🛡️' : 'تأكيد رمز PIN للدفع السري 🔐'}
+              </h3>
+              <p className="text-xs text-slate-400 font-bold mt-1 max-w-xs leading-relaxed">
+                {isSettingPinInCheckout 
+                  ? 'لحماية رصيد نقاطك الملكية، يرجى تعيين رمز PIN من 4 أرقام لتأكيد عمليات الشراء والتحويل.' 
+                  : 'يرجى إدخال رمز PIN السري الخاص بحسابك لتمرير عملية الشراء واعتماد الطلب بنجاح.'}
+              </p>
+            </div>
+
+            <form onSubmit={handlePinSubmit} className="space-y-4">
+              {isSettingPinInCheckout ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-300 block text-right">رمز PIN الجديد (4 أرقام)</label>
+                    <div className="relative">
+                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                        <Key className="h-4 w-4" />
+                      </span>
+                      <input
+                        type="password"
+                        pattern="\d*"
+                        maxLength={4}
+                        value={checkoutSetupPin}
+                        onChange={(e) => setCheckoutSetupPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                        placeholder="رمز PIN مكون من 4 أرقام"
+                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-center font-mono tracking-[0.5em]"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-300 block text-right">تأكيد الرمز السري</label>
+                    <div className="relative">
+                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                        <Key className="h-4 w-4" />
+                      </span>
+                      <input
+                        type="password"
+                        pattern="\d*"
+                        maxLength={4}
+                        value={checkoutSetupConfirmPin}
+                        onChange={(e) => setCheckoutSetupConfirmPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                        placeholder="أعد إدخال الرمز السري لتأكيده"
+                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-center font-mono tracking-[0.5em]"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex justify-center gap-2" dir="ltr">
+                    {/* Unified password numeric input with secure display */}
+                    <div className="relative w-full">
+                      <span className="absolute right-3 top-3.5 text-zinc-500">
+                        <Key className="h-4 w-4 text-amber-500" />
+                      </span>
+                      <input
+                        type="password"
+                        pattern="\d*"
+                        maxLength={4}
+                        value={enteredPin}
+                        onChange={(e) => setEnteredPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                        placeholder="••••"
+                        className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3.5 pr-10 pl-10 text-lg text-white text-center font-mono tracking-[0.8em]"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {pinModalError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl p-3 text-xs font-bold text-center flex items-center justify-center gap-1.5 leading-relaxed">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{pinModalError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black text-xs sm:text-sm transition-all shadow-lg hover:shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{isSettingPinInCheckout ? 'حفظ الرمز السري وإتمام الدفع 👑' : 'تأكيد الرمز وإتمام الدفع الآمن 🚀'}</span>
+              </button>
+            </form>
+
+            {/* WebAuthn Biometric Section */}
+            {!isSettingPinInCheckout && (
+              <div className="mt-5 pt-4 border-t border-slate-800 text-center">
+                <span className="text-[10px] text-slate-500 font-bold block mb-2.5">أو المصادقة البديلة السريعة</span>
+                <button
+                  type="button"
+                  onClick={handleBiometricAuth}
+                  disabled={isBiometricScanning}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-900 text-amber-400 border border-amber-500/10 hover:border-amber-500/20 text-xs font-extrabold transition-all cursor-pointer"
+                >
+                  {isBiometricScanning ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+                      <span>جاري فحص بصمة الإصبع / الوجه...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Fingerprint className="h-4 w-4 text-amber-500 animate-pulse" />
+                      <span>تسجيل الدخول بيومترياً (WebAuthn)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

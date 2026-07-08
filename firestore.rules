@@ -65,11 +65,13 @@ service cloud.firestore {
 
     // Rules for users
     match /users/{email} {
-      allow read: if isSignedIn() && (isOwner(email) || isAdmin());
+      allow read: if isSignedIn();
       allow create: if true; // Allow user signup
       allow update: if isSignedIn() && (
         (isOwner(email) && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == resource.data.role)) || 
-        isAdmin()
+        isAdmin() ||
+        // Allow updating points and coupons of other users during referral system operations
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'coupons']))
       );
       allow delete: if isAdmin();
     }

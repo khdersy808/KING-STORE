@@ -18,12 +18,53 @@ import {
   doc, 
   setDoc,
   getDoc,
+  getDocs,
+  collection,
+  query,
+  where,
+  addDoc,
+  updateDoc,
   GoogleAuthProvider,
   signInWithPopup,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  convertPointsToCoupons,
+  encryptPin,
+  hashPassword,
+  updatePassword
 } from '../lib/firebase';
+
+const getDeviceFingerprint = (): string => {
+  if (typeof window === 'undefined') return 'unknown_node';
+  let devId = localStorage.getItem('kingstore_device_id');
+  if (!devId) {
+    const ua = navigator.userAgent || 'unknown_ua';
+    const sw = window.screen.width || 0;
+    const sh = window.screen.height || 0;
+    const platform = navigator.platform || 'unknown_platform';
+    const lang = navigator.language || 'unknown_lang';
+    const random = Math.random().toString(36).substring(2, 10).toUpperCase();
+    
+    const cleanUA = ua.replace(/[^a-zA-Z0-9]/g, '').substring(0, 16).toUpperCase();
+    const cleanPlatform = platform.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    devId = `KS-DEV-${cleanUA}-${sw}X${sh}-${cleanPlatform}-${random}`;
+    localStorage.setItem('kingstore_device_id', devId);
+  }
+  return devId;
+};
+
+const isDeviceAlreadyUsed = async (deviceId: string): Promise<boolean> => {
+  try {
+    const usersColl = collection(db, 'users');
+    const deviceQuery = query(usersColl, where('deviceId', '==', deviceId));
+    const querySnapshot = await getDocs(deviceQuery);
+    return !querySnapshot.empty;
+  } catch (err) {
+    console.error("Error checking deviceId in Firestore:", err);
+    return false;
+  }
+};
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -54,10 +95,19 @@ export default function AuthModal({
   const [name, setName] = useState('');
   const [isAdminRole, setIsAdminRole] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [referralCodeUsed, setReferralCodeUsed] = useState('');
+  const [paymentPinInput, setPaymentPinInput] = useState('');
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isMustChangePassword, setIsMustChangePassword] = useState(false);
+  const [isMustChangePin, setIsMustChangePin] = useState(false);
+  const [newPermanentPassword, setNewPermanentPassword] = useState('');
+  const [confirmPermanentPassword, setConfirmPermanentPassword] = useState('');
+  const [newPermanentPin, setNewPermanentPin] = useState('');
+  const [confirmPermanentPin, setConfirmPermanentPin] = useState('');
+  const [tempSessionUser, setTempSessionUser] = useState<any>(null);
 
   React.useEffect(() => {
     if (isOpen && adminInviteEmail) {
@@ -72,6 +122,13 @@ export default function AuthModal({
       setErrorMsg('');
       setSuccessMsg('');
       setIsForgotPassword(false);
+      
+      const pendingRef = localStorage.getItem('king_store_pending_referral');
+      if (pendingRef) {
+        setReferralCodeUsed(pendingRef);
+      } else {
+        setReferralCodeUsed('');
+      }
     }
   }, [isOpen, adminInviteEmail]);
 
@@ -128,6 +185,82 @@ export default function AuthModal({
     const normalizedEmail = email.trim().toLowerCase();
     const adminEmail = 'khdersy808@gmail.com';
 
+    if (isMustChangePassword || isMustChangePin) {
+      // Validate Password if needed
+      if (isMustChangePassword) {
+        if (newPermanentPassword.length < 6) {
+          setErrorMsg(t('weakPassword'));
+          setIsLoading(false);
+          return;
+        }
+        if (newPermanentPassword !== confirmPermanentPassword) {
+          setErrorMsg('كلمات السر غير متطابقة ❌');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Validate PIN if needed
+      if (isMustChangePin) {
+        if (!/^\d{4}$/.test(newPermanentPin)) {
+          setErrorMsg('يجب أن يتكون رمز PIN من 4 أرقام فقط ⚠️');
+          setIsLoading(false);
+          return;
+        }
+        if (newPermanentPin !== confirmPermanentPin) {
+          setErrorMsg('رموز الـ PIN غير متطابقة ❌');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      try {
+        const userDocRef = doc(db, 'users', normalizedEmail);
+        const updates: any = {};
+
+        if (isMustChangePassword) {
+          updates.password = hashPassword(newPermanentPassword);
+          updates.tempPassword = null;
+          updates.tempPasswordExpiry = null;
+          updates.mustChangePassword = false;
+        }
+
+        if (isMustChangePin) {
+          updates.paymentPin = encryptPin(newPermanentPin);
+          updates.tempPin = null;
+          updates.tempPinExpiry = null;
+          updates.mustChangePin = false;
+        }
+
+        await updateDoc(userDocRef, updates);
+
+        // Try to update Firebase Auth password if applicable
+        if (isMustChangePassword && auth.currentUser) {
+          await updatePassword(auth.currentUser, newPermanentPassword);
+        }
+
+        setSuccessMsg('تم تحديث بياناتك بنجاح! يمكنك الاستمتاع بالتسوق الآن 👑');
+        setTimeout(() => {
+          setIsMustChangePassword(false);
+          setIsMustChangePin(false);
+          setIsLogin(true);
+          setPassword('');
+          setNewPermanentPassword('');
+          setConfirmPermanentPassword('');
+          setNewPermanentPin('');
+          setConfirmPermanentPin('');
+          setSuccessMsg('');
+          onClose(); // Auto close and proceed
+        }, 2500);
+      } catch (err: any) {
+        console.error("Error updating security credentials:", err);
+        setErrorMsg('فشل في تحديث البيانات. يرجى المحاولة لاحقاً.');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     if (isLogin) {
       // Login flow with Firebase Auth & Firestore
       try {
@@ -140,6 +273,26 @@ export default function AuthModal({
           // Direct sign in using Firebase Console credentials (Firebase Auth)
           userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
         } catch (signInErr: any) {
+          // Check for temporary password fallback
+          const userDocRef = doc(db, 'users', normalizedEmail);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const hashedEntered = hashPassword(password);
+            const now = new Date().toISOString();
+            
+            if (userData.tempPassword === hashedEntered && userData.tempPasswordExpiry > now) {
+              // Valid temporary login!
+              setIsMustChangePassword(true);
+              setTempSessionUser({ email: normalizedEmail, ...userData });
+              setErrorMsg('');
+              setSuccessMsg('تم قبول رمز الدخول المؤقت. يرجى تعيين كلمة سر جديدة فوراً للحماية 🔐');
+              setIsLoading(false);
+              return;
+            }
+          }
+          
           // If the login is for the admin email and it failed due to not found or invalid credential,
           // automatically register the account to avoid manual registration friction!
           if (normalizedEmail === adminEmail.toLowerCase() && 
@@ -167,12 +320,24 @@ export default function AuthModal({
           return;
         }
 
-        // Fetch user metadata/role from Firestore
         const userDocRef = doc(db, 'users', normalizedEmail);
         const userDoc = await getDoc(userDocRef);
 
+        const mustChangePassword = userDoc.exists() && userDoc.data().mustChangePassword;
+        const mustChangePin = userDoc.exists() && userDoc.data().mustChangePin;
+
+        if (mustChangePassword || mustChangePin) {
+          setIsMustChangePassword(!!mustChangePassword);
+          setIsMustChangePin(!!mustChangePin);
+          setTempSessionUser(fbUser);
+          setIsLoading(false);
+          return;
+        }
+
         let role = 'customer';
         let nameVal = fbUser.displayName || normalizedEmail.split('@')[0];
+
+        const deviceId = getDeviceFingerprint();
 
         if (normalizedEmail === adminEmail.toLowerCase()) {
           role = 'admin';
@@ -182,12 +347,17 @@ export default function AuthModal({
             name: nameVal || 'مدير النظام الملكي',
             email: normalizedEmail,
             role: 'admin',
+            deviceId: deviceId,
             createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
           }, { merge: true });
         } else {
           if (userDoc.exists()) {
             role = userDoc.data().role || 'customer';
             nameVal = userDoc.data().name || nameVal;
+            // Document deviceId for existing users on login
+            await setDoc(userDocRef, {
+              deviceId: deviceId
+            }, { merge: true });
           } else {
             // If profile missing in Firestore, create it
             await setDoc(userDocRef, {
@@ -195,6 +365,7 @@ export default function AuthModal({
               name: nameVal,
               email: normalizedEmail,
               role: role,
+              deviceId: deviceId,
               createdAt: new Date().toISOString()
             });
           }
@@ -204,7 +375,7 @@ export default function AuthModal({
           id: fbUser.uid,
           name: nameVal,
           email: normalizedEmail,
-          password: password,
+          password: hashPassword(password),
           role: role as 'admin' | 'customer'
         };
 
@@ -243,6 +414,12 @@ export default function AuthModal({
     } else {
       // Register flow with Firebase Auth & Verification Email & Firestore
       try {
+        const pinClean = paymentPinInput.trim();
+        if (pinClean && !/^\d{4}$/.test(pinClean)) {
+          setErrorMsg('رمز PIN للدفع غير صالح. يجب أن يتكون من 4 أرقام فقط ⚠️');
+          return;
+        }
+
         const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
         const fbUser = userCredential.user;
 
@@ -255,12 +432,46 @@ export default function AuthModal({
         const isDefaultAdmin = normalizedEmail === adminEmail.toLowerCase();
 
         // Save User Details in Firestore Database
+        const generatedReferralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        const deviceId = getDeviceFingerprint();
+
+        const cleanRefCode = referralCodeUsed.trim().toUpperCase();
+        let finalReferredBy = '';
+        let finalReferralApplied = false;
+        let referrerDocData: any = null;
+        let referrerEmail = '';
+
+        if (cleanRefCode) {
+          try {
+            const usersColl = collection(db, 'users');
+            const refQuery = query(usersColl, where('referralCode', '==', cleanRefCode));
+            const querySnapshot = await getDocs(refQuery);
+            if (!querySnapshot.empty) {
+              referrerDocData = querySnapshot.docs[0].data();
+              referrerEmail = querySnapshot.docs[0].id;
+              finalReferredBy = cleanRefCode;
+              finalReferralApplied = true;
+            }
+          } catch (refErr) {
+            console.error("Error verifying referral code:", refErr);
+          }
+        }
+
+        const encryptedPin = pinClean ? encryptPin(pinClean) : '';
+
         const newUser: User = {
           id: fbUser.uid,
           name: name.trim(),
           email: normalizedEmail,
-          password: password,
-          role: (isAdminRole || isDefaultAdmin) ? 'admin' : 'customer'
+          password: hashPassword(password),
+          role: (isAdminRole || isDefaultAdmin) ? 'admin' : 'customer',
+          referralCode: generatedReferralCode,
+          points: 0,
+          coupons: [],
+          deviceId: deviceId,
+          referredBy: finalReferredBy || undefined,
+          referralApplied: finalReferralApplied || undefined,
+          paymentPin: encryptedPin || undefined
         };
 
         const userDocRef = doc(db, 'users', normalizedEmail);
@@ -269,8 +480,49 @@ export default function AuthModal({
           name: name.trim(),
           email: normalizedEmail,
           role: newUser.role,
+          password: hashPassword(password),
+          referralCode: generatedReferralCode,
+          points: 0,
+          coupons: [],
+          deviceId: deviceId,
+          referredBy: finalReferredBy,
+          referralApplied: finalReferralApplied,
+          paymentPin: encryptedPin,
           createdAt: new Date().toISOString()
         });
+
+        // Referral logic: award points to the referrer
+        if (finalReferralApplied && referrerDocData && referrerEmail) {
+          try {
+            const isUsed = await isDeviceAlreadyUsed(deviceId);
+            if (!isUsed) {
+              const oldPoints = typeof referrerDocData.points === 'number' ? referrerDocData.points : 0;
+              const currentCouponsList = Array.isArray(referrerDocData.coupons) ? referrerDocData.coupons : [];
+              const newPoints = oldPoints + 100;
+              
+              await setDoc(doc(db, 'users', referrerEmail), {
+                points: newPoints
+              }, { merge: true });
+              
+              await convertPointsToCoupons(referrerEmail, newPoints, currentCouponsList);
+              
+              await addDoc(collection(db, 'notifications'), {
+                userId: referrerEmail,
+                title: 'نقاط إحالة جديدة! 👥🎁',
+                message: `لقد حصلت على 100 كهدية لتسجيل صديقك (${name.trim()}) باستخدام كود الإحالة الخاص بك!`,
+                date: new Date().toISOString(),
+                isRead: false,
+                type: 'system'
+              });
+            } else {
+              console.log(`Referral reward blocked for device ${deviceId} to prevent fraud.`);
+            }
+            // Always clear pending referral after processing registration
+            localStorage.removeItem('king_store_pending_referral');
+          } catch (refError) {
+            console.warn("Could not award referral points to referrer: ", refError);
+          }
+        }
 
         onRegister(newUser);
         setSuccessMsg(t('registrationSuccess'));
@@ -326,6 +578,8 @@ export default function AuthModal({
       let role = 'customer';
       let nameVal = fbUser.displayName || name.trim() || normalizedEmail.split('@')[0];
       
+      const deviceId = getDeviceFingerprint();
+
       if (normalizedEmail === adminEmail.toLowerCase()) {
         role = 'admin';
         await setDoc(userDocRef, {
@@ -333,20 +587,89 @@ export default function AuthModal({
           name: nameVal || 'مدير النظام الملكي',
           email: normalizedEmail,
           role: 'admin',
+          deviceId: deviceId,
           createdAt: userDoc.exists() ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
         }, { merge: true });
       } else {
         if (userDoc.exists()) {
           role = userDoc.data().role || 'customer';
           nameVal = userDoc.data().name || nameVal;
+          // Document deviceId for existing users on login
+          await setDoc(userDocRef, {
+            deviceId: deviceId
+          }, { merge: true });
         } else {
+          const generatedReferralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+          
+          // Check if there is a pending referral code for Google Sign-Up
+          const pendingRef = localStorage.getItem('king_store_pending_referral');
+          const cleanRefCode = pendingRef ? pendingRef.trim().toUpperCase() : '';
+          
+          let finalReferredBy = '';
+          let finalReferralApplied = false;
+          let referrerDocData: any = null;
+          let referrerEmail = '';
+
+          if (cleanRefCode) {
+            try {
+              const usersColl = collection(db, 'users');
+              const refQuery = query(usersColl, where('referralCode', '==', cleanRefCode));
+              const querySnapshot = await getDocs(refQuery);
+              if (!querySnapshot.empty) {
+                referrerDocData = querySnapshot.docs[0].data();
+                referrerEmail = querySnapshot.docs[0].id;
+                finalReferredBy = cleanRefCode;
+                finalReferralApplied = true;
+              }
+            } catch (refErr) {
+              console.error("Error verifying pending referral code:", refErr);
+            }
+          }
+
           await setDoc(userDocRef, {
             id: fbUser.uid,
             name: nameVal,
             email: normalizedEmail,
             role: role,
+            referralCode: generatedReferralCode,
+            points: 0,
+            coupons: [],
+            deviceId: deviceId,
+            referredBy: finalReferredBy,
+            referralApplied: finalReferralApplied,
             createdAt: new Date().toISOString()
           });
+
+          if (finalReferralApplied && referrerDocData && referrerEmail) {
+            try {
+              const isUsed = await isDeviceAlreadyUsed(deviceId);
+              if (!isUsed) {
+                const oldPoints = typeof referrerDocData.points === 'number' ? referrerDocData.points : 0;
+                const currentCouponsList = Array.isArray(referrerDocData.coupons) ? referrerDocData.coupons : [];
+                const newPoints = oldPoints + 100;
+                
+                await setDoc(doc(db, 'users', referrerEmail), {
+                  points: newPoints
+                }, { merge: true });
+                
+                await convertPointsToCoupons(referrerEmail, newPoints, currentCouponsList);
+                
+                await addDoc(collection(db, 'notifications'), {
+                  userId: referrerEmail,
+                  title: 'نقاط إحالة جديدة! 👥🎁',
+                  message: `لقد حصلت على 100 كهدية لتسجيل صديقك (${nameVal}) باستخدام كود الإحالة الخاص بك!`,
+                  date: new Date().toISOString(),
+                  isRead: false,
+                  type: 'system'
+                });
+              } else {
+                console.log(`Referral points blocked during Google signup for device ${deviceId} to prevent fraud.`);
+              }
+              localStorage.removeItem('king_store_pending_referral');
+            } catch (refError) {
+              console.warn("Could not award referral points during Google signup: ", refError);
+            }
+          }
         }
       }
       
@@ -402,24 +725,124 @@ export default function AuthModal({
             <Shield className="h-6 w-6 text-slate-950 stroke-[2]" />
           </div>
           <h3 className="text-xl font-black text-white">
-            {isForgotPassword 
-              ? t('forgotPasswordTitle')
-              : isLogin 
-                ? t('loginRoyalPortal')
-                : t('createNewAccount')
+            {(isMustChangePassword || isMustChangePin)
+              ? 'تحديث بيانات الحماية الإجباري 🔐'
+              : isForgotPassword 
+                ? t('forgotPasswordTitle')
+                : isLogin 
+                  ? t('loginRoyalPortal')
+                  : t('createNewAccount')
             }
           </h3>
           <p className="text-xs text-zinc-400 mt-1.5">
-            {isForgotPassword
-              ? t('forgotPasswordDesc')
-              : isLogin 
-                ? t('loginDesc') 
-                : t('registerDesc')
+            {(isMustChangePassword || isMustChangePin)
+              ? 'لحماية حسابك، يجب عليك تعيين بيانات اعتماد جديدة الآن.'
+              : isForgotPassword
+                ? t('forgotPasswordDesc')
+                : isLogin 
+                  ? t('loginDesc') 
+                  : t('registerDesc')
             }
           </p>
         </div>
 
-        {isForgotPassword ? (
+        {(isMustChangePassword || isMustChangePin) ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isMustChangePassword && (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">كلمة السر الجديدة</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      placeholder="6 أرقام أو حروف على الأقل"
+                      value={newPermanentPassword}
+                      onChange={(e) => setNewPermanentPassword(e.target.value)}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                    />
+                    <Lock className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">تأكيد كلمة السر الجديدة</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      placeholder="أعد كتابة كلمة السر"
+                      value={confirmPermanentPassword}
+                      onChange={(e) => setConfirmPermanentPassword(e.target.value)}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-10' : 'pl-9 pr-10'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                    />
+                    <Lock className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isMustChangePin && (
+              <>
+                <div className="pt-2 border-t border-zinc-900 mt-2">
+                  <label className="block text-xs font-bold text-amber-400 mb-1.5">تعيين رمز PIN جديد للدفع (4 أرقام)</label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      pattern="\d*"
+                      maxLength={4}
+                      placeholder="رمز PIN جديد"
+                      value={newPermanentPin}
+                      onChange={(e) => setNewPermanentPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none tracking-[0.5em] text-center font-mono`}
+                    />
+                    <Shield className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">تأكيد رمز PIN الجديد</label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      pattern="\d*"
+                      maxLength={4}
+                      placeholder="تأكيد رمز PIN"
+                      value={confirmPermanentPin}
+                      onChange={(e) => setConfirmPermanentPin(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none tracking-[0.5em] text-center font-mono`}
+                    />
+                    <Shield className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {errorMsg && (
+              <div className="p-3 bg-red-950/40 border border-red-900/30 rounded-xl text-xs text-red-400 font-semibold flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-950/40 border border-emerald-900/30 rounded-xl text-xs text-emerald-400 font-semibold flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-xl bg-amber-500 text-slate-950 py-3 text-xs font-black hover:bg-amber-400 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isLoading ? 'جاري الحفظ...' : 'حفظ كلمة السر والدخول الملكي ✨'}
+            </button>
+          </form>
+        ) : isForgotPassword ? (
           /* FORGOT PASSWORD FORM */
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -552,6 +975,41 @@ export default function AuthModal({
                 </button>
               </div>
             </div>
+
+            {/* Referral Code (Register only) */}
+            {!isLogin && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">كود الإحالة (اختياري)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="مثال: KING-XXXXXX"
+                      value={referralCodeUsed || ""}
+                      onChange={(e) => setReferralCodeUsed(e.target.value)}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none`}
+                    />
+                    <Check className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-1.5">رمز PIN سري للدفع (4 أرقام - اختياري)</label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      pattern="\d*"
+                      maxLength={4}
+                      placeholder="رمز مكون من 4 أرقام لحماية مشترياتك"
+                      value={paymentPinInput || ""}
+                      onChange={(e) => setPaymentPinInput(e.target.value.replace(/\D/g, '').substring(0, 4))}
+                      className={`w-full rounded-xl border border-zinc-850 bg-zinc-950 py-2.5 ${dir === 'rtl' ? 'pr-9 pl-3' : 'pl-9 pr-3'} text-xs text-zinc-100 placeholder-zinc-600 focus:border-amber-400 focus:outline-none tracking-[0.2em] text-center font-mono`}
+                    />
+                    <Shield className={`absolute ${dir === 'rtl' ? 'right-3' : 'left-3'} top-3 h-4 w-4 text-zinc-600`} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Admin Invitation Notice Banner */}
             {isAdminRole && adminInviteEmail && (
