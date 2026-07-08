@@ -47,7 +47,7 @@ import SettingsModal from './components/SettingsModal';
 import WalletModal from './components/WalletModal';
 import AgentDashboard from './components/AgentDashboard';
 import MessagingSystem from './components/MessagingSystem';
-import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged } from './lib/firebase';
+import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged, messaging, getToken, onMessage } from './lib/firebase';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
 
@@ -66,6 +66,59 @@ function AppContent() {
   const { isSypEnabled, setIsSypEnabled, exchangeRate } = useCurrency();
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
+    if (rememberMe) {
+      const saved = localStorage.getItem('king_store_current_user');
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  });
+
+  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
+
+  // Setup Push Notifications
+  useEffect(() => {
+    if (!currentUser || !messaging) return;
+
+    const setupNotifications = async () => {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          // Get the FCM token
+          const token = await getToken(messaging, {
+            vapidKey: 'BHz_Tj0uG9Wp5J_q9X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J0X0B9J' // Placeholder, real one should be from Firebase Console
+          });
+          
+          if (token) {
+            console.log('FCM Token generated:', token);
+            // Save token to Firestore
+            const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+            await setDoc(userDocRef, { fcmToken: token }, { merge: true });
+          }
+        }
+      } catch (err) {
+        console.error('Error setting up push notifications:', err);
+      }
+    };
+
+    setupNotifications();
+
+    // Listen for foreground messages
+    const unsubscribe = onMessage(messaging, (payload: any) => {
+      console.log('Foreground message received:', payload);
+      if (payload.notification) {
+        showToast(
+          payload.notification.title || 'إشعار جديد 🔔',
+          payload.notification.body || '',
+          'info'
+        );
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.email]);
 
   // --- Pull-to-Refresh State System for Mobile ---
   const [startY, setStartY] = useState<number>(0);
@@ -127,22 +180,11 @@ function AppContent() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
-    if (rememberMe) {
-      const saved = localStorage.getItem('king_store_current_user');
-      return saved ? JSON.parse(saved) : null;
-    }
-    return null;
-  });
-
   // --- Notifications & Toasts State ---
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('king_store_notifications');
     return saved ? JSON.parse(saved) : [];
   });
-
-  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
 
   // Synchronize wishlist with currentUser and localStorage
@@ -1412,6 +1454,16 @@ function AppContent() {
         isMobileMenuOpen={isMobileMenuOpen}
         setIsMobileMenuOpen={setIsMobileMenuOpen}
         onOpenWallet={() => setIsWalletModalOpen(true)}
+        currentTab={currentTab}
+        setCurrentTab={(tab) => {
+          if (tab === 'admin') {
+            setIsAdminMode(true);
+            setCurrentTab('admin');
+          } else {
+            setIsAdminMode(false);
+            setCurrentTab(tab);
+          }
+        }}
       />
 
       {/* 2. Main Content Container */}

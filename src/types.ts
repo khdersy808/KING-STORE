@@ -141,6 +141,7 @@ export interface User {
   tempPinExpiry?: string;
   mustChangePassword?: boolean;
   mustChangePin?: boolean;
+  fcmToken?: string;
 }
 
 export interface Agent {

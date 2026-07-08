@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Home, ShoppingBag, Menu, LayoutDashboard } from 'lucide-react';
+import { Home, ShoppingBag, Menu, LayoutDashboard, MessageSquare } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavProps {
@@ -16,6 +16,7 @@ export function BottomNav({ currentTab, setCurrentTab, cartCount, onOpenMenu, is
 
   const tabs = [
     { id: 'home', icon: Home, label: t('navHome') },
+    { id: 'messaging', icon: MessageSquare, label: t('supportSystemTitle') },
     { id: 'cart', icon: ShoppingBag, label: t('navCart'), badge: cartCount },
     { id: isAdmin ? 'admin' : 'menu', icon: isAdmin ? LayoutDashboard : Menu, label: isAdmin ? t('navAdmin') : t('navMore') },
   ];

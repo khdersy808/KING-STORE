@@ -32,6 +32,8 @@ interface NavbarProps {
   isMobileMenuOpen?: boolean;
   setIsMobileMenuOpen?: (open: boolean) => void;
   onOpenWallet: () => void;
+  currentTab?: string;
+  setCurrentTab?: (tab: string) => void;
 }
 
 export default function Navbar({
@@ -53,6 +55,8 @@ export default function Navbar({
   isMobileMenuOpen: isMobileMenuOpenProp = false,
   setIsMobileMenuOpen: setIsMobileMenuOpenProp,
   onOpenWallet,
+  currentTab,
+  setCurrentTab,
 }: NavbarProps) {
   const { t, language, setLanguage } = useLanguage();
   const { isSypEnabled, setIsSypEnabled } = useCurrency();
@@ -312,8 +316,22 @@ export default function Navbar({
             </div>
           )}
 
-          {/* TOP ROW ACTIONS: Cart & Menu */}
+          {/* TOP ROW ACTIONS: Support, Cart & Menu */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Support Button (Accessible for both Admin and User) */}
+            <button
+              onClick={() => setCurrentTab?.('messaging')}
+              className={`flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
+                currentTab === 'messaging'
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold shadow-lg shadow-amber-500/20'
+                  : 'bg-[#121212] border-zinc-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/40'
+              }`}
+              title={t('supportSystemTitle')}
+              id="header-support-btn"
+            >
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
+
             {/* Cart Icon (only if not admin mode) */}
             {!isAdminMode && (
               <button
@@ -600,6 +618,18 @@ export default function Navbar({
                     >
                       <Package className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
                       <span className="text-white text-sm font-bold">طلباتي الملكية 👑</span>
+                    </button>
+
+                    {/* Support Button inside Drawer */}
+                    <button
+                      onClick={() => {
+                        setCurrentTab?.('messaging');
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-transparent hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
+                    >
+                      <MessageSquare className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      <span className="text-white text-sm font-bold">{t('supportSystemTitle')} 💬</span>
                     </button>
 
                     {/* Settings Button */}

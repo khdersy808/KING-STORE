@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
@@ -33,6 +34,15 @@ export const auth = getAuth(app);
 
 // Initialize Storage
 export const storage = getStorage(app);
+
+// Initialize Messaging
+let messaging = null;
+try {
+  messaging = getMessaging(app);
+} catch (e) {
+  console.warn("Firebase Messaging is not supported in this environment.", e);
+}
+export { messaging };
 
 // Collection References
 export const PRODUCTS_COLLECTION = 'products';
@@ -193,6 +203,8 @@ export {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
-  type FirebaseUser
+  type FirebaseUser,
+  getToken,
+  onMessage
 };
 
