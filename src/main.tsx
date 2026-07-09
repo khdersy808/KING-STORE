@@ -5,6 +5,12 @@ import './index.css';
 
 // Register the PWA Service Worker and signal readiness
 if ('serviceWorker' in navigator) {
+  // Listen for controllerchange to reload the page with new service worker assets immediately
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[PWA] New service worker activated. Reloading to apply fresh updates!');
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {

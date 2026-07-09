@@ -54,7 +54,6 @@
         height: 80px;
         background: rgba(245, 158, 11, 0.15);
         border-radius: 50%;
-        filter: blur(20px);
         animation: glowPulse 2s infinite ease-in-out;
       }
       .pulse-crown {
@@ -138,7 +137,7 @@
           <div class="pulse-glow"></div>
           <div class="loading-ring"></div>
           <div class="pulse-crown">
-            <svg viewBox="0 0 24 24" width="60" height="60" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 10px rgba(245,158,11,0.5));">
+            <svg viewBox="0 0 24 24" width="60" height="60" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"/>
               <path d="M3 20h18"/>
             </svg>
@@ -173,11 +172,11 @@
           }, 600);
         }
 
-        // 1. Force dismiss after 1500ms as an absolute safety fallback
+        // 1. Force dismiss after 2000ms as an absolute safety fallback (2 seconds mandatory)
         var safetyTimeout = setTimeout(function() {
-          console.log("[PWA Failsafe] Forcing loader dismiss after 1.5 seconds.");
+          console.log("[PWA Failsafe] Forcing loader dismiss after 2.0 seconds.");
           dismissLoader();
-        }, 1500);
+        }, 2000);
 
         // 2. Listen for service worker ready or custom app events
         window.addEventListener('sw-ready', function() {

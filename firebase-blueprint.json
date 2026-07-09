@@ -57,7 +57,9 @@
         "password": "string",
         "referralCode": "string",
         "points": "number",
-        "coupons": "array"
+        "coupons": "array",
+        "lastCheckInDate": "string",
+        "checkInStreak": "number"
       }
     },
     "categories": {
@@ -91,7 +93,14 @@
     "settings": {
       "fields": {
         "exchangeRate": "number",
-        "globalDiscount": "number"
+        "globalDiscount": "number",
+        "day1": "number",
+        "day2": "number",
+        "day3": "number",
+        "day4": "number",
+        "day5": "number",
+        "day6": "number",
+        "day7": "number"
       }
     },
     "delivery_config": {

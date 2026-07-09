@@ -135,6 +135,8 @@ export interface User {
   referralApplied?: boolean;
   paymentPin?: string;
   wishlist?: string[];
+  lastCheckInDate?: string;
+  checkInStreak?: number;
   tempPassword?: string;
   tempPasswordExpiry?: string;
   tempPin?: string;
@@ -142,6 +144,8 @@ export interface User {
   mustChangePassword?: boolean;
   mustChangePin?: boolean;
   fcmToken?: string;
+  isConvertingPoints?: boolean;
+  updatedAt?: string;
 }
 
 export interface Agent {

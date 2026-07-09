@@ -233,7 +233,7 @@ export default function ProductDetailsModal({
                   e.stopPropagation();
                   onToggleWishlist?.();
                 }}
-                className={`p-2 rounded-full backdrop-blur-md transition-all shadow-lg border group/heart z-10 ${
+                className={`p-2 rounded-full backdrop- transition-all shadow-lg border group/heart z-10 ${
                   isWishlisted
                     ? 'bg-pink-600 border-pink-500 text-white scale-110'
                     : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:text-pink-400 hover:border-pink-500/30'

@@ -377,7 +377,7 @@ export default function AIImageLab({ products, onShowToast }: AIImageLabProps) {
               {isProcessing ? (
                 <div className="flex flex-col items-center justify-center space-y-4">
                   <div className="relative">
-                    <div className="absolute inset-0 bg-amber-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
+                    <div className="absolute inset-0 bg-amber-500  opacity-20 rounded-full animate-pulse"></div>
                     <Sparkles className="h-16 w-16 text-amber-500 animate-bounce relative z-10" />
                   </div>
                   <p className="text-slate-600 font-bold animate-pulse">جاري دمج الفخامة مع صورتك...</p>

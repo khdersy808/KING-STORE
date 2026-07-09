@@ -66,9 +66,10 @@ import {
   MessageSquare,
   Percent,
   Link as LinkIcon,
-  RotateCcw
+  RotateCcw,
+  Gift
 } from 'lucide-react';
-import { auth, db, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
+import { auth, db, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
 
@@ -92,7 +93,7 @@ interface AdminPanelProps {
   onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users' | 'rewards';
 
 export default function AdminPanel({
   products,
@@ -306,6 +307,20 @@ export default function AdminPanel({
   const [savingExchangeRate, setSavingExchangeRate] = useState(false);
   const [exchangeRateSuccess, setExchangeRateSuccess] = useState('');
 
+  // Daily Check-In Rewards States
+  const [dailyCheckInSettings, setDailyCheckInSettings] = useState({ 
+    day1: 10, 
+    day2: 20, 
+    day3: 30, 
+    day4: 40, 
+    day5: 50, 
+    day6: 60, 
+    day7: 70 
+  });
+  const [isSavingRewards, setIsSavingRewards] = useState(false);
+  const [rewardsSuccess, setRewardsSuccess] = useState('');
+  const [isDailyCheckInCustomizerOpen, setIsDailyCheckInCustomizerOpen] = useState(false);
+
   // Exclusive Discounts Section States
   const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
   const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
@@ -442,9 +457,11 @@ export default function AdminPanel({
 
   // Synchronize Delivery Settings from Firestore
   useEffect(() => {
-    try {
-      const docRef = doc(db, 'delivery_config', 'global_settings');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const fetchDelivery = async () => {
+      try {
+        const { getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'delivery_config', 'global_settings');
+        const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
           setDeliverySettings({ 
@@ -459,20 +476,20 @@ export default function AdminPanel({
             seaMinBaseline: data.seaMinBaseline ?? 5
           } as DeliverySettings);
         }
-      }, (error) => {
-        console.warn("Error loading delivery settings:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase delivery settings sync not active.", e);
-    }
+      } catch (e) {
+        console.warn("Firebase delivery settings fetch failed.", e);
+      }
+    };
+    fetchDelivery();
   }, []);
 
   // Synchronize Coupons from Firestore
   useEffect(() => {
-    try {
-      const q = collection(db, 'coupons');
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+    const fetchCoupons = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const q = collection(db, 'coupons');
+        const snapshot = await getDocs(q);
         const list: Coupon[] = [];
         snapshot.forEach((docSnap) => {
           list.push({ id: docSnap.id, ...docSnap.data() } as Coupon);
@@ -484,20 +501,20 @@ export default function AdminPanel({
           return 0;
         });
         setCoupons(list);
-      }, (error) => {
-        console.warn("Error loading coupons from Firestore:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase coupons sync not active.", e);
-    }
+      } catch (e) {
+        console.warn("Firebase coupons fetch failed.", e);
+      }
+    };
+    fetchCoupons();
   }, []);
 
   // Synchronize Policies from Firestore
   useEffect(() => {
-    try {
-      const q = collection(db, 'policies');
-      const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const fetchPolicies = async () => {
+      try {
+        const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
+        const q = collection(db, 'policies');
+        const snapshot = await getDocs(q);
         const list: Policy[] = [];
         snapshot.forEach((docSnap) => {
           list.push({ id: docSnap.id, ...docSnap.data() } as Policy);
@@ -557,87 +574,115 @@ export default function AdminPanel({
         }
 
         setPolicies(list);
-      }, (error) => {
-        console.warn("Error loading policies from Firestore:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase policies sync not active.", e);
-    }
+      } catch (e) {
+        console.warn("Firebase policies sync not active.", e);
+      }
+    };
+    fetchPolicies();
   }, []);
+
+  // Implement missing fetch function for rewards
+  const fetchDailyCheckInSettings = async () => {
+    try {
+      const docRef = doc(db, 'settings', 'daily_checkin');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setDailyCheckInSettings({
+          day1: data.day1 ?? 10,
+          day2: data.day2 ?? 20,
+          day3: data.day3 ?? 30,
+          day4: data.day4 ?? 40,
+          day5: data.day5 ?? 50,
+          day6: data.day6 ?? 60,
+          day7: data.day7 ?? 70,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching rewards configuration:", error);
+    }
+  };
 
   // Synchronize Settings from Firestore
   useEffect(() => {
-    try {
-      const docRef = doc(db, 'settings', 'discounts');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (typeof data.globalDiscount === 'number') {
-            setGlobalDiscountPercentage(data.globalDiscount);
-          }
-        }
-      }, (error) => {
-        console.warn("Error loading global discount setting:", error);
-      });
+    let isMounted = true;
 
-      // Sync WhatsApp Settings
-      const whatsappRef = doc(db, 'settings', 'whatsapp');
-      const unsubscribeWhatsapp = onSnapshot(whatsappRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const link = data.whatsappLink || data.supportUrl || 'https://wa.me/9639827419';
-          const msg = data.whatsappMessage || data.supportMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...';
-          setWhatsappLink(link);
-          setWhatsappMessage(msg);
-        } else {
-          setWhatsappLink('https://wa.me/9639827419');
-          setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
-        }
-      }, (error) => {
-        console.warn("Error loading WhatsApp settings in AdminPanel:", error);
-        setWhatsappLink('https://wa.me/9639827419');
-        setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
-      });
+    const loadAllSettings = async () => {
+      try {
+        // Fetch all settings in parallel for speed
+        const [
+          discSnap,
+          waSnap,
+          currSnap,
+          dsSnap
+        ] = await Promise.all([
+          getDoc(doc(db, 'settings', 'discounts')),
+          getDoc(doc(db, 'settings', 'whatsapp')),
+          getDoc(doc(db, 'settings', 'currency')),
+          getDoc(doc(db, 'settings', 'discounts_section'))
+        ]);
 
-      // Sync Currency Settings
-      const currencyRef = doc(db, 'settings', 'currency');
-      const unsubscribeCurrency = onSnapshot(currencyRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (typeof data.exchangeRate === 'number') {
-            setExchangeRateInput(data.exchangeRate);
-          }
-        }
-      });
+        if (!isMounted) return;
 
-      // Sync Exclusive Discounts Section Settings
-      const discountsSectionRef = doc(db, 'settings', 'discounts_section');
-      const unsubscribeDiscountsSection = onSnapshot(discountsSectionRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        // Discount
+        if (discSnap.exists()) {
+          const data = discSnap.data();
+          if (typeof data.globalDiscount === 'number') setGlobalDiscountPercentage(data.globalDiscount);
+        }
+
+        // WhatsApp
+        if (waSnap.exists()) {
+          const data = waSnap.data();
+          setWhatsappLink(data.whatsappLink || data.supportUrl || 'https://wa.me/9639827419');
+          setWhatsappMessage(data.whatsappMessage || data.supportMessage || 'أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
+        }
+
+        // Currency
+        if (currSnap.exists()) {
+          const data = currSnap.data();
+          if (typeof data.exchangeRate === 'number') setExchangeRateInput(data.exchangeRate);
+        }
+
+        // Discounts Section
+        if (dsSnap.exists()) {
+          const data = dsSnap.data();
           setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
           setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
           setDiscountsSectionProducts(data.featuredProducts || []);
-        } else {
-          setDiscountsSectionTitle('عروض ملوك الأسبوع الحصرية 👑');
-          setDiscountsSectionDesc('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
-          setDiscountsSectionProducts([]);
         }
-      }, (error) => {
-        console.warn("Error loading discounts section settings in AdminPanel:", error);
-      });
 
-      return () => {
-        unsubscribe();
-        unsubscribeWhatsapp();
-        unsubscribeCurrency();
-        unsubscribeDiscountsSection();
-      };
-    } catch (e) {
-      console.warn("Firebase settings sync not active.", e);
-    }
+        // Load daily check-in separately using the stable fetch function
+        await fetchDailyCheckInSettings();
+      } catch (error) {
+        console.warn("Error loading settings in AdminPanel:", error);
+      }
+    };
+
+    loadAllSettings();
+    return () => { isMounted = false; };
   }, []);
+
+  // Save Daily Check-In Rewards Settings
+  const handleSaveDailyCheckInRewards = async () => {
+    setIsSavingRewards(true);
+    setRewardsSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'daily_checkin');
+      await setDoc(docRef, {
+        ...dailyCheckInSettings,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      
+      setRewardsSuccess('تم حفظ إعدادات مكافآت الجوائز اليومية بنجاح! 👑🎁');
+      onShowToast('تم الحفظ بنجاح', 'تم تحديث قيم نقاط المكافآت اليومية بنجاح.', 'success');
+      setTimeout(() => setRewardsSuccess(''), 4000);
+    } catch (error) {
+      console.error("Error saving daily check-in rewards:", error);
+      onShowToast('حدث خطأ', 'فشل حفظ الإعدادات، يرجى المحاولة لاحقاً.', 'warning');
+    } finally {
+      setIsSavingRewards(false);
+    }
+  };
 
   // Save Currency Exchange Rate Settings
   const handleSaveExchangeRate = async (value: number) => {
@@ -1792,6 +1837,17 @@ export default function AdminPanel({
             <FileText className="h-4 w-4 text-amber-500" />
             <span>سياسات الموقع 📜</span>
           </button>
+          <button
+            onClick={() => { setActiveTab('rewards'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'rewards'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
+            }`}
+          >
+            <Gift className="h-4 w-4 text-amber-500" />
+            <span>REWARDS 🎁</span>
+          </button>
         </div>
       </div>
       {activeTab === 'analytics' && (
@@ -1941,6 +1997,30 @@ export default function AdminPanel({
             </div>
           </div>
 
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Dedicated Button for Rewards */}
+            <div className="md:col-span-1 rounded-[2rem] bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/30 p-6 shadow-2xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/20 transition-all" />
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="p-3 rounded-2xl bg-amber-500 text-slate-950 w-fit mb-4 shadow-lg shadow-amber-500/20">
+                    <Gift className="h-6 w-6 stroke-[2.5]" />
+                  </div>
+                  <h3 className="text-lg font-black text-amber-400 mb-2 leading-tight">إدارة الجوائز الملكية 👑🎁</h3>
+                  <p className="text-[11px] text-slate-400 font-semibold leading-relaxed mb-6">
+                    خصص نقاط الدخول اليومي والجوائز لزيادة ولاء العملاء وتنشيط المتجر فورياً.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('rewards')}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10"
+                >
+                  <span>فتح واجهة التخصيص ⚙️</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Quick Help Tips */}
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 space-y-3">
             <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2">
@@ -1992,7 +2072,7 @@ export default function AdminPanel({
             {/* WhatsApp Support Settings Form */}
             <div className="lg:col-span-5">
               <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-emerald-500/10 transition-colors" />
                 
                 <div className="flex items-center gap-4 mb-8">
                   <div className="p-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
@@ -4215,8 +4295,8 @@ export default function AdminPanel({
         <div className="space-y-8 animate-fade-in" dir="rtl">
           {/* Royal Header Card */}
           <div className="rounded-[2.5rem] bg-slate-950 border border-slate-800 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none" />
-            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full  pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full  pointer-events-none" />
             
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
               <div className="space-y-4">
@@ -4267,7 +4347,7 @@ export default function AdminPanel({
               
               {/* Luxury Product-Specific Discount Form */}
               <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
                 
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
@@ -4361,7 +4441,7 @@ export default function AdminPanel({
 
               {/* Luxury Global Discount Form */}
               <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
                 
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2.5 rounded-2xl bg-slate-950 text-amber-500">
@@ -4423,7 +4503,7 @@ export default function AdminPanel({
 
               {/* Luxury Exclusive Weekly Offers Settings Form */}
               <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
                 
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
@@ -4538,7 +4618,7 @@ export default function AdminPanel({
               {/* Luxury Coupon Form */}
               {isAddingCoupon && (
                 <form onSubmit={handleSaveCoupon} className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-2xl space-y-6 animate-slide-up relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -ml-16 -mt-16 blur-2xl" />
+                  <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -ml-16 -mt-16 " />
                   
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20">
@@ -4800,8 +4880,8 @@ export default function AdminPanel({
         <div className="space-y-8 animate-fade-in" dir="rtl">
           {/* Royal Header Card */}
           <div className="rounded-[2.5rem] bg-slate-950 border border-slate-800 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none" />
-            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full  pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full  pointer-events-none" />
             
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
               <div className="space-y-4">
@@ -4831,7 +4911,7 @@ export default function AdminPanel({
           <div className="max-w-3xl">
             {/* Luxury Exchange Rate Setting Form */}
             <div className="rounded-[2rem] border border-amber-500/30 bg-slate-950 p-8 shadow-xl hover:shadow-2xl hover:border-amber-500/50 transition-all duration-500 group relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
               
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
@@ -4891,8 +4971,8 @@ export default function AdminPanel({
             </div>
 
             {/* Logistics & Shipping Settings */}
-            <div className="rounded-[2rem] border border-amber-500/30 bg-slate-950 p-8 shadow-xl hover:shadow-2xl hover:border-amber-500/50 transition-all duration-500 group relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-amber-500/10 transition-colors" />
+            <div className="rounded-[2rem] border border-amber-500/30 bg-slate-950 p-8 shadow-xl hover:shadow-2xl hover:border-amber-500/50 transition-all duration-500 group relative overflow-hidden mt-6">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
               
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2.5 rounded-2xl bg-amber-500 text-slate-950">
@@ -5087,6 +5167,7 @@ export default function AdminPanel({
                 </button>
               </div>
             </div>
+
           </div>
         </div>
       )}
@@ -5522,6 +5603,117 @@ export default function AdminPanel({
 
       {activeTab === 'ai-lab' && (
         <AIImageLab products={products} onShowToast={onShowToast} />
+      )}
+
+      {activeTab === 'rewards' && (
+        <div className="space-y-8 text-slate-800 text-right" dir="rtl">
+          {/* Rewards Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="text-right">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 justify-start">
+                <Gift className="h-5 w-5 text-amber-500" />
+                <span>إدارة وتخصيص الجوائز الملكية 👑🎁</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 font-semibold">
+                هنا يمكنك تخصيص قيم نقاط الجوائز التي يستلمها الزبون عند تسجيل دخوله اليومي لزيادة الولاء والتفاعل.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="px-4 py-2 rounded-full bg-amber-50 border border-amber-100 text-amber-600 text-[10px] font-black uppercase tracking-widest">
+                نظام الولاء نشط
+              </span>
+            </div>
+          </div>
+
+          {/* Daily Check-In Configuration Card */}
+          <div className="bg-white border border-slate-200 rounded-[2rem] p-6 md:p-8 shadow-sm space-y-6 text-right">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-600">
+                <Crown className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">إعدادات النقاط اليومية (1-7 أيام)</h3>
+                <p className="text-[10px] text-slate-500 font-bold mt-0.5">قم بضبط عدد النقاط لكل يوم، يتم الحفظ فقط عند الضغط على الزر أدناه.</p>
+              </div>
+            </div>
+
+            <div className="space-y-8">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
+                {[
+                  { id: 'day1', label: 'اليوم الأول' },
+                  { id: 'day2', label: 'اليوم الثاني' },
+                  { id: 'day3', label: 'اليوم الثالث' },
+                  { id: 'day4', label: 'اليوم الرابع' },
+                  { id: 'day5', label: 'اليوم الخامس' },
+                  { id: 'day6', label: 'اليوم السادس' },
+                  { id: 'day7', label: 'اليوم السابع 👑', isGrand: true },
+                ].map((day) => (
+                  <div key={day.id} className={`bg-slate-50 border ${day.isGrand ? 'border-amber-200 ring-1 ring-amber-100' : 'border-slate-100'} p-4 rounded-2xl transition-colors hover:bg-white`}>
+                    <label className={`block text-[10px] mb-2 font-bold text-center ${day.isGrand ? 'text-amber-600' : 'text-slate-600'}`}>
+                      {day.label}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        value={dailyCheckInSettings[day.id as keyof typeof dailyCheckInSettings]}
+                        onChange={(e) => setDailyCheckInSettings(prev => ({
+                          ...prev,
+                          [day.id]: Math.max(0, Number(e.target.value))
+                        }))}
+                        className={`w-full rounded-xl border ${day.isGrand ? 'border-amber-300 bg-white text-amber-700' : 'border-slate-200 bg-white text-slate-900'} p-3 text-sm font-black focus:border-amber-400 focus:outline-none text-center font-mono`}
+                      />
+                      <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white px-2 py-0.5 rounded text-[8px] font-black text-slate-400 border border-slate-100">نقطة</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {rewardsSuccess && (
+                <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-xs font-bold text-center">
+                  ✨ {rewardsSuccess} ✨
+                </div>
+              )}
+              
+              <button
+                type="button"
+                disabled={isSavingRewards}
+                onClick={handleSaveDailyCheckInRewards}
+                className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-sm shadow-md shadow-amber-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isSavingRewards ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-5 w-5" />
+                )}
+                <span>{isSavingRewards ? 'جاري الحفظ...' : 'حفظ إعدادات الجوائز اليومية'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Analytics Shortcut */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <div className="bg-white border border-slate-100 rounded-3xl p-6 flex items-center gap-4 shadow-sm">
+                <div className="p-3 rounded-2xl bg-blue-50 text-blue-600">
+                   <Users className="h-6 w-6" />
+                </div>
+                <div>
+                   <h4 className="text-slate-900 font-bold text-sm">إجمالي النقاط الموزعة</h4>
+                   <p className="text-2xl font-black text-blue-600">0 <span className="text-xs font-medium text-slate-400">نقطة ملكية</span></p>
+                </div>
+             </div>
+             <div className="bg-white border border-slate-100 rounded-3xl p-6 flex items-center gap-4 shadow-sm">
+                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600">
+                   <Activity className="h-6 w-6" />
+                </div>
+                <div>
+                   <h4 className="text-slate-900 font-bold text-sm">معدل تسجيل الدخول اليومي</h4>
+                   <p className="text-2xl font-black text-emerald-600">0%</p>
+                </div>
+             </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'policies' && (

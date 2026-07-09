@@ -433,7 +433,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
 
       {/* Agent Details & Inventory Modal */}
       {selectedAgent && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop- animate-fade-in">
           <div 
             className="bg-white rounded-[2rem] border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-scale-in"
             onClick={(e) => e.stopPropagation()}
@@ -519,7 +519,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
 
                       {/* Info Card */}
                       <div className="bg-slate-900 rounded-3xl p-6 text-white relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full  -mr-32 -mt-32"></div>
                         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                           <div className="space-y-2">
                             <h4 className="text-lg font-black flex items-center gap-2">
@@ -745,7 +745,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
 
       {/* Add Inventory Modal (Nested) */}
       {showInventoryForm && selectedAgent && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/90 backdrop- animate-fade-in">
           <div 
             className="bg-slate-900 border border-amber-500/30 rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden flex flex-col animate-scale-in"
             onClick={(e) => e.stopPropagation()}

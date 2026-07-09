@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Navbar from './components/Navbar';
 import ProductCard from './components/ProductCard';
@@ -43,11 +43,13 @@ import ProductDetailsModal from './components/ProductDetailsModal';
 import MyOrders from './components/MyOrders';
 import { BottomNav } from './components/BottomNav';
 import AuthModal from './components/AuthModal';
+import { DailyCheckIn } from './components/DailyCheckIn';
 import SettingsModal from './components/SettingsModal';
 import WalletModal from './components/WalletModal';
 import AgentDashboard from './components/AgentDashboard';
 import MessagingSystem from './components/MessagingSystem';
-import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, auth, signOut, onAuthStateChanged, messaging, getToken, onMessage } from './lib/firebase';
+import { WelcomeSplash } from './components/WelcomeSplash';
+import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, auth, signOut, onAuthStateChanged, messaging, getToken, onMessage } from './lib/firebase';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
 
@@ -68,88 +70,115 @@ function AppContent() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
+  const [rewardsConfig, setRewardsConfig] = useState<{ [key: string]: number }>({
+    day1: 10, day2: 20, day3: 30, day4: 40, day5: 50, day6: 60, day7: 100
+  });
 
+  // --- Core App Initialization ---
   useEffect(() => {
-    let isSwDone = false;
-    let isTimeoutDone = false;
-    let isDismissed = false;
-
-    const fadeOutLoader = () => {
-      if (isDismissed) return;
-      isDismissed = true;
-      const loader = document.getElementById('global-loader');
-      if (loader) {
-        loader.style.opacity = '0';
-        setTimeout(() => {
-          loader.style.display = 'none';
-          loader.remove();
-        }, 600); // Wait for transition
-      }
-    };
-
-    const tryFadeOut = () => {
-      if (isSwDone && isTimeoutDone) {
-        setIsAppReady(true);
-        fadeOutLoader();
-      }
-    };
-
-    // 1. Wait for Service Worker activation
-    if ('serviceWorker' in navigator) {
-      if ((window as any).__swReady || navigator.serviceWorker.controller) {
-        isSwDone = true;
-        tryFadeOut();
-      } else {
-        const handleSwReady = () => {
-          isSwDone = true;
-          tryFadeOut();
-          window.removeEventListener('sw-ready', handleSwReady);
-        };
-        window.addEventListener('sw-ready', handleSwReady);
+    const initializeApp = async () => {
+      try {
+        const { getDoc, doc, getDocs, collection, query, orderBy } = await import('firebase/firestore');
         
-        // Fallback safety timeout (1.5 seconds)
-        setTimeout(() => {
-          isSwDone = true;
-          tryFadeOut();
-          window.removeEventListener('sw-ready', handleSwReady);
-        }, 1500);
+        // 1. Wait for Auth and User Profile to resolve
+        await new Promise<void>((resolve) => {
+          const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+            if (fbUser) {
+              try {
+                const userDocRef = doc(db, 'users', fbUser.email!.toLowerCase());
+                const userDocSnap = await getDoc(userDocRef);
+                // The onAuthStateChanged listener in App.tsx will handle the state setting
+                // We just need to wait for this one-time fetch to complete as a signal
+              } catch (e) {
+                console.warn("Auth initialization fetch error:", e);
+              }
+            }
+            unsubscribe();
+            resolve();
+          });
+          // Timeout as safety
+          setTimeout(resolve, 3000);
+        });
+
+        // 2. Fetch all configuration data in parallel
+        const fetchPromises = [
+          // Rewards Config
+          getDoc(doc(db, 'settings', 'daily_checkin')).then(snap => {
+            if (snap.exists()) {
+              const data = snap.data();
+              setRewardsConfig({
+                day1: data.day1 || 10,
+                day2: data.day2 || 20,
+                day3: data.day3 || 30,
+                day4: data.day4 || 40,
+                day5: data.day5 || 50,
+                day6: data.day6 || 60,
+                day7: data.day7 || 100,
+              });
+            }
+          }),
+          // Categories
+          getDocs(query(collection(db, 'categories'))).then(snap => {
+            if (!snap.empty) {
+              const list: string[] = [];
+              snap.forEach(d => { if (d.data().name) list.push(d.data().name); });
+              if (list.length > 0) setCategories(list);
+            }
+          }),
+          // Global Discount
+          getDoc(doc(db, 'settings', 'discounts')).then(snap => {
+            if (snap.exists() && typeof snap.data().globalDiscount === 'number') {
+              setGlobalDiscount(snap.data().globalDiscount);
+            }
+          }),
+          // Delivery Settings
+          getDoc(doc(db, 'delivery_config', 'global_settings')).then(snap => {
+            if (snap.exists()) {
+              setDeliverySettings({ id: snap.id, ...snap.data() } as DeliverySettings);
+            }
+          }),
+          // Exclusive Discounts Section
+          getDoc(doc(db, 'settings', 'discounts_section')).then(snap => {
+            if (snap.exists()) {
+              const data = snap.data();
+              setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
+              setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+              setDiscountsSectionFeaturedProductIds(data.featuredProducts || []);
+            }
+          })
+        ];
+
+        await Promise.all(fetchPromises);
+
+        // 3. Final safety buffer
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        setIsAppReady(true);
+        const loader = document.getElementById('global-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => {
+            loader.style.display = 'none';
+            loader.remove();
+          }, 300);
+        }
+      } catch (error) {
+        console.warn("App initialization error:", error);
+        setIsAppReady(true); 
       }
-    } else {
-      isSwDone = true;
-      tryFadeOut();
-    }
-
-    // 2. Wait for App assets & database listener attachment duration (600ms)
-    setTimeout(() => {
-      isTimeoutDone = true;
-      tryFadeOut();
-    }, 600);
-
-    // 3. Absolute safety fallback - after 1500ms, force dismiss no matter what
-    const forceTimeout = setTimeout(() => {
-      isSwDone = true;
-      isTimeoutDone = true;
-      setIsAppReady(true);
-      fadeOutLoader();
-    }, 1500);
-
-    return () => {
-      clearTimeout(forceTimeout);
     };
+
+    initializeApp();
   }, []);
 
   const handleTabChange = (tab: string) => {
-    setIsNavigating(true);
-    setTimeout(() => {
-      if (tab === 'admin') {
-        setIsAdminMode(true);
-        setCurrentTab('admin');
-      } else {
-        setIsAdminMode(false);
-        setCurrentTab(tab);
-      }
-      setIsNavigating(false);
-    }, 800);
+    if (tab === 'admin') {
+      setIsAdminMode(true);
+      setCurrentTab('admin');
+    } else {
+      setIsAdminMode(false);
+      setCurrentTab(tab);
+    }
   };
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -352,41 +381,18 @@ function AppContent() {
     return Array.from(new Set(INITIAL_PRODUCTS.map((p) => p.category)));
   });
 
-  // Synchronize categories with Firestore real-time listener
-  useEffect(() => {
-    try {
-      const q = query(collection(db, 'categories'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        if (!snapshot.empty) {
-          const list: string[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (data.name) {
-              list.push(data.name);
-            }
-          });
-          if (list.length > 0) {
-            setCategories(list);
-          }
-        }
-      }, (error) => {
-        console.warn("Firestore listening categories warning (falling back to localStorage):", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase categories sync not fully active. Fallback to localStorage.", e);
-    }
-  }, []);
-
+  // Categories synchronization is now handled in initializeApp for better performance
   useEffect(() => {
     localStorage.setItem('king_store_categories', JSON.stringify(categories));
   }, [categories]);
 
-  // Synchronize products with Firestore real-time listener
+  // Synchronize products with Firestore
   useEffect(() => {
-    try {
-      const q = collection(db, 'products');
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+    const fetchProducts = async () => {
+      try {
+        const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
+        const q = collection(db, 'products');
+        const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const list: Product[] = [];
           snapshot.forEach((docSnap) => {
@@ -434,20 +440,20 @@ function AppContent() {
             }
           });
         }
-      }, (error) => {
-        console.warn("Firestore listening products warning:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase products sync not active:", e);
-    }
+      } catch (e) {
+        console.warn("Firebase products fetch failed.", e);
+      }
+    };
+    fetchProducts();
   }, []);
 
-  // Synchronize orders with Firestore real-time listener
+  // Synchronize orders with Firestore
   useEffect(() => {
-    try {
-      const q = collection(db, 'orders');
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+    const fetchOrders = async () => {
+      try {
+        const { getDocs, collection } = await import('firebase/firestore');
+        const q = collection(db, 'orders');
+        const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const list: Order[] = [];
           snapshot.forEach((docSnap) => {
@@ -479,13 +485,11 @@ function AppContent() {
           list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
           setOrders(list);
         }
-      }, (error) => {
-        console.warn("Firestore listening orders warning:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase orders sync not active:", e);
-    }
+      } catch (e) {
+        console.warn("Firebase orders fetch failed.", e);
+      }
+    };
+    fetchOrders();
   }, []);
 
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
@@ -506,98 +510,39 @@ function AppContent() {
   const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
   const [discountsSectionFeaturedProductIds, setDiscountsSectionFeaturedProductIds] = useState<string[]>([]);
 
-  // Synchronize exclusive discounts section settings from Firestore
-  useEffect(() => {
-    try {
-      const docRef = doc(db, 'settings', 'discounts_section');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
-          setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
-          setDiscountsSectionFeaturedProductIds(data.featuredProducts || []);
-        }
-      }, (error) => {
-        console.warn("Error listening to discounts section settings in App:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase discounts section settings sync not active.", e);
-    }
-  }, []);
+  // Exclusive Discounts Section settings are now handled in initializeApp
 
-  // Synchronize global discount setting from Firestore real-time listener
-  useEffect(() => {
-    try {
-      const docRef = doc(db, 'settings', 'discounts');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (typeof data.globalDiscount === 'number') {
-            setGlobalDiscount(data.globalDiscount);
-          }
-        }
-      }, (error) => {
-        console.warn("Error listening to global discount in App:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase global discount sync not fully active.", e);
-    }
-  }, []);
+  // Global discount setting is now handled in initializeApp
 
-  // Synchronize Delivery Settings from Firestore
-  useEffect(() => {
-    try {
-      const docRef = doc(db, 'delivery_config', 'global_settings');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
-        if (docSnap.exists()) {
-          setDeliverySettings({ id: docSnap.id, ...docSnap.data() } as DeliverySettings);
-        }
-      }, (error) => {
-        console.warn("Error loading delivery settings in App:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase delivery settings sync not active in App.", e);
-    }
-  }, []);
+  // Delivery Settings are now handled in initializeApp
 
-  // Synchronize notifications with Firestore real-time listener
+  // Synchronize notifications with Firestore
   useEffect(() => {
-    if (!currentUser) {
-      setNotifications([]);
-      return;
-    }
+    const fetchNotifications = async () => {
+      if (!currentUser) {
+        setNotifications([]);
+        return;
+      }
 
-    try {
-      const q = query(collection(db, 'notifications'), orderBy('date', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      try {
+        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
+        const q = query(collection(db, 'notifications'), orderBy('date', 'desc'));
+        const snapshot = await getDocs(q);
         const list: AppNotification[] = [];
         snapshot.forEach((docSnap) => {
           list.push({ id: docSnap.id, ...docSnap.data() } as AppNotification);
         });
 
-        setNotifications((prev) => {
-          const prevIds = new Set(prev.map((n) => n.id));
-          list.forEach((n) => {
-            const belongsToUser =
-              currentUser &&
-              (n.userId === currentUser.email || (n.userId === 'admin' && currentUser.role === 'admin'));
-            // Only trigger toast for brand new incoming notifications (not initial load)
-            if (!prevIds.has(n.id) && belongsToUser && prev.length > 0 && !n.isRead) {
-              showToast(n.title, n.message, 'info');
-            }
-          });
-          return list;
+        const filteredList = list.filter(n => {
+          return n.userId === currentUser.email || (n.userId === 'admin' && currentUser.role === 'admin');
         });
-      }, (error) => {
-        console.warn("Firestore listening warning (falling back to localStorage):", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase not fully configured or active. Fallback to localStorage.", e);
-    }
+        
+        setNotifications(filteredList);
+      } catch (e) {
+        console.warn("Firebase notifications fetch failed.", e);
+      }
+    };
+    fetchNotifications();
   }, [currentUser?.email, currentUser?.role]);
 
   useEffect(() => {
@@ -623,52 +568,53 @@ function AppContent() {
     }
   }, []);
 
-  // Synchronize authentication state with Firebase in real-time
+  // Synchronize authentication state with Firebase
   useEffect(() => {
-    let userUnsubscribe: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (userUnsubscribe) {
-        userUnsubscribe();
-        userUnsubscribe = null;
-      }
       if (fbUser && fbUser.email) {
         const adminEmail = 'khdersy808@gmail.com';
         const isVerified = fbUser.emailVerified || fbUser.email?.toLowerCase() === adminEmail;
         
         if (isVerified) {
           try {
+            const { getDoc } = await import('firebase/firestore');
             const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
+            const userDocSnap = await getDoc(userDocRef);
             
-            userUnsubscribe = onSnapshot(userDocRef, async (userDocSnap) => {
-              if (userDocSnap.exists()) {
-                const uData = userDocSnap.data();
-                const currentPoints = typeof uData.points === 'number' ? uData.points : 0;
-                const currentCoupons = Array.isArray(uData.coupons) ? uData.coupons : [];
-                const role = uData.role || 'customer';
-                const nameVal = uData.name || fbUser.displayName || fbUser.email!.split('@')[0];
-                let refCode = uData.referralCode || '';
+            if (userDocSnap.exists()) {
+              const uData = userDocSnap.data();
+              const currentPoints = typeof uData.points === 'number' ? uData.points : 0;
+              const currentCoupons = Array.isArray(uData.coupons) ? uData.coupons : [];
+              const role = uData.role || 'customer';
+              const nameVal = uData.name || fbUser.displayName || fbUser.email!.split('@')[0];
+              let refCode = uData.referralCode || '';
                 
                 // If the user already has an account but has no referral code (older accounts)
                 if (!refCode) {
                   refCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
                   try {
-                    await setDoc(userDocRef, {
+                    // Update ONLY if missing to avoid snapshot loop
+                    await updateDoc(userDocRef, {
                       referralCode: refCode
-                    }, { merge: true });
+                    });
                   } catch (updateErr) {
                     console.error("Error setting missing referral code:", updateErr);
                   }
                 }
                 
                 // Real-time automated conversion check - only if currentPoints is high
-                // We use a flag to prevent multiple triggers during the same session if possible, 
-                // but checking currentPoints from snapshot is usually sufficient if the update is atomic.
-                if (currentPoints >= 1000) {
+                // Added a guard to prevent conversion loop if points are already being processed
+                if (currentPoints >= 1000 && !uData.isConvertingPoints) {
                   const { convertPointsToCoupons } = await import('./lib/firebase');
-                  // We call it but don't strictly await it here to avoid blocking the state update
-                  convertPointsToCoupons(fbUser.email!.toLowerCase(), currentPoints, currentCoupons).catch(err => {
+                  try {
+                    // Mark as converting to prevent concurrent triggers from multiple snapshots
+                    await updateDoc(userDocRef, { isConvertingPoints: true });
+                    await convertPointsToCoupons(fbUser.email!.toLowerCase(), currentPoints, currentCoupons);
+                    await updateDoc(userDocRef, { isConvertingPoints: false });
+                  } catch (err) {
                     console.error("Error during automatic points conversion:", err);
-                  });
+                    await updateDoc(userDocRef, { isConvertingPoints: false });
+                  }
                 }
                 
                 setCurrentUser({
@@ -683,7 +629,9 @@ function AppContent() {
                   deviceId: uData.deviceId || '',
                   referredBy: uData.referredBy || '',
                   referralApplied: uData.referralApplied || false,
-                  paymentPin: uData.paymentPin || ''
+                  paymentPin: uData.paymentPin || '',
+                  lastCheckInDate: uData.lastCheckInDate || '',
+                  checkInStreak: typeof uData.checkInStreak === 'number' ? uData.checkInStreak : 0
                 });
               } else {
                 // If profile missing in Firestore, create it
@@ -703,9 +651,6 @@ function AppContent() {
                   createdAt: new Date().toISOString()
                 });
               }
-            }, (error) => {
-              console.warn("Error listening to user document: ", error);
-            });
           } catch (err) {
             console.warn("Error in onAuthStateChanged setup:", err);
           }
@@ -717,17 +662,18 @@ function AppContent() {
     });
     return () => {
       unsubscribe();
-      if (userUnsubscribe) userUnsubscribe();
     };
   }, []);
 
-  const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' = 'info') => {
+  const showToast = useCallback((title: string, message: string, type: 'success' | 'info' | 'warning' = 'info') => {
     const id = `toast_${Date.now()}_${Math.random()}`;
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 6000);
-  };
+  }, []);
+
+  const openAuthModal = useCallback(() => setIsAuthModalOpen(true), []);
 
   const copyToClipboard = (text: string, title: string, message: string) => {
     let success = false;
@@ -1522,7 +1468,9 @@ function AppContent() {
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
-
+  if (!isAppReady) {
+    return <WelcomeSplash />;
+  }
 
   return (
     <>
@@ -1712,6 +1660,13 @@ function AppContent() {
               <div>
                 {currentTab === 'home' && (
                   <>
+                    <DailyCheckIn
+                      currentUser={currentUser}
+                      onOpenAuth={openAuthModal}
+                      onShowToast={showToast}
+                      onUpdateUser={setCurrentUser}
+                      rewardsConfig={rewardsConfig}
+                    />
                 <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
                   {/* Elegant Majestic Hero Banner */}
                   <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 via-slate-900/40 to-slate-950 opacity-90" />
@@ -1754,7 +1709,7 @@ function AppContent() {
                   {/* --- 🎁 بنر العروض المميز الفاخر (Featured Offers Banner) --- */}
                   <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 sm:p-8 border border-amber-500/20 shadow-xl">
                     <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-transparent pointer-events-none" />
-                    <div className="absolute -top-16 -left-16 h-36 w-36 pointer-events-none bg-amber-500/5 rounded-full blur-3xl" />
+                    <div className="absolute -top-16 -left-16 h-36 w-36 pointer-events-none bg-amber-500/5 rounded-full" />
                     <div className="relative flex flex-col lg:flex-row items-center justify-between gap-8">
                       <div className="text-right space-y-3 max-w-xl">
                         <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3.5 py-1.5 text-xs font-bold text-amber-400 border border-amber-500/30">

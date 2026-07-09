@@ -69,8 +69,8 @@ export default function PaymentReceipt({ order, gateway, onPrint }: PaymentRecei
       <div className={`h-1.5 w-full bg-gradient-to-${dir === 'rtl' ? 'l' : 'r'} from-amber-600 via-amber-400 to-amber-600`}></div>
 
       {/* Background Decorative Rings */}
-      <div className={`absolute top-0 ${dir === 'rtl' ? 'right-0 -mr-16' : 'left-0 -ml-16'} w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -mt-16 pointer-events-none`}></div>
-      <div className={`absolute bottom-0 ${dir === 'rtl' ? 'left-0 -ml-16' : 'right-0 -mr-16'} w-48 h-48 bg-amber-500/5 rounded-full blur-3xl -mb-16 pointer-events-none`}></div>
+      <div className={`absolute top-0 ${dir === 'rtl' ? 'right-0 -mr-16' : 'left-0 -ml-16'} w-48 h-48 bg-amber-500/5 rounded-full  -mt-16 pointer-events-none`}></div>
+      <div className={`absolute bottom-0 ${dir === 'rtl' ? 'left-0 -ml-16' : 'right-0 -mr-16'} w-48 h-48 bg-amber-500/5 rounded-full  -mb-16 pointer-events-none`}></div>
 
       {/* Main Content */}
       <div className="p-6 space-y-6 relative z-10">

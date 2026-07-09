@@ -37,8 +37,16 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     document.documentElement.lang = language;
   }, [dir, language]);
 
+  const value = React.useMemo(() => ({
+    language,
+    setLanguage,
+    t,
+    texts,
+    dir: dir as 'rtl' | 'ltr'
+  }), [language, dir, texts]);
+
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t, texts, dir }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );

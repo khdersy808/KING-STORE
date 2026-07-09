@@ -102,7 +102,7 @@ export default function MessagingSystem() {
         
         {/* Luxury WhatsApp Section */}
         <div className="rounded-3xl border-2 border-emerald-500/20 bg-white p-8 shadow-xl shadow-emerald-500/5 relative overflow-hidden group text-center animate-slide-up">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-emerald-500/10 transition-colors" />
           
           <div className="relative z-10 space-y-6">
             <div className="flex justify-center">

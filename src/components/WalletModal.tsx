@@ -192,7 +192,7 @@ export default function WalletModal({
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300 cursor-pointer"
+        className="fixed inset-0 bg-slate-950/80 backdrop- transition-opacity duration-300 cursor-pointer"
         onClick={onClose}
       />
 

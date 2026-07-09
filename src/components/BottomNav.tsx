@@ -23,7 +23,7 @@ export function BottomNav({ currentTab, setCurrentTab, cartCount, onOpenMenu, is
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[1000] px-6 pb-6 md:hidden pointer-events-none [will-change:transform] [transform:translate3d(0,0,0)]">
-      <div className="relative mx-auto max-w-sm bg-zinc-950/95 backdrop-blur-3xl border border-white/5 rounded-[2.5rem] shadow-[0_-10px_50px_rgba(0,0,0,0.5)] flex items-center justify-around h-16 px-2 overflow-hidden pointer-events-auto [backface-visibility:hidden]">
+      <div className="relative mx-auto max-w-sm bg-zinc-950/95 backdrop- border border-white/5 rounded-[2.5rem] shadow-[0_-10px_50px_rgba(0,0,0,0.5)] flex items-center justify-around h-16 px-2 overflow-hidden pointer-events-auto [backface-visibility:hidden]">
         
         {/* Tab Icons */}
         {tabs.map((tab) => {

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { db, doc, onSnapshot } from '../lib/firebase';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
+import { db, doc, getDoc } from '../lib/firebase';
 import { useLanguage } from './LanguageContext';
 
 export type Currency = 'USD' | 'SYP';
@@ -25,74 +25,76 @@ export const CurrencyProvider: React.FC<{ children: ReactNode }> = ({ children }
   });
   const [exchangeRate, setExchangeRate] = useState<number>(15000);
 
-  // Sync exchange rate setting from Firestore in real-time
+  // Sync exchange rate setting from Firestore - Changed to one-time fetch for stability
   useEffect(() => {
-    try {
-      const docRef = doc(db, 'settings', 'currency');
-      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const fetchExchangeRate = async () => {
+      try {
+        const docRef = doc(db, 'settings', 'currency');
+        const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (typeof data.exchangeRate === 'number') {
             setExchangeRate(data.exchangeRate);
           }
         }
-      }, (error) => {
-        console.warn("Error listening to exchange rate in CurrencyContext:", error);
-      });
-      return () => unsubscribe();
-    } catch (e) {
-      console.warn("Firebase exchange rate sync not fully active in CurrencyContext.", e);
-    }
+      } catch (e) {
+        console.warn("Error fetching exchange rate in CurrencyContext:", e);
+      }
+    };
+    fetchExchangeRate();
   }, []);
 
-  const setCurrency = (curr: Currency) => {
+  const setCurrency = useCallback((curr: Currency) => {
     setCurrencyState(curr);
     localStorage.setItem('kingstore_currency', curr);
-  };
+  }, []);
 
   const isSypEnabled = currency === 'SYP';
-  const setIsSypEnabled = (enabled: boolean) => {
+  
+  const setIsSypEnabled = useCallback((enabled: boolean) => {
     setCurrency(enabled ? 'SYP' : 'USD');
-  };
+  }, [setCurrency]);
 
-  const convertPrice = (priceUSD: number) => {
-    if (isSypEnabled) {
+  const convertPrice = useCallback((priceUSD: number) => {
+    if (currency === 'SYP') {
       return priceUSD * exchangeRate;
     }
     return priceUSD;
-  };
+  }, [currency, exchangeRate]);
 
-  const formatPrice = (priceUSD: number) => {
+  const formatPrice = useCallback((priceUSD: number) => {
     const converted = convertPrice(priceUSD);
-    const symbol = isSypEnabled ? (language === 'ar' ? 'ل.س' : 'SYP') : '$';
+    const symbol = currency === 'SYP' ? (language === 'ar' ? 'ل.س' : 'SYP') : '$';
     
-    if (isSypEnabled) {
+    if (currency === 'SYP') {
       return `${converted.toLocaleString('en-US', { maximumFractionDigits: 0 })} ${symbol}`;
     } else {
       return `${symbol}${converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-  };
+  }, [convertPrice, currency, language]);
 
-  const formatPriceRaw = (priceUSD: number) => {
+  const formatPriceRaw = useCallback((priceUSD: number) => {
     const converted = convertPrice(priceUSD);
-    const symbol = isSypEnabled ? (language === 'ar' ? 'ل.س' : 'SYP') : '$';
-    const value = isSypEnabled 
+    const symbol = currency === 'SYP' ? (language === 'ar' ? 'ل.س' : 'SYP') : '$';
+    const value = currency === 'SYP' 
       ? converted.toLocaleString('en-US', { maximumFractionDigits: 0 })
       : converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return { value, symbol };
-  };
+  }, [convertPrice, currency, language]);
+
+  const value = useMemo(() => ({
+    currency,
+    setCurrency,
+    isSypEnabled,
+    setIsSypEnabled,
+    exchangeRate,
+    formatPrice,
+    formatPriceRaw,
+    convertPrice
+  }), [currency, setCurrency, isSypEnabled, setIsSypEnabled, exchangeRate, formatPrice, formatPriceRaw, convertPrice]);
 
   return (
-    <CurrencyContext.Provider value={{
-      currency,
-      setCurrency,
-      isSypEnabled,
-      setIsSypEnabled,
-      exchangeRate,
-      formatPrice,
-      formatPriceRaw,
-      convertPrice
-    }}>
+    <CurrencyContext.Provider value={value}>
       {children}
     </CurrencyContext.Provider>
   );

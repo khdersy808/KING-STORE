@@ -152,7 +152,7 @@ export default function OrderTracking({ orders, gateways, onBackToStore }: Order
           
           {/* 1. Search card */}
           <div className="bg-slate-950 border border-amber-500/20 p-6 rounded-2xl shadow-xl text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full  -mr-10 -mt-10 pointer-events-none"></div>
             
             <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2 mb-3.5">
               <Search className="h-4 w-4" />
