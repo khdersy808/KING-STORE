@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, User, DeliverySettings, Policy } from '../types';
+import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, CouponRule, User, DeliverySettings, Policy } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import CustomSelect from './CustomSelect';
@@ -67,9 +67,10 @@ import {
   Percent,
   Link as LinkIcon,
   RotateCcw,
-  Gift
+  Gift,
+  ShieldAlert
 } from 'lucide-react';
-import { auth, db, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
+import { auth, db, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
 
@@ -284,6 +285,14 @@ export default function AdminPanel({
   const [couponIsActive, setCouponIsActive] = useState(true);
   const [couponFormError, setCouponFormError] = useState('');
   const [couponFormSuccess, setCouponFormSuccess] = useState('');
+
+  // Loyalty System / Points Redemption Rules
+  const [couponRules, setCouponRules] = useState<CouponRule[]>([]);
+  const [isAddingRule, setIsAddingRule] = useState(false);
+  const [editingRule, setEditingRule] = useState<CouponRule | null>(null);
+  const [ruleDiscount, setRuleDiscount] = useState<number>(1);
+  const [ruleMinPurchase, setRuleMinPurchase] = useState<number>(5);
+  const [ruleFormError, setRuleFormError] = useState('');
 
   // Global Discount States
   const [globalDiscountPercentage, setGlobalDiscountPercentage] = useState<number>(0);
@@ -506,6 +515,25 @@ export default function AdminPanel({
       }
     };
     fetchCoupons();
+  }, []);
+
+  // Synchronize Coupon Rules from Firestore
+  useEffect(() => {
+    const fetchCouponRules = async () => {
+      try {
+        const q = collection(db, 'coupon_rules');
+        const snapshot = await getDocs(q);
+        const list: CouponRule[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as CouponRule);
+        });
+        list.sort((a, b) => a.discount - b.discount);
+        setCouponRules(list);
+      } catch (e) {
+        console.warn("Firebase coupon rules fetch failed.", e);
+      }
+    };
+    fetchCouponRules();
   }, []);
 
   // Synchronize Policies from Firestore
@@ -874,6 +902,54 @@ export default function AdminPanel({
   const handleRemoveProductFromDiscountsSection = (id: string) => {
     const updated = discountsSectionProducts.filter(pId => pId !== id);
     setDiscountsSectionProducts(updated);
+  };
+
+  const handleSaveCouponRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRuleFormError('');
+
+    if (ruleDiscount <= 0 || ruleMinPurchase < 0) {
+      setRuleFormError('يجب أن تكون القيم أرقام موجبة صحيحة');
+      return;
+    }
+
+    try {
+      if (editingRule) {
+        const ruleRef = doc(db, 'coupon_rules', editingRule.id);
+        await updateDoc(ruleRef, {
+          discount: ruleDiscount,
+          minPurchase: ruleMinPurchase
+        });
+        
+        setCouponRules(prev => prev.map(r => r.id === editingRule.id ? { ...r, discount: ruleDiscount, minPurchase: ruleMinPurchase } : r));
+        onShowToast('تم بنجاح', 'تم تحديث القاعدة', 'success');
+      } else {
+        const docRef = await addDoc(collection(db, 'coupon_rules'), {
+          discount: ruleDiscount,
+          minPurchase: ruleMinPurchase,
+          createdAt: new Date().toISOString()
+        });
+        setCouponRules(prev => [...prev, { id: docRef.id, discount: ruleDiscount, minPurchase: ruleMinPurchase }]);
+        onShowToast('تم بنجاح', 'تمت إضافة القاعدة بنجاح', 'success');
+      }
+      setIsAddingRule(false);
+      setEditingRule(null);
+      setRuleDiscount(1);
+      setRuleMinPurchase(5);
+    } catch (err: any) {
+      setRuleFormError('حدث خطأ أثناء الحفظ: ' + err.message);
+    }
+  };
+
+  const handleDeleteCouponRule = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه القاعدة؟')) return;
+    try {
+      await deleteDoc(doc(db, 'coupon_rules', id));
+      setCouponRules(prev => prev.filter(r => r.id !== id));
+      onShowToast('تم بنجاح', 'تم الحذف', 'success');
+    } catch (e: any) {
+      onShowToast('خطأ', 'فشل في الحذف: ' + e.message, 'error');
+    }
   };
 
   // Save / Update Coupon
@@ -1680,6 +1756,18 @@ export default function AdminPanel({
     }
   };
 
+  const couponAuditLogData = React.useMemo(() => {
+    const usersMap: Record<string, number> = {};
+    coupons.forEach(c => {
+      if (c.userId && (c.is_used === false || c.usage_status === 'unused') && c.isActive) {
+        usersMap[c.userId] = (usersMap[c.userId] || 0) + 1;
+      }
+    });
+    return Object.entries(usersMap)
+      .map(([userId, count]) => ({ userId, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [coupons]);
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6" dir={dir}>
       
@@ -1847,6 +1935,17 @@ export default function AdminPanel({
           >
             <Gift className="h-4 w-4 text-amber-500" />
             <span>REWARDS 🎁</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('audit'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'audit'
+                ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
+                : 'bg-white text-slate-700 hover:bg-red-50 border border-slate-200 hover:border-red-500/30'
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4 text-red-500" />
+            <span>مراقبة الكوبونات 🛡️</span>
           </button>
         </div>
       </div>
@@ -4501,6 +4600,94 @@ export default function AdminPanel({
                 </div>
               </div>
 
+              {/* Loyalty System Rules Management */}
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 group-hover:bg-emerald-500/10 transition-colors" />
+                
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 rounded-2xl bg-slate-950 text-emerald-400">
+                    <Gift className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">قواعد استبدال النقاط</h3>
+                </div>
+
+                <div className="space-y-6">
+                  {ruleFormError && (
+                    <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs font-bold flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>{ruleFormError}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSaveCouponRule} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">قيمة الخصم ($)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={ruleDiscount}
+                          onChange={(e) => setRuleDiscount(Number(e.target.value))}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-900 font-bold focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase">الحد الأدنى للمشتريات ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={ruleMinPurchase}
+                          onChange={(e) => setRuleMinPurchase(Number(e.target.value))}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-900 font-bold focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="submit"
+                      className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg transition-all"
+                    >
+                      {editingRule ? 'حفظ التعديل' : 'إضافة قاعدة جديدة'}
+                    </button>
+                    {editingRule && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditingRule(null); setRuleDiscount(1); setRuleMinPurchase(5); }}
+                        className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs"
+                      >
+                        إلغاء التعديل
+                      </button>
+                    )}
+                  </form>
+
+                  <div className="space-y-3 mt-6">
+                    <h4 className="text-xs font-black text-slate-500">القواعد الحالية ({couponRules.length})</h4>
+                    {couponRules.map(rule => (
+                      <div key={rule.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50">
+                        <div className="space-y-1">
+                          <div className="text-xs font-bold text-slate-900">خصم ${rule.discount}</div>
+                          <div className="text-[10px] text-slate-500">حد أدنى للطلب: ${rule.minPurchase}</div>
+                          <div className="text-[9px] text-amber-600 font-bold">تتطلب: {rule.discount * 1000} نقطة</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setEditingRule(rule); setRuleDiscount(rule.discount); setRuleMinPurchase(rule.minPurchase); }} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg">
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDeleteCouponRule(rule.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {couponRules.length === 0 && (
+                      <p className="text-xs text-slate-400 text-center py-4">لا توجد قواعد حالياً</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Luxury Exclusive Weekly Offers Settings Form */}
               <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16  group-hover:bg-amber-500/10 transition-colors" />
@@ -4808,6 +4995,14 @@ export default function AdminPanel({
                                   {coupon.code}
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-bold px-1">تم الاستخدام: {coupon.usageCount || 0} مرات</span>
+                                {coupon.userId && (
+                                  <span className="text-[10px] text-blue-500 font-bold px-1">المستفيد: {coupon.userId}</span>
+                                )}
+                                {coupon.is_used !== undefined && (
+                                  <span className={`text-[10px] font-bold px-1 ${coupon.is_used ? 'text-red-500' : 'text-emerald-500'}`}>
+                                    {coupon.is_used ? 'مستخدمة (قسيمة ولاء)' : 'متاحة (قسيمة ولاء)'}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="p-6">
@@ -4870,6 +5065,99 @@ export default function AdminPanel({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: COUPON AUDIT LOG */}
+      {activeTab === 'audit' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          {/* Royal Header Card */}
+          <div className="rounded-[2.5rem] bg-slate-950 border border-slate-800 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20 pointer-events-none mix-blend-overlay" />
+            <div className="absolute -top-24 -right-24 w-96 h-96 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-gradient-to-br from-red-500 to-red-700 p-4 rounded-3xl text-white shadow-lg shadow-red-500/20">
+                    <ShieldAlert className="h-8 w-8 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+                      مراقبة الكوبونات 🛡️
+                    </h2>
+                    <p className="text-slate-400 text-xs sm:text-sm font-bold tracking-wide uppercase mt-1">
+                      Security & Audit Logs
+                    </p>
+                  </div>
+                </div>
+                <p className="text-slate-300/80 text-sm sm:text-base leading-relaxed max-w-2xl font-medium">
+                  نظام مراقبة أمني لتتبع استهلاك הקوبونات واكتشاف أي ثغرات أو تراكم غير مبرر في حسابات المستخدمين لحماية النظام المزدوج والعملة الملكية.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Coupon Audit Log */}
+          <div className="rounded-[2.5rem] border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-slate-950 text-red-500">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-950 tracking-tight">سجل مراقبة القسائم (Audit Log)</h3>
+                  <p className="text-xs text-slate-400 font-bold mt-1">تتبع القسائم غير المستخدمة للمستخدمين لاكتشاف الثغرات وتراكم الكوبونات.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-x-auto">
+              {couponAuditLogData.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm font-bold">لا يوجد أي مستخدم يملك قسائم غير مستخدمة حالياً.</div>
+              ) : (
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
+                      <th className="p-6">معرف المستخدم (Email)</th>
+                      <th className="p-6">عدد القسائم غير المستخدمة</th>
+                      <th className="p-6">مؤشر الخطر</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-slate-700">
+                    {couponAuditLogData.map((data, index) => {
+                      const isHighRisk = data.count > 3;
+                      return (
+                        <tr key={index} className={`transition-all duration-300 ${isHighRisk ? 'bg-red-50/50 hover:bg-red-50' : 'hover:bg-slate-50/30'}`}>
+                          <td className="p-6">
+                            <span className={`font-black text-sm ${isHighRisk ? 'text-red-700' : 'text-slate-900'}`}>{data.userId}</span>
+                          </td>
+                          <td className="p-6">
+                            <span className={`inline-flex items-center justify-center min-w-8 h-8 rounded-lg text-xs font-black ${isHighRisk ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {data.count}
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            {isHighRisk ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 text-red-700 text-[10px] font-black">
+                                <AlertCircle className="h-3.5 w-3.5" />
+                                خطر تراكم الكوبونات
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black">
+                                <Check className="h-3.5 w-3.5" />
+                                طبيعي
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>

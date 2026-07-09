@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { X, Crown, Copy, ExternalLink, Sparkles, Wallet, Gift, Coins, LogIn, ArrowLeft, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Crown, Copy, ExternalLink, Sparkles, Wallet, Gift, Coins, LogIn, ArrowLeft, Check, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User } from '../types';
-import { db, convertPointsToCoupons } from '../lib/firebase';
+import { User, CouponRule } from '../types';
+import { db, convertPointsToCoupons, redeemPoints } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, setDoc, addDoc } from 'firebase/firestore';
 
 interface WalletModalProps {
@@ -33,6 +33,48 @@ export default function WalletModal({
   
   const [inputReferralCode, setInputReferralCode] = useState('');
   const [isApplying, setIsApplying] = useState(false);
+  const [couponRules, setCouponRules] = useState<CouponRule[]>([]);
+  const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const fetchRules = async () => {
+        try {
+          const q = collection(db, 'coupon_rules');
+          const snap = await getDocs(q);
+          const rules: CouponRule[] = [];
+          snap.forEach(d => rules.push({ id: d.id, ...d.data() } as CouponRule));
+          rules.sort((a, b) => a.discount - b.discount);
+          setCouponRules(rules);
+        } catch (e) {
+          console.warn('Failed to fetch coupon rules:', e);
+        }
+      };
+      fetchRules();
+    }
+  }, [isOpen]);
+
+  const handleRedeem = async (rule: CouponRule) => {
+    if (!currentUser || !currentUser.email) return;
+    
+    setIsRedeeming(rule.id);
+    try {
+      const currentPoints = currentUser.points || 0;
+      const currentCouponsList = Array.isArray(currentUser.coupons) ? currentUser.coupons : [];
+      
+      const { generated } = await redeemPoints(currentUser.email, currentPoints, currentCouponsList, rule);
+      showToast('تهانينا!', `تم استبدال النقاط بكوبون خصم بقيمة $${rule.discount} بنجاح!`, 'success');
+      setCopiedCouponCode(generated);
+    } catch (e: any) {
+      if (e.message === 'Not enough points') {
+        showToast('عذراً', 'نقاطك غير كافية لاستبدال هذه القسيمة.', 'warning');
+      } else {
+        showToast('خطأ', 'حدث خطأ أثناء استبدال النقاط.', 'warning');
+      }
+    } finally {
+      setIsRedeeming(null);
+    }
+  };
 
   const isDeviceAlreadyUsed = async (deviceId: string): Promise<boolean> => {
     if (!deviceId) return false;
@@ -268,7 +310,7 @@ export default function WalletModal({
                       />
                     </div>
                     <p className="text-[9px] leading-relaxed text-zinc-500">
-                      تتحول كل 1000 نقطة تلقائياً لقسيمة شراء بقيمة 1$.
+                      استبدل نقاطك بقسائم خصم من القائمة بالأسفل.
                     </p>
                   </div>
                 </div>
@@ -399,8 +441,39 @@ export default function WalletModal({
               <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 space-y-2">
                 <span className="text-xs font-bold text-amber-400 block">كيف يعمل نظام الإحالة الفيروسي؟ 🚀</span>
                 <p className="text-[11px] leading-relaxed text-zinc-400 font-medium">
-                  عند قيام مستخدم جديد بالتسجيل في متجرنا باستخدام رابط أو كود الإحالة الخاص بك، ستحصل فوراً على <strong className="text-amber-400">100 نقطة</strong> هدية! وعند وصولك لـ 1000 نقطة، يتم استبدالها تلقائياً بكوبون $1 متاح للاستخدام في سلتك.
+                  عند قيام مستخدم جديد بالتسجيل في متجرنا باستخدام رابط أو كود الإحالة الخاص بك، ستحصل فوراً على <strong className="text-amber-400">100 نقطة</strong> هدية! يمكنك استبدال نقاطك بقسائم شراء تصل إلى 5$ أو أكثر بناءً على القواعد المتاحة.
                 </p>
+              </div>
+
+              {/* Points Redemption */}
+              <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/10 border border-emerald-500/20 rounded-2xl p-4.5 space-y-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <RefreshCw className="h-4 w-4 text-emerald-400" />
+                  <span className="text-xs font-bold text-zinc-300">استبدال النقاط بقسائم خصم</span>
+                </div>
+                
+                {couponRules.length === 0 ? (
+                  <p className="text-[10px] text-zinc-500 text-center">لا توجد قواعد استبدال متاحة حالياً.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {couponRules.map(rule => (
+                      <div key={rule.id} className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-xl border border-zinc-800">
+                        <div className="space-y-1">
+                          <div className="text-xs font-bold text-emerald-400">قسيمة خصم ${rule.discount}</div>
+                          <div className="text-[9px] text-zinc-500">الحد الأدنى للطلب: ${rule.minPurchase}</div>
+                          <div className="text-[10px] font-bold text-amber-500">{rule.discount * 1000} نقطة</div>
+                        </div>
+                        <button
+                          onClick={() => handleRedeem(rule)}
+                          disabled={isRedeeming === rule.id || (currentUser.points || 0) < rule.discount * 1000}
+                          className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 text-slate-950 font-black text-[10px] transition-all cursor-pointer"
+                        >
+                          {isRedeeming === rule.id ? 'جاري...' : 'استبدال'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Earned Coupons */}
@@ -462,8 +535,8 @@ export default function WalletModal({
               <div className="space-y-2">
                 <h4 className="text-lg font-black text-white">انضم لنظام الإحالة الفيروسي الملكي! 👑</h4>
                 <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto font-medium">
-                  هل ترغب في الحصول على كوبونات خصم مجانية بقيمة 1$؟
-                  سجل معنا الآن لتوليد كود الإحالة الخاص بك ومشاركته مع الأصدقاء. ستحصل على <strong className="text-amber-400">100 نقطة</strong> مقابل كل صديق يسجل في المتجر، وعند تجميع 1000 نقطة ستحصل تلقائياً على قسيمة خصم مخصصة!
+                  هل ترغب في الحصول على كوبونات خصم مجانية؟
+                  سجل معنا الآن لتوليد كود الإحالة الخاص بك ومشاركته مع الأصدقاء. ستحصل على <strong className="text-amber-400">100 نقطة</strong> مقابل كل صديق يسجل في المتجر، ويمكنك استبدال نقاطك بقسائم خصم رائعة!
                 </p>
               </div>
 
@@ -478,8 +551,8 @@ export default function WalletModal({
                   <p className="text-[9px] text-zinc-500">احصل على 100 نقطة لكل تسجيل جديد</p>
                 </div>
                 <div className="text-center space-y-1">
-                  <div className="text-amber-400 font-black text-sm">3. اربح مجاناً</div>
-                  <p className="text-[9px] text-zinc-500">احصل على قسيمة بقيمة 1$ تلقائياً</p>
+                  <div className="text-amber-400 font-black text-sm">3. استبدل واربح</div>
+                  <p className="text-[9px] text-zinc-500">استبدل نقاطك بقسائم من اختيارك</p>
                 </div>
               </div>
 

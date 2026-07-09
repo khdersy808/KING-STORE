@@ -256,6 +256,10 @@ export default function Cart({
             expiryDate: docData.expiryDate || 'لا ينتهي',
             usageCount: Number(docData.usageCount || 0),
             createdAt: docData.createdAt || '',
+            userId: docData.userId,
+            is_used: docData.is_used,
+            usage_status: docData.usage_status,
+            usedAt: docData.usedAt,
           } as Coupon;
         }
       } catch (firestoreError) {
@@ -281,8 +285,21 @@ export default function Cart({
         return;
       }
 
+      if (foundCoupon.userId && currentUser?.email && foundCoupon.userId !== currentUser.email) {
+        setCouponFeedback({ message: 'هذا الكوبون غير مصرح لك باستخدامه.', type: 'error' });
+        setAppliedCoupon(null);
+        return;
+      }
+
       if (!foundCoupon.isActive) {
         setCouponFeedback({ message: 'كود الخصم هذا لم يعد نشطاً.', type: 'error' });
+        setAppliedCoupon(null);
+        return;
+      }
+
+      // Check is_used for one-time reward coupons
+      if (foundCoupon.is_used === true || foundCoupon.usage_status === 'used') {
+        setCouponFeedback({ message: 'تم استخدام هذا الكوبون مسبقاً ولا يمكن استخدامه مرة أخرى.', type: 'error' });
         setAppliedCoupon(null);
         return;
       }
@@ -290,7 +307,7 @@ export default function Cart({
       // Check minAmount
       if (currentSubTotal < foundCoupon.minAmount) {
         setCouponFeedback({
-          message: `الحد الأدنى لاستخدام هذا الكود هو ${formatPrice(foundCoupon.minAmount)}`,
+          message: `عذراً، هذا الكوبون يتطلب حد أدنى للمشتريات بقيمة ${formatPrice(foundCoupon.minAmount)}`,
           type: 'error'
         });
         setAppliedCoupon(null);
@@ -609,9 +626,17 @@ export default function Cart({
     if (appliedCoupon) {
       try {
         const couponRef = doc(db, 'coupons', appliedCoupon.id);
-        await updateDoc(couponRef, {
+        const updates: any = {
           usageCount: (appliedCoupon.usageCount || 0) + 1
-        });
+        };
+        // If it's a reward coupon, mark it as used so it cannot be used again
+        if (appliedCoupon.code.startsWith('RWD') || appliedCoupon.code.startsWith('REF')) {
+          updates.is_used = true;
+          updates.isActive = false;
+          updates.usage_status = 'used';
+          updates.usedAt = new Date().toISOString();
+        }
+        await updateDoc(couponRef, updates);
       } catch (err) {
         console.warn("Could not update coupon usage count in Firestore, trying localStorage...", err);
       }

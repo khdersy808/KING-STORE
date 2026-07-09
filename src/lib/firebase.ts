@@ -97,6 +97,58 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+export async function redeemPoints(userEmail: string, currentPoints: number, currentCoupons: string[] = [], rule: any): Promise<{ points: number; coupons: string[]; generated: string }> {
+  const pointsRequired = rule.discount * 1000;
+  if (currentPoints < pointsRequired) {
+    throw new Error('Not enough points');
+  }
+
+  const remainingPoints = currentPoints - pointsRequired;
+  const code = 'RWD' + rule.discount + 'USD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+  const newCoupons = [...currentCoupons, code];
+
+  // Save to global coupons collection
+  const couponDocRef = doc(db, 'coupons', code);
+  await setDoc(couponDocRef, {
+    id: code,
+    code: code,
+    type: 'fixed',
+    value: rule.discount,
+    minAmount: rule.minPurchase,
+    isActive: true,
+    is_used: false,
+    usage_status: 'unused',
+    expiryDate: 'لا ينتهي',
+    usageCount: 0,
+    userId: userEmail,
+    createdAt: new Date().toISOString()
+  });
+
+  // Update user document
+  const userDocRef = doc(db, 'users', userEmail);
+  await setDoc(userDocRef, {
+    points: remainingPoints,
+    coupons: newCoupons
+  }, { merge: true });
+
+  // Add system notifications for the coupon generated
+  try {
+    const notificationRef = collection(db, 'notifications');
+    await addDoc(notificationRef, {
+      userId: userEmail,
+      title: 'تم استبدال النقاط بنجاح! 🎁',
+      message: `تهانينا! لقد حصلت على قسيمة خصم بقيمة $${rule.discount} بكود: ${code} مقابل ${pointsRequired} نقطة.`,
+      date: new Date().toISOString(),
+      isRead: false,
+      type: 'system'
+    });
+  } catch (notifErr) {
+    console.warn("Could not create notification for generated coupon:", notifErr);
+  }
+
+  return { points: remainingPoints, coupons: newCoupons, generated: code };
+}
+
 export async function convertPointsToCoupons(userEmail: string, currentPoints: number, currentCoupons: string[] = []): Promise<{ points: number; coupons: string[]; generated: string[] }> {
   if (currentPoints < 1000) {
     return { points: currentPoints, coupons: currentCoupons, generated: [] };
@@ -121,8 +173,11 @@ export async function convertPointsToCoupons(userEmail: string, currentPoints: n
       value: 1, // $1
       minAmount: 0,
       isActive: true,
+      is_used: false,
+      usage_status: 'unused',
       expiryDate: 'لا ينتهي',
       usageCount: 0,
+      userId: userEmail,
       createdAt: new Date().toISOString()
     });
   }

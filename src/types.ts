@@ -178,6 +178,12 @@ export interface AppNotification {
   orderId?: string;
 }
 
+export interface CouponRule {
+  id: string;
+  discount: number;
+  minPurchase: number;
+}
+
 export interface Coupon {
   id: string;
   code: string;
@@ -188,6 +194,10 @@ export interface Coupon {
   expiryDate: string;
   usageCount: number;
   createdAt: string;
+  userId?: string; // To track who redeemed it
+  is_used?: boolean; // For single-use redeemed coupons
+  usage_status?: 'unused' | 'used';
+  usedAt?: string;
 }
 
 export interface Policy {
