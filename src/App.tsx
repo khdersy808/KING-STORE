@@ -72,8 +72,11 @@ function AppContent() {
   useEffect(() => {
     let isSwDone = false;
     let isTimeoutDone = false;
+    let isDismissed = false;
 
     const fadeOutLoader = () => {
+      if (isDismissed) return;
+      isDismissed = true;
       const loader = document.getElementById('global-loader');
       if (loader) {
         loader.style.opacity = '0';
@@ -122,6 +125,17 @@ function AppContent() {
       tryFadeOut();
     }, 600);
 
+    // 3. Absolute safety fallback - after 1500ms, force dismiss no matter what
+    const forceTimeout = setTimeout(() => {
+      isSwDone = true;
+      isTimeoutDone = true;
+      setIsAppReady(true);
+      fadeOutLoader();
+    }, 1500);
+
+    return () => {
+      clearTimeout(forceTimeout);
+    };
   }, []);
 
   const handleTabChange = (tab: string) => {

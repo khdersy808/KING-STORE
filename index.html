@@ -155,6 +155,58 @@
       </div>
     </div>
     <div id="root"></div>
+    <script>
+      (function() {
+        var loader = document.getElementById('global-loader');
+        if (!loader) return;
+
+        var isDismissed = false;
+        function dismissLoader() {
+          if (isDismissed) return;
+          isDismissed = true;
+          loader.style.opacity = '0';
+          setTimeout(function() {
+            loader.style.display = 'none';
+            if (loader.parentNode) {
+              loader.parentNode.removeChild(loader);
+            }
+          }, 600);
+        }
+
+        // 1. Force dismiss after 1500ms as an absolute safety fallback
+        var safetyTimeout = setTimeout(function() {
+          console.log("[PWA Failsafe] Forcing loader dismiss after 1.5 seconds.");
+          dismissLoader();
+        }, 1500);
+
+        // 2. Listen for service worker ready or custom app events
+        window.addEventListener('sw-ready', function() {
+          console.log("[PWA Loader] Service Worker signaled readiness.");
+          dismissLoader();
+        });
+
+        window.addEventListener('app-ready', function() {
+          console.log("[PWA Loader] React App signaled readiness.");
+          dismissLoader();
+        });
+
+        // 3. Listen to service worker active broadcast
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'SW_ACTIVATED') {
+              console.log("[PWA Loader] Service Worker activated signal received via message.");
+              dismissLoader();
+            }
+          });
+
+          // Check if controller is already present
+          if (navigator.serviceWorker.controller) {
+            console.log("[PWA Loader] Service Worker already active on load.");
+            setTimeout(dismissLoader, 300);
+          }
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

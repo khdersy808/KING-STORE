@@ -1,4 +1,4 @@
-const CACHE_NAME = "king-store-pwa-v1";
+const CACHE_NAME = "king-store-pwa-v2";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
@@ -31,9 +31,18 @@ self.addEventListener("activate", (event) => {
           }
         })
       );
+    }).then(() => {
+      // Claim clients first
+      return self.clients.claim();
+    }).then(() => {
+      // Notify all clients that Service Worker is active and ready
+      return self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_ACTIVATED' });
+        });
+      });
     })
   );
-  self.clients.claim();
 });
 
 // Fetch Event with Stale-While-Revalidate Strategy
