@@ -70,16 +70,26 @@ function AppContent() {
   const [currentTab, setCurrentTab] = useState<string>('home');
 
   useEffect(() => {
-    // Faster removal once the app content starts mounting
-    setIsAppReady(true);
-    const loader = document.getElementById('global-loader');
-    if (loader) {
-      loader.style.opacity = '0';
-      setTimeout(() => {
-        loader.style.display = 'none';
-        loader.remove();
-      }, 500); // Wait for transition
-    }
+    const initApp = async () => {
+      try {
+        // Wait a small duration (e.g., 600ms) for smooth transition and database listener attachments
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      } catch (err) {
+        console.warn("App initialization warning:", err);
+      } finally {
+        setIsAppReady(true);
+        const loader = document.getElementById('global-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => {
+            loader.style.display = 'none';
+            loader.remove();
+          }, 500); // Wait for transition
+        }
+      }
+    };
+
+    initApp();
   }, []);
 
   const handleTabChange = (tab: string) => {
@@ -1467,7 +1477,47 @@ function AppContent() {
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
   if (!isAppReady) {
-    return null; // Keep index.html loader visible
+    return (
+      <AnimatePresence>
+        <motion.div
+          key="splash"
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.6, ease: "easeInOut" } }}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 text-slate-100"
+        >
+          <div className="flex flex-col items-center justify-center space-y-6">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="relative flex items-center justify-center"
+            >
+              {/* Golden Outer Glow */}
+              <div className="absolute inset-0 -m-8 rounded-full bg-amber-500/10 blur-2xl animate-pulse" />
+              {/* Golden circular frame */}
+              <div className="h-28 w-28 rounded-full border-2 border-amber-500/20 bg-slate-900/90 flex items-center justify-center shadow-[0_0_50px_rgba(245,158,11,0.15)]">
+                <Crown className="h-14 w-14 text-amber-400 stroke-[1.5] drop-shadow-[0_0_15px_rgba(245,158,11,0.6)] animate-pulse" />
+              </div>
+            </motion.div>
+            
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.3, duration: 0.8 }}
+              className="text-center space-y-2"
+            >
+              <h1 className="text-3xl sm:text-4xl font-black tracking-[0.25em] text-amber-500 uppercase select-none drop-shadow-[0_2px_10px_rgba(245,158,11,0.25)]">
+                KING STORE
+              </h1>
+              <div className="h-0.5 w-16 bg-gradient-to-r from-transparent via-amber-500 to-transparent mx-auto" />
+              <p className="text-xs uppercase tracking-[0.4em] text-amber-500/60 font-semibold font-mono">
+                THE ROYAL EXPERIENCE
+              </p>
+            </motion.div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
   }
 
   return (

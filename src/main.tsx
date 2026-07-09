@@ -20,9 +20,13 @@ if ('serviceWorker' in navigator) {
           }
         });
       }
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      const hasReloaded = sessionStorage.getItem('sw_unregistered_reload');
+      if (!hasReloaded) {
+        sessionStorage.setItem('sw_unregistered_reload', 'true');
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      }
     }
   });
 }

@@ -384,7 +384,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
           agents.map((agent) => (
             <div 
               key={agent.id} 
-              className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex items-center justify-between transition-all relative overflow-hidden ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
+              className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative overflow-hidden ${dir === 'rtl' ? 'text-right' : 'text-left'}`}
             >
               <div className={`absolute top-0 w-1 h-full bg-amber-500 ${dir === 'rtl' ? 'right-0' : 'left-0'}`} />
               <div className={`space-y-1.5 flex-1 ${dir === 'rtl' ? 'pr-2' : 'pl-2'}`}>
@@ -404,7 +404,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
                 </div>
               </div>
 
-              <div className={`space-y-1.5 shrink-0 pr-4 ${dir === 'rtl' ? 'text-left pl-1 border-r border-slate-100' : 'text-right pr-1 border-l border-slate-100'}`}>
+              <div className={`space-y-1.5 shrink-0 sm:pr-4 ${dir === 'rtl' ? 'text-right sm:text-left pl-1 sm:border-r border-slate-100' : 'text-left sm:text-right pr-1 sm:border-l border-slate-100'}`}>
                 <div className="bg-amber-50 text-amber-700 font-black text-xs px-2.5 py-1 rounded-lg border border-amber-100 inline-block">
                   {texts.profitShare} {agent.profitPercentage}%
                 </div>
@@ -561,8 +561,8 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
                         </button>
                       </div>
                       
-                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-right">
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto whitespace-nowrap">
+                        <table className="w-full text-right min-w-[550px]">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">المنتج</th>
@@ -633,8 +633,8 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
                         </div>
                       </div>
 
-                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-right">
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto whitespace-nowrap">
+                        <table className="w-full text-right min-w-[550px]">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">المنتج</th>
