@@ -1145,66 +1145,36 @@ export default function AdminPanel({
     setGeneratedImageUrl('');
 
     try {
-      let width = 500;
-      let height = 500;
-      
-      if (aiAspectRatio === '16:9') { width = 896; height = 504; }
-      else if (aiAspectRatio === '9:16') { width = 504; height = 896; }
-      else if (aiAspectRatio === '4:3') { width = 800; height = 600; }
-      else if (aiAspectRatio === '3:4') { width = 600; height = 800; }
-
-      // 2. Sanitize user input before sending to AI
-      let sanitizedPrompt = promptToUse;
-      const clothingKeywords = ['رجالي', 'نسائي', 'شبابي', 'بناتي', 'أطفال'];
-      const hasClothingKeyword = clothingKeywords.some(kw => sanitizedPrompt.includes(kw));
-      
-      if (hasClothingKeyword) {
-        sanitizedPrompt = sanitizedPrompt
-          .replace(/رجالي/g, "Men's style apparel piece, flat lay clothing item")
-          .replace(/نسائي/g, "Women's style apparel piece, flat lay clothing item")
-          .replace(/شبابي/g, "Youth style apparel piece, flat lay clothing item")
-          .replace(/بناتي/g, "Girls style apparel piece, flat lay clothing item")
-          .replace(/أطفال/g, "Kids style apparel piece, flat lay clothing item");
-      }
-
-      // 3. Translate the sanitized prompt to English via backend
-      let englishPromptToUse = sanitizedPrompt;
-      try {
-        const token = await auth.currentUser?.getIdToken(true);
-        const transRes = await fetch('/api/ai/translate-prompt', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({ prompt: sanitizedPrompt })
-        });
-        const transData = await transRes.json();
-        if (transData.success && transData.translatedPrompt) {
-          englishPromptToUse = transData.translatedPrompt;
-        }
-      } catch (err) {
-        console.warn('Translation failed, using original prompt');
-      }
-
-      // 4. Enforce strict Negative Prompt and Flat Lay style
-      const engineeredPrompt = `
-Subject: ${englishPromptToUse}.
-Style: Flat lay product photography or invisible mannequin. Isolated product photography only.
-Strictly NO humans, NO male or female models, NO faces, NO bodies.
-Lighting/Background: Pure studio white background or luxurious marble grey background, 8k resolution, highly detailed, studio lighting, commercial e-commerce product photography.
-      `.trim();
-
-      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(engineeredPrompt)}?width=${width}&height=${height}&nologo=true`;
-      
-      await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(true);
-        img.onerror = () => reject(new Error('Failed to load image from Pollinations.'));
-        img.src = pollinationsUrl;
+      const token = await auth.currentUser?.getIdToken(true);
+      const response = await fetch('/api/gemini/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          prompt: promptToUse,
+          aspectRatio: aiAspectRatio || '1:1'
+        })
       });
 
-      setGeneratedImageUrl(pollinationsUrl);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'فشل في توليد الصورة عبر خادم الذكاء الاصطناعي.');
+      }
+
+      const imageUrl = data.imageUrl;
+      setGeneratedImageUrl(imageUrl);
+      
+      // Auto-populate the main product image states in the form
+      setFormImageUrl(imageUrl);
+      setFormImages([imageUrl]);
+      
+      onShowToast(
+        'نجاح التوليد! 🪄',
+        'تم توليد الصورة الحقيقية للمنتج بدقة عالية وعرضها مباشرة كمعاينة وتخزينها بنجاح!',
+        'success'
+      );
     } catch (err: any) {
       console.error(err);
       setAiError(err.message || 'حدث خطأ غير متوقع أثناء توليد الصورة.');
@@ -1250,23 +1220,32 @@ Lighting/Background: Pure studio white background or luxurious marble grey backg
         setFormCategory(categories[0] || 'أخرى');
       }
 
-      // 2. Generate Image using the generated imagePrompt
+      // 2. Generate Image using the generated imagePrompt with real Gemini Image Generator
       const imgPromptToUse = detailsData.imagePrompt || `${detailsData.name} studio lighting, commercial photography`;
       
       try {
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPromptToUse)}?width=500&height=500&nologo=true`;
-        
-        await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(true);
-          img.onerror = () => reject(new Error('Failed'));
-          img.src = pollinationsUrl;
+        const imgResponse = await fetch('/api/gemini/generate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            prompt: imgPromptToUse,
+            aspectRatio: '1:1'
+          })
         });
 
-        setFormImageUrl(pollinationsUrl);
+        const imgData = await imgResponse.json();
+        if (imgResponse.ok && imgData.success && imgData.imageUrl) {
+          setFormImageUrl(imgData.imageUrl);
+          setFormImages([imgData.imageUrl]);
+        } else {
+          throw new Error(imgData.error || 'فشل توليد الصورة بالخادم.');
+        }
       } catch (err) {
-        console.warn('Image generation failed, but product details were created.');
-        setAiProductError('تم توليد تفاصيل المنتج بنجاح، ولكن فشل توليد الصورة تلقائياً. يمكنك توليدها يدوياً.');
+        console.warn('Image generation failed, but product details were created.', err);
+        setAiProductError('تم توليد تفاصيل المنتج بنجاح، ولكن فشل توليد الصورة الحقيقية تلقائياً. يمكنك توليدها يدوياً.');
       }
 
       // Reset prompt and keep creator active/inactive

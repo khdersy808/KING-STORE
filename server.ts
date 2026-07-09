@@ -1,7 +1,8 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 async function startServer() {
   const app = express();
@@ -73,6 +74,106 @@ async function startServer() {
   }
 
   // API routes FIRST
+  app.post("/api/gemini/generate-image", async (req, res) => {
+    try {
+      const { prompt, aspectRatio = "1:1" } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: "الوصف مطلوب لتوليد الصورة." });
+      }
+
+      // 1. Translate and refine prompt using gemini-2.5-flash to get a perfect English e-commerce studio photograph description
+      let refinedPrompt = `A highly realistic, commercial e-commerce studio photograph of ${prompt}, plain light grey background, sharp focus, 8k resolution, photorealistic, no text`;
+      const apiKey = process.env.GEMINI_API_KEY;
+      
+      if (apiKey && apiKey !== "MY_GEMINI_API_KEY" && apiKey.trim() !== "") {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: apiKey,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              }
+            }
+          });
+
+          const refineResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `You are an expert AI prompt engineer for e-commerce product photography. 
+Translate and refine this product description into a highly detailed, professional English product photography prompt for an AI image generator.
+
+Original description: "${prompt}"
+
+Rules:
+- Output ONLY the final refined English prompt.
+- Do not include any quotes, markdown formatting, introductory text, or concluding text.
+- Format the output exactly like this: "A highly realistic, commercial e-commerce studio photograph of [translated and refined product details], plain light grey background, sharp focus, 8k resolution, photorealistic, no text"
+- Example: If input is "قميص بولو شبابي", output must be: "A highly realistic, commercial e-commerce studio photograph of a premium men's polo shirt, plain light grey background, sharp focus, 8k resolution, photorealistic, no text"`,
+          });
+          
+          if (refineResponse.text && refineResponse.text.trim()) {
+            refinedPrompt = refineResponse.text.trim();
+            console.log("Gemini translated & refined prompt:", refinedPrompt);
+          }
+        } catch (refineErr) {
+          console.warn("Prompt refinement failed, using formatted original prompt:", refineErr);
+        }
+      }
+
+      // Sanitize the prompt to remove newlines, double quotes and other hazardous characters
+      const cleanPrompt = refinedPrompt
+        .replace(/["']/g, '')
+        .replace(/[\r\n]+/g, ' ')
+        .trim();
+
+      console.log("Final clean prompt sent to Pollinations:", cleanPrompt);
+
+      // Determine size based on aspect ratio
+      let width = 1024;
+      let height = 1024;
+      
+      if (aspectRatio === '16:9') { width = 1024; height = 576; }
+      else if (aspectRatio === '9:16') { width = 576; height = 1024; }
+      else if (aspectRatio === '4:3') { width = 1024; height = 768; }
+      else if (aspectRatio === '3:4') { width = 768; height = 1024; }
+
+      try {
+        // 2. Fetch the image directly from Pollinations AI for free, unlimited, and high-quality generation
+        const seed = Math.floor(Math.random() * 1000000);
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=${width}&height=${height}&nologo=true&seed=${seed}`;
+        
+        console.log(`Fetching image from Pollinations: ${pollinationsUrl}`);
+        const imageResponse = await fetch(pollinationsUrl);
+        
+        if (!imageResponse.ok) {
+          throw new Error(`Pollinations API returned status: ${imageResponse.status}`);
+        }
+
+        const arrayBuffer = await imageResponse.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const base64Image = buffer.toString('base64');
+        const imageUrl = `data:image/png;base64,${base64Image}`;
+
+        return res.json({
+          success: true,
+          imageUrl: imageUrl
+        });
+
+      } catch (pollinationsError: any) {
+        console.error("Pollinations generation error:", pollinationsError);
+        return res.status(500).json({ 
+          success: false, 
+          error: `حدث خطأ أثناء توليد الصورة بالخادم المجاني: ${pollinationsError.message || pollinationsError}` 
+        });
+      }
+    } catch (err: any) {
+      console.error("AI Image Gen Root Error:", err);
+      return res.status(500).json({ 
+        success: false, 
+        error: `خطأ داخلي في الخادم: ${err.message || err}` 
+      });
+    }
+  });
+
   app.post("/api/gemini/edit-image", async (req, res) => {
     try {
       const { prompt, imageBase64 } = req.body;
@@ -82,9 +183,8 @@ async function startServer() {
 
       const apiKey = process.env.GEMINI_API_KEY;
       
-      // If API Key is missing or default, run our smart fallback directly and bypass premium API calls
       if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
-        console.log("No Gemini API key found, running smart local fallback");
+        console.warn("No Gemini API key found, running smart local fallback");
         const fallbackInstructions = getFallbackEdit(prompt);
         return res.json({
           success: true,
@@ -95,7 +195,7 @@ async function startServer() {
       }
 
       try {
-        // Initialize Gemini AI with standard free-tier model (gemini-3.5-flash)
+        // Initialize Gemini AI with standard model (gemini-2.5-flash)
         const ai = new GoogleGenAI({
           apiKey: apiKey,
           httpOptions: {
@@ -116,54 +216,105 @@ async function startServer() {
 
         const systemPrompt = `Analyze this product image and the user's modification request: "${prompt}". 
 Determine the best visual rendering and CSS-like canvas filter settings to achieve this desired result.
-You must return a JSON object representing the editing parameters.
-
-The JSON schema must be exactly as follows:
-{
-  "brightness": number (default 1.0, range 0.1 to 3.0),
-  "contrast": number (default 1.0, range 0.1 to 3.0),
-  "saturation": number (default 1.0, range 0.0 to 3.0),
-  "sepia": number (default 0.0, range 0.0 to 1.0),
-  "hueRotate": number (default 0, in degrees, range 0 to 360),
-  "blur": number (default 0, in pixels, range 0 to 20),
-  "grayscale": number (default 0.0, range 0.0 to 1.0),
-  "invert": number (default 0.0, range 0.0 to 1.0),
-  "textOverlay": {
-    "text": string,
-    "color": string (hex color, e.g., "#d97706" or "#ffffff"),
-    "position": "center" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right",
-    "fontSize": number
-  } | null,
-  "border": {
-    "color": string (hex color),
-    "width": number (in pixels)
-  } | null,
-  "explanation": string (A professional explanation in Arabic of what adjustments were simulated to match their request)
-}`;
+You must return a JSON object representing the editing parameters matching the response schema exactly.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
-          contents: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
+          model: 'gemini-2.5-flash',
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: mimeType,
+                },
               },
-            },
-            {
-              text: systemPrompt,
-            },
-          ],
+              {
+                text: systemPrompt,
+              },
+            ],
+          },
           config: {
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                brightness: {
+                  type: Type.NUMBER,
+                  description: "Brightness multiplier. Default 1.0, range 0.1 to 3.0"
+                },
+                contrast: {
+                  type: Type.NUMBER,
+                  description: "Contrast multiplier. Default 1.0, range 0.1 to 3.0"
+                },
+                saturation: {
+                  type: Type.NUMBER,
+                  description: "Saturation multiplier. Default 1.0, range 0.0 to 3.0"
+                },
+                sepia: {
+                  type: Type.NUMBER,
+                  description: "Sepia filter. Default 0.0, range 0.0 to 1.0"
+                },
+                hueRotate: {
+                  type: Type.INTEGER,
+                  description: "Hue rotate in degrees. Default 0, range 0 to 360"
+                },
+                blur: {
+                  type: Type.INTEGER,
+                  description: "Blur radius in pixels. Default 0, range 0 to 20"
+                },
+                grayscale: {
+                  type: Type.NUMBER,
+                  description: "Grayscale filter. Default 0.0, range 0.0 to 1.0"
+                },
+                invert: {
+                  type: Type.NUMBER,
+                  description: "Invert filter. Default 0.0, range 0.0 to 1.0"
+                },
+                textOverlay: {
+                  type: Type.OBJECT,
+                  description: "Optional text watermark/overlay details. Null if not requested.",
+                  properties: {
+                    text: { type: Type.STRING },
+                    color: { type: Type.STRING, description: "hex color, e.g., #ffffff" },
+                    position: { 
+                      type: Type.STRING, 
+                      description: "One of: center, top, bottom, top-left, top-right, bottom-left, bottom-right" 
+                    },
+                    fontSize: { type: Type.INTEGER }
+                  },
+                  required: ["text", "color", "position", "fontSize"]
+                },
+                border: {
+                  type: Type.OBJECT,
+                  description: "Optional border details. Null if not requested.",
+                  properties: {
+                    color: { type: Type.STRING, description: "hex color" },
+                    width: { type: Type.INTEGER, description: "width in pixels" }
+                  },
+                  required: ["color", "width"]
+                },
+                explanation: {
+                  type: Type.STRING,
+                  description: "A professional explanation in Arabic of what adjustments were simulated to match their request"
+                }
+              },
+              required: ["brightness", "contrast", "saturation", "sepia", "hueRotate", "blur", "grayscale", "invert", "explanation"]
+            }
           }
         });
 
         const textResponse = response.text || "";
-        console.log("Gemini 3.5 Flash response:", textResponse);
+        console.log("Gemini 2.5 Flash response:", textResponse);
+
+        let cleanText = textResponse.trim();
+        if (cleanText.startsWith("```")) {
+          cleanText = cleanText.replace(/^```(json)?\s*/i, "");
+          cleanText = cleanText.replace(/\s*```$/, "");
+        }
+        cleanText = cleanText.trim();
 
         try {
-          const instructions = JSON.parse(textResponse.trim());
+          const instructions = JSON.parse(cleanText);
           return res.json({
             success: true,
             instructions: {
@@ -181,40 +332,26 @@ The JSON schema must be exactly as follows:
             explanation: instructions.explanation || "تم معالجة وتعديل الصورة بنجاح لتلائم طلبك.",
             isAI: true
           });
-        } catch (parseError) {
-          console.error("Failed to parse JSON from Gemini, falling back to local keywords:", parseError);
-          const fallbackInstructions = getFallbackEdit(prompt);
-          return res.json({
-            success: true,
-            instructions: fallbackInstructions,
-            explanation: fallbackInstructions.explanation,
-            isAI: false
+        } catch (parseError: any) {
+          console.error("Failed to parse JSON from Gemini:", parseError, "Cleaned response was:", cleanText);
+          return res.status(500).json({ 
+            success: false, 
+            error: `فشل في تحليل استجابة الذكاء الاصطناعي: ${parseError.message}` 
           });
         }
       } catch (geminiError: any) {
-        console.error("Gemini API error (most likely billing/quota), using graceful local fallback:", geminiError);
-        const fallbackInstructions = getFallbackEdit(prompt);
-        return res.json({
-          success: true,
-          instructions: fallbackInstructions,
-          explanation: fallbackInstructions.explanation,
-          isAI: false
+        console.error("Gemini API error:", geminiError);
+        return res.status(500).json({ 
+          success: false, 
+          error: `حدث خطأ أثناء الاتصال بـ Gemini API: ${geminiError.message || geminiError}` 
         });
       }
     } catch (err: any) {
       console.error("AI Image Edit Root Error:", err);
-      // Even in root error, don't crash, return a functional fallback!
-      try {
-        const fallbackInstructions = getFallbackEdit(req.body?.prompt || "");
-        return res.json({
-          success: true,
-          instructions: fallbackInstructions,
-          explanation: fallbackInstructions.explanation,
-          isAI: false
-        });
-      } catch (fallbackErr) {
-        res.status(500).json({ error: "Failed to process image edit instructions" });
-      }
+      return res.status(500).json({ 
+        success: false, 
+        error: `خطأ داخلي في الخادم: ${err.message || err}` 
+      });
     }
   });
 

@@ -70,26 +70,58 @@ function AppContent() {
   const [currentTab, setCurrentTab] = useState<string>('home');
 
   useEffect(() => {
-    const initApp = async () => {
-      try {
-        // Wait a small duration (e.g., 600ms) for smooth transition and database listener attachments
-        await new Promise((resolve) => setTimeout(resolve, 600));
-      } catch (err) {
-        console.warn("App initialization warning:", err);
-      } finally {
-        setIsAppReady(true);
-        const loader = document.getElementById('global-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => {
-            loader.style.display = 'none';
-            loader.remove();
-          }, 500); // Wait for transition
-        }
+    let isSwDone = false;
+    let isTimeoutDone = false;
+
+    const fadeOutLoader = () => {
+      const loader = document.getElementById('global-loader');
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => {
+          loader.style.display = 'none';
+          loader.remove();
+        }, 600); // Wait for transition
       }
     };
 
-    initApp();
+    const tryFadeOut = () => {
+      if (isSwDone && isTimeoutDone) {
+        setIsAppReady(true);
+        fadeOutLoader();
+      }
+    };
+
+    // 1. Wait for Service Worker activation
+    if ('serviceWorker' in navigator) {
+      if ((window as any).__swReady || navigator.serviceWorker.controller) {
+        isSwDone = true;
+        tryFadeOut();
+      } else {
+        const handleSwReady = () => {
+          isSwDone = true;
+          tryFadeOut();
+          window.removeEventListener('sw-ready', handleSwReady);
+        };
+        window.addEventListener('sw-ready', handleSwReady);
+        
+        // Fallback safety timeout (1.5 seconds)
+        setTimeout(() => {
+          isSwDone = true;
+          tryFadeOut();
+          window.removeEventListener('sw-ready', handleSwReady);
+        }, 1500);
+      }
+    } else {
+      isSwDone = true;
+      tryFadeOut();
+    }
+
+    // 2. Wait for App assets & database listener attachment duration (600ms)
+    setTimeout(() => {
+      isTimeoutDone = true;
+      tryFadeOut();
+    }, 600);
+
   }, []);
 
   const handleTabChange = (tab: string) => {

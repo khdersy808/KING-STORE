@@ -3,32 +3,47 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Unregister Service Worker and clear cache to prevent stale version persistence in development
+// Register the PWA Service Worker and signal readiness
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    let unregisteredAny = false;
-    for (const registration of registrations) {
-      registration.unregister();
-      unregisteredAny = true;
-    }
-    if (unregisteredAny) {
-      console.log('Unregistered active service workers to clear cached app versions.');
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          for (const name of names) {
-            caches.delete(name);
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('[PWA] ServiceWorker registered successfully with scope: ', registration.scope);
+        
+        // If already active or controller exists
+        if (navigator.serviceWorker.controller) {
+          (window as any).__swReady = true;
+          window.dispatchEvent(new CustomEvent('sw-ready'));
+        }
+        
+        registration.addEventListener('updatefound', () => {
+          const installingWorker = registration.installing;
+          if (installingWorker) {
+            installingWorker.addEventListener('statechange', () => {
+              if (installingWorker.state === 'activated') {
+                console.log('[PWA] ServiceWorker activated and ready.');
+                (window as any).__swReady = true;
+                window.dispatchEvent(new CustomEvent('sw-ready'));
+              }
+            });
           }
         });
-      }
-      const hasReloaded = sessionStorage.getItem('sw_unregistered_reload');
-      if (!hasReloaded) {
-        sessionStorage.setItem('sw_unregistered_reload', 'true');
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }
-    }
+      })
+      .catch((err) => {
+        console.error('[PWA] ServiceWorker registration failed: ', err);
+        (window as any).__swReady = true;
+        window.dispatchEvent(new CustomEvent('sw-ready'));
+      });
+
+    // Fallback trigger when SW becomes ready
+    navigator.serviceWorker.ready.then(() => {
+      (window as any).__swReady = true;
+      window.dispatchEvent(new CustomEvent('sw-ready'));
+    });
   });
+} else {
+  (window as any).__swReady = true;
+  window.dispatchEvent(new CustomEvent('sw-ready'));
 }
 
 createRoot(document.getElementById('root')!).render(
