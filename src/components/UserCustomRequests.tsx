@@ -26,8 +26,14 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
       snapshot.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() } as CustomProductRequest);
       });
-      // Sort in memory by timestamp descending
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      // Resilient sorting: Handle Firebase Timestamps or strings
+      list.sort((a, b) => {
+        const dateA = a.timestamp && (a.timestamp as any).toDate ? (a.timestamp as any).toDate() : new Date(a.timestamp);
+        const dateB = b.timestamp && (b.timestamp as any).toDate ? (b.timestamp as any).toDate() : new Date(b.timestamp);
+        return dateB.getTime() - dateA.getTime();
+      });
+
       setRequests(list);
       setIsLoading(false);
     }, (error) => {
@@ -73,6 +79,16 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
           color: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
           icon: Sparkles
         };
+    }
+  };
+
+  const formatDate = (ts: any) => {
+    if (!ts) return '';
+    try {
+      const date = ts.toDate ? ts.toDate() : new Date(ts);
+      return isNaN(date.getTime()) ? 'تاريخ غير صالح' : date.toLocaleDateString('ar-EG');
+    } catch (e) {
+      return 'تاريخ غير صالح';
     }
   };
 
@@ -156,7 +172,7 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
                           <span>{statusInfo.label}</span>
                         </div>
                         <span className="text-[10px] font-mono text-slate-500">
-                          {new Date(req.timestamp).toLocaleDateString('ar-EG')}
+                          {formatDate(req.timestamp)}
                         </span>
                       </div>
 

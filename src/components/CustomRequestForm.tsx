@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Camera, Upload, Send, Loader2, Sparkles, Crown } from 'lucide-react';
-import { db, storage, collection, addDoc, ref, uploadString, getDownloadURL } from '../lib/firebase';
+import { db, collection, addDoc } from '../lib/firebase';
 import { User } from '../types';
 
 interface CustomRequestFormProps {
@@ -23,13 +23,45 @@ export const CustomRequestForm: React.FC<CustomRequestFormProps> = ({
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        onShowToast('خطأ', 'حجم الصورة كبير جداً. الحد الأقصى 5 ميجابايت.', 'warning');
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit for raw file
+        onShowToast('خطأ', 'حجم الملف كبير جداً. يرجى اختيار صورة أصغر.', 'warning');
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
+        const base64Str = reader.result as string;
+        
+        // Compress image using Canvas
+        const img = new Image();
+        img.src = base64Str;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800; // Royal standard width
+          const MAX_HEIGHT = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Output compressed version (0.5 quality)
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5);
+          setImage(compressedBase64);
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -51,12 +83,9 @@ export const CustomRequestForm: React.FC<CustomRequestFormProps> = ({
 
     setIsSubmitting(true);
     try {
-      let imageUrl = '';
-      if (image) {
-        const storageRef = ref(storage, `custom_requests/${currentUser.id}_${Date.now()}`);
-        await uploadString(storageRef, image, 'data_url');
-        imageUrl = await getDownloadURL(storageRef);
-      }
+      // Use the base64 image directly for Firestore instead of using Firebase Storage
+      // to avoid infinite loading issues and complex storage rules
+      const imageUrl = image || '';
 
       const requestData = {
         userId: currentUser.id,
@@ -95,8 +124,10 @@ export const CustomRequestForm: React.FC<CustomRequestFormProps> = ({
       onShowToast('نجاح', 'تم إرسال طلبك بنجاح! سيتواصل معك فريقنا الملكي قريباً ✨', 'success');
       setDescription('');
       setImage(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error submitting custom request:', err);
+      // Show explicit alert with error message to help identify firestore permission issues
+      alert(`فشل إرسال الطلب: ${err.message || 'خطأ غير معروف'}`);
       onShowToast('خطأ', 'فشل إرسال الطلب. يرجى المحاولة لاحقاً.', 'error');
     } finally {
       setIsSubmitting(false);

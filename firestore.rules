@@ -144,11 +144,10 @@ service cloud.firestore {
     // Rules for custom product requests
     match /custom_requests/{requestId} {
       allow create: if isSignedIn();
-      allow read: if isSignedIn() && (
-        isAdmin() || 
-        resource.data.userId == request.auth.uid
+      allow read, write: if isSignedIn() && (
+        request.auth.token.email == 'khdersy080@gmail.com' || 
+        (resource != null && resource.data.userId == request.auth.uid)
       );
-      allow update, delete: if isAdmin();
     }
   }
 }

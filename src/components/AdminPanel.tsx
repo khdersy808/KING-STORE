@@ -5635,7 +5635,17 @@ export default function AdminPanel({
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <h4 className="text-sm font-black text-slate-900 truncate max-w-[70%]">{req.userName}</h4>
-                      <span className="text-[10px] font-mono text-slate-400">{new Date(req.timestamp).toLocaleDateString('ar-EG')}</span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {(() => {
+                          if (!req.timestamp) return '';
+                          try {
+                            const date = (req.timestamp as any).toDate ? (req.timestamp as any).toDate() : new Date(req.timestamp);
+                            return date.toLocaleDateString('ar-EG');
+                          } catch (e) {
+                            return '';
+                          }
+                        })()}
+                      </span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-bold truncate">{req.userEmail}</p>
                   </div>

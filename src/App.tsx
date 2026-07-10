@@ -10,7 +10,7 @@ import ProductCard from './components/ProductCard';
 import Cart from './components/Cart';
 import AdminPanel from './components/AdminPanel';
 import OrderTracking from './components/OrderTracking';
-import { Product, PaymentGateway, Order, CartItem, ProductType, OrderStatus, ProductReview, User, AppNotification, DeliverySettings } from './types';
+import { Product, PaymentGateway, Order, CartItem, ProductType, OrderStatus, ProductReview, User, AppNotification, DeliverySettings, Coupon } from './types';
 import { INITIAL_PRODUCTS, INITIAL_PAYMENT_GATEWAYS, INITIAL_ORDERS } from './data';
 import {
   Package,
@@ -121,9 +121,171 @@ function AppContent() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders' | 'custom-requests'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [rewardsConfig, setRewardsConfig] = useState<{ [key: string]: number }>({
     day1: 10, day2: 20, day3: 30, day4: 40, day5: 50, day6: 60, day7: 100
   });
+
+  const [users, setUsers] = useState<User[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_users');
+      let parsed: User[] = saved ? JSON.parse(saved) : [];
+      
+      const adminEmail = 'khdersy808@gmail.com';
+      const adminUser: User = {
+        id: 'admin-default',
+        name: 'مدير النظام الملكي',
+        email: adminEmail,
+        password: 'Khder@2003',
+        role: 'admin'
+      };
+
+      const existingAdminIndex = parsed.findIndex(u => u.email.toLowerCase() === adminEmail.toLowerCase());
+      if (existingAdminIndex > -1) {
+        parsed[existingAdminIndex] = adminUser;
+      } else {
+        parsed = parsed.filter(u => u.email !== 'admin@kingstore.com');
+        parsed.push(adminUser);
+      }
+      return parsed;
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_products');
+      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    } catch (e) {
+      return INITIAL_PRODUCTS;
+    }
+  });
+
+  const [gateways, setGateways] = useState<PaymentGateway[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_gateways');
+      return saved ? JSON.parse(saved) : INITIAL_PAYMENT_GATEWAYS;
+    } catch (e) {
+      return INITIAL_PAYMENT_GATEWAYS;
+    }
+  });
+
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_orders');
+      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+    } catch (e) {
+      return INITIAL_ORDERS;
+    }
+  });
+
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_wishlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_coupons');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [categories, setCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem('king_store_categories');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn("Error parsing saved categories:", err);
+      }
+    }
+    return Array.from(new Set(INITIAL_PRODUCTS.map((p) => p.category)));
+  });
+
+  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
+    id: 'global_settings',
+    basePricePerDay: 5,
+    rules: [],
+    airBaseCost: 40,
+    airUrgencyFactor: 8,
+    airWeightVolumeFactor: 1.5,
+    seaBaseCost: 15,
+    seaDailyDecay: 0.5,
+    seaMinBaseline: 5
+  });
+
+  const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
+  const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+  const [discountsSectionFeaturedProductIds, setDiscountsSectionFeaturedProductIds] = useState<string[]>([]);
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
+    if (rememberMe) {
+      const saved = localStorage.getItem('king_store_current_user');
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  });
+
+  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+  const [startY, setStartY] = useState<number>(0);
+  const [pullDistance, setPullDistance] = useState<number>(0);
+  const [isPulling, setIsPulling] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('king_store_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [pointsHistory, setPointsHistory] = useState<any[]>([]);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
+  const [showRecoveryPopup, setShowRecoveryPopup] = useState<boolean>(false);
+  const [recoveryPromoCode, setRecoveryPromoCode] = useState<string>('');
+  const [activeAdminInvite, setActiveAdminInvite] = useState<{ email: string; role: 'admin' } | null>(null);
+
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [copiedCodeApp, setCopiedCodeApp] = useState<boolean>(false);
+  const [copiedLinkApp, setCopiedLinkApp] = useState<boolean>(false);
+  const [copiedCouponCodeApp, setCopiedCouponCodeApp] = useState<string | null>(null);
+
+  const [selectedType, setSelectedType] = useState<'all' | 'physical' | 'digital'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
+  const [editingCartItemIndex, setEditingCartItemIndex] = useState<number | null>(null);
+
+  const [prevTab, setPrevTab] = useState(currentTab);
+  const [direction, setDirection] = useState(0);
 
   // --- Core App Initialization ---
   useEffect(() => {
@@ -233,21 +395,6 @@ function AppContent() {
     }
   };
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
-    if (rememberMe) {
-      const saved = localStorage.getItem('king_store_current_user');
-      return saved ? JSON.parse(saved) : null;
-    }
-    return null;
-  });
-
-  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
-
-  // --- PWA Installation Logic ---
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBtn, setShowInstallBtn] = useState(false);
-
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
@@ -322,10 +469,6 @@ function AppContent() {
   }, [currentUser?.email]);
 
   // --- Pull-to-Refresh State System for Mobile ---
-  const [startY, setStartY] = useState<number>(0);
-  const [pullDistance, setPullDistance] = useState<number>(0);
-  const [isPulling, setIsPulling] = useState<boolean>(false);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (window.scrollY === 0 && !isRefreshing) {
@@ -361,33 +504,6 @@ function AppContent() {
   };
 
   // --- LocalStorage Persistence Engine ---
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('king_store_products');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-  });
-
-  const [gateways, setGateways] = useState<PaymentGateway[]>(() => {
-    const saved = localStorage.getItem('king_store_gateways');
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENT_GATEWAYS;
-  });
-
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('king_store_orders');
-    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-  });
-
-  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('king_store_cart');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // --- Notifications & Toasts State ---
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('king_store_notifications');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [wishlist, setWishlist] = useState<string[]>([]);
-  const [pointsHistory, setPointsHistory] = useState<any[]>([]);
 
   // Synchronize points history with currentUser in real-time
   useEffect(() => {
@@ -480,19 +596,6 @@ function AppContent() {
   };
 
   // --- Dynamic Categories State Engine ---
-  const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('king_store_categories');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.warn("Error parsing saved categories:", err);
-      }
-    }
-    // Extract unique categories from initial products as fallback
-    return Array.from(new Set(INITIAL_PRODUCTS.map((p) => p.category)));
-  });
 
   // Categories synchronization is now handled in initializeApp for better performance
   useEffect(() => {
@@ -604,24 +707,6 @@ function AppContent() {
     };
     fetchOrders();
   }, []);
-
-  const [globalDiscount, setGlobalDiscount] = useState<number>(0);
-  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
-    id: 'global_settings',
-    basePricePerDay: 5,
-    rules: [],
-    airBaseCost: 40,
-    airUrgencyFactor: 8,
-    airWeightVolumeFactor: 1.5,
-    seaBaseCost: 15,
-    seaDailyDecay: 0.5,
-    seaMinBaseline: 5
-  });
-
-  // Exclusive Weekly Offers / Discounts Section States
-  const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
-  const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
-  const [discountsSectionFeaturedProductIds, setDiscountsSectionFeaturedProductIds] = useState<string[]>([]);
 
   // Exclusive Discounts Section settings are now handled in initializeApp
 
@@ -1007,48 +1092,6 @@ function AppContent() {
     }
   };
 
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
-  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [copiedCodeApp, setCopiedCodeApp] = useState<boolean>(false);
-  const [copiedLinkApp, setCopiedLinkApp] = useState<boolean>(false);
-  const [copiedCouponCodeApp, setCopiedCouponCodeApp] = useState<string | null>(null);
-  
-  // --- User Authentication / Registry State Engine ---
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('king_store_users');
-    let parsed: User[] = saved ? JSON.parse(saved) : [];
-    
-    const adminEmail = 'khdersy808@gmail.com';
-    const adminUser: User = {
-      id: 'admin-default',
-      name: 'مدير النظام الملكي',
-      email: adminEmail,
-      password: 'Khder@2003',
-      role: 'admin'
-    };
-
-    const existingAdminIndex = parsed.findIndex(u => u.email.toLowerCase() === adminEmail.toLowerCase());
-    if (existingAdminIndex > -1) {
-      parsed[existingAdminIndex] = adminUser;
-    } else {
-      // Remove old default admin if present
-      parsed = parsed.filter(u => u.email !== 'admin@kingstore.com');
-      parsed.push(adminUser);
-    }
-    return parsed;
-  });
-
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
-  const [showRecoveryPopup, setShowRecoveryPopup] = useState<boolean>(false);
-  const [recoveryPromoCode, setRecoveryPromoCode] = useState<string>('');
-
-
-  // --- Admin Invitation Detection Engine ---
-  const [activeAdminInvite, setActiveAdminInvite] = useState<{ email: string; role: 'admin' } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1087,15 +1130,6 @@ function AppContent() {
   };
 
   // Filtering states
-  const [selectedType, setSelectedType] = useState<'all' | 'physical' | 'digital'>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
-  const [editingCartItemIndex, setEditingCartItemIndex] = useState<number | null>(null);
-
-  const [prevTab, setPrevTab] = useState(currentTab);
-  const [direction, setDirection] = useState(0);
 
   useEffect(() => {
     if (currentTab !== prevTab) {
@@ -1817,7 +1851,7 @@ function AppContent() {
         ) : (
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
-              key={isAdminMode ? 'admin' : activeCustomerView === 'tracking' ? 'tracking' : activeCustomerView === 'wishlist' ? 'wishlist' : currentTab}
+              key={isAdminMode ? `admin-${currentTab}` : (activeCustomerView === 'tracking' ? 'tracking' : activeCustomerView === 'wishlist' ? 'wishlist' : activeCustomerView === 'my-orders' ? 'my-orders' : activeCustomerView === 'custom-requests' ? 'custom-requests' : currentTab)}
               custom={direction}
               variants={slideVariants}
               initial="enter"
