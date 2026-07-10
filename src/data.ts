@@ -130,55 +130,6 @@ export const INITIAL_PRODUCTS: Product[] = [
 
 export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
   {
-    id: 'credit_card',
-    name: 'الدفع بالبطاقة الائتمانية / مدى',
-    iconName: 'CreditCard',
-    isEnabled: true,
-    instructions: 'يرجى إدخال تفاصيل بطاقتك الائتمانية بأمان لإتمام الدفع الفوري والمباشر.',
-    fields: [
-      { key: 'card_number', label: 'رقم البطاقة', placeholder: 'xxxx xxxx xxxx xxxx', value: '' },
-      { key: 'card_name', label: 'اسم صاحب البطاقة', placeholder: 'الاسم المكتوب على البطاقة', value: '' },
-      { key: 'expiry', label: 'تاريخ الانتهاء', placeholder: 'MM/YY', value: '' },
-      { key: 'cvv', label: 'الرمز السري CVV', placeholder: 'xxx', value: '' }
-    ]
-  },
-  {
-    id: 'instapay_wallet',
-    name: 'محفظة إلكترونية / إنستاباي (Instapay)',
-    iconName: 'Smartphone',
-    isEnabled: true,
-    instructions: 'قم بتحويل القيمة المطلوبة إلى رقم المحفظة الموضح أدناه، ثم أدخل رقم التحويل أو رقم الهاتف للتأكيد.',
-    accountIdentifier: '01xxxxxxxxx',
-    fields: [
-      { key: 'wallet_number', label: 'رقم هاتف المحول منه', placeholder: '01xxxxxxxxx أو رقم الهاتف المسجل', value: '' },
-      { key: 'txn_id', label: 'رقم مرجع التحويل / الإرسال', placeholder: 'رقم العملية المكون من 12 رقم', value: '' }
-    ]
-  },
-  {
-    id: 'paypal',
-    name: 'حساب PayPal الإلكتروني',
-    iconName: 'Wallet',
-    isEnabled: true,
-    instructions: 'يرجى تسجيل الدخول إلى PayPal وتأكيد التحويل إلى حساب المتجر الرسمي.',
-    accountIdentifier: 'payment@kingstore.com',
-    fields: [
-      { key: 'paypal_email', label: 'بريدك الإلكتروني في بايبال', placeholder: 'example@email.com', value: '' }
-    ]
-  },
-  {
-    id: 'bank_transfer',
-    name: 'تحويل بنكي مباشر',
-    iconName: 'Building',
-    isEnabled: false,
-    instructions: 'قم بتحويل المبلغ إلى حسابنا البنكي، ثم ارفق تفاصيل التحويل أدناه.',
-    accountIdentifier: 'SA398000012345678901234',
-    fields: [
-      { key: 'sender_name', label: 'اسم المحول الثلاثي', placeholder: 'الاسم كما يظهر في كشف الحساب', value: '' },
-      { key: 'bank_name', label: 'اسم البنك المحول منه', placeholder: 'مثال: البنك الأهلي، بنك الرياض...', value: '' },
-      { key: 'transfer_time', label: 'تاريخ ووقت التحويل', placeholder: 'مثال: اليوم الساعة 2 ظهراً', value: '' }
-    ]
-  },
-  {
     id: 'syriatel_cash',
     name: 'سيريتل كاش (Syriatel Cash)',
     iconName: 'Smartphone',
@@ -192,16 +143,16 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
     ]
   },
   {
-    id: 'mtn_cash',
-    name: 'إم تي إن كاش (MTN Cash)',
+    id: 'sham_cash',
+    name: 'شام كاش (Sham Cash)',
     iconName: 'Smartphone',
     isEnabled: true,
-    instructions: 'التحويل من حساب إلى حساب مجاني تماماً وبدون أي رسوم إضافية. يرجى تحويل قيمة الطلب مباشرة إلى رقم MTN Cash الموضح أدناه، ثم ملء البيانات وإرفاق الإيصال لتأكيد الدفع.',
-    accountIdentifier: '0998765432',
+    instructions: 'يرجى تحويل قيمة الطلب مباشرة إلى رقم شام كاش الموضح أدناه، ثم ملء البيانات وإرفاق الإيصال لتأكيد الدفع.',
+    accountIdentifier: '0123456789',
     fields: [
       { key: 'sender_name', label: 'الاسم الكامل للمرسل (الاسم الثلاثي للزبون)', placeholder: 'اكتب اسمك الثلاثي كما هو في حساب الدفع', value: '' },
-      { key: 'phone_number', label: 'رقم الهاتف المشترك بخدمة MTN Cash', placeholder: '09xxxxxxxx', value: '' },
-      { key: 'txn_id', label: 'معرف العملية / رقم الحوالة', placeholder: 'رقم العملية المستورد من تطبيق MTN', value: '' }
+      { key: 'phone_number', label: 'رقم الهاتف المشترك بخدمة شام كاش', placeholder: '01xxxxxxxx', value: '' },
+      { key: 'txn_id', label: 'معرف العملية / رقم الحوالة', placeholder: 'رقم العملية من تطبيق شام كاش', value: '' }
     ]
   },
   {

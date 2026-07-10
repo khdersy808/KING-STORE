@@ -49,6 +49,7 @@ interface CartProps {
   onUpdateItemColor: (index: number, newColor: string) => void;
   onClearCart: () => void;
   enabledGateways: PaymentGateway[];
+  isLoadingGateways?: boolean;
   onPlaceOrder: (order: Order) => void;
   currentUser: User | null;
   onOpenAuth: () => void;
@@ -70,6 +71,7 @@ export default function Cart({
   onUpdateItemColor,
   onClearCart,
   enabledGateways,
+  isLoadingGateways = false,
   onPlaceOrder,
   currentUser,
   onOpenAuth,
@@ -129,15 +131,8 @@ export default function Cart({
   const [couponFeedback, setCouponFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-  // MTN Cash state variables
-  const [mtnSenderName, setMtnSenderName] = useState<string>('');
-  const [mtnPhone, setMtnPhone] = useState<string>('');
-  const [mtnTransactionId, setMtnTransactionId] = useState<string>('');
-
   // Syriatel Cash state variables
-  const [syriatelSenderName, setSyriatelSenderName] = useState<string>('');
-  const [syriatelPhone, setSyriatelPhone] = useState<string>('');
-  const [syriatelTransactionId, setSyriatelTransactionId] = useState<string>('');
+  // Removed hardcoded states as we use gatewayFieldValues now
 
   // Store Policies & Confirmation Checkbox State
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -434,12 +429,6 @@ export default function Cart({
     // Reset specific fields
     setSenderName('');
     setTransactionId('');
-    setMtnSenderName('');
-    setMtnPhone('');
-    setMtnTransactionId('');
-    setSyriatelSenderName('');
-    setSyriatelPhone('');
-    setSyriatelTransactionId('');
     setReceiptBase64(null);
     setReceiptFileName('');
   };
@@ -537,9 +526,9 @@ export default function Cart({
       selectedOptions: item.selectedOptions
     }));
 
-    const finalSenderName = gatewayFieldValues.sender_name || gatewayFieldValues.senderName || senderName || mtnSenderName || syriatelSenderName || (selectedGatewayId !== 'cash_on_delivery' ? senderName : undefined);
-    const finalTransactionId = gatewayFieldValues.txn_id || gatewayFieldValues.transactionId || transactionId || mtnTransactionId || syriatelTransactionId || (selectedGatewayId !== 'cash_on_delivery' ? transactionId : undefined);
-    const finalPhoneNumber = gatewayFieldValues.phone_number || gatewayFieldValues.phoneNumber || mtnPhone || syriatelPhone || undefined;
+    const finalSenderName = gatewayFieldValues.sender_name || gatewayFieldValues.senderName || senderName || (selectedGatewayId !== 'cash_on_delivery' ? senderName : undefined);
+    const finalTransactionId = gatewayFieldValues.txn_id || gatewayFieldValues.transactionId || transactionId || (selectedGatewayId !== 'cash_on_delivery' ? transactionId : undefined);
+    const finalPhoneNumber = gatewayFieldValues.phone_number || gatewayFieldValues.phoneNumber || undefined;
 
     const newOrder: Order = {
       id: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -1119,7 +1108,12 @@ export default function Cart({
                     <span>{t('chooseGateway')}</span>
                   </h3>
 
-                  {applicableGateways.length === 0 ? (
+                  {isLoadingGateways ? (
+                    <div className="p-8 flex flex-col items-center justify-center space-y-4 bg-slate-950/40 rounded-2xl border border-amber-500/10">
+                      <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+                      <p className="text-xs font-bold text-amber-200 animate-pulse">جاري تحميل طرق الدفع الملكية...</p>
+                    </div>
+                  ) : applicableGateways.length === 0 ? (
                     <div className="p-4 bg-red-950/20 text-red-400 border border-red-950/40 rounded-xl flex items-center gap-2 text-xs">
                       <AlertCircle className="h-4 w-4" />
                       <span>{t('noGateways')}</span>

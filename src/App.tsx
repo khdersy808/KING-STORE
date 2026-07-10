@@ -126,6 +126,8 @@ function AppContent() {
     day1: 10, day2: 20, day3: 30, day4: 40, day5: 50, day6: 60, day7: 100
   });
 
+  const [isLoadingGateways, setIsLoadingGateways] = useState<boolean>(true);
+
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem('king_store_users');
@@ -605,6 +607,7 @@ function AppContent() {
   // Synchronize payment gateways with Firestore
   useEffect(() => {
     const fetchGateways = async () => {
+      setIsLoadingGateways(true);
       try {
         const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
         const q = collection(db, 'payment_gateways');
@@ -647,6 +650,8 @@ function AppContent() {
         }
       } catch (e) {
         console.warn("Firebase payment gateways fetch failed.", e);
+      } finally {
+        setIsLoadingGateways(false);
       }
     };
     fetchGateways();
@@ -3105,6 +3110,7 @@ function AppContent() {
         onUpdateItemColor={handleUpdateItemColor}
         onClearCart={handleClearCart}
         enabledGateways={enabledGateways}
+        isLoadingGateways={isLoadingGateways}
         onPlaceOrder={handlePlaceOrder}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
