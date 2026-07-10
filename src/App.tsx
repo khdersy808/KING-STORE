@@ -602,6 +602,56 @@ function AppContent() {
     safeLocalStorageSetItem('king_store_categories', categories);
   }, [categories]);
 
+  // Synchronize payment gateways with Firestore
+  useEffect(() => {
+    const fetchGateways = async () => {
+      try {
+        const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
+        const q = collection(db, 'payment_gateways');
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const list: PaymentGateway[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              name: data.name || '',
+              iconName: data.iconName || 'CreditCard',
+              isEnabled: data.isEnabled ?? true,
+              instructions: data.instructions || '',
+              accountIdentifier: data.accountIdentifier || undefined,
+              qrCodeUrl: data.qrCodeUrl || undefined,
+              customIconUrl: data.customIconUrl || undefined,
+              fields: Array.isArray(data.fields) ? data.fields : []
+            } as PaymentGateway);
+          });
+          setGateways(list);
+        } else {
+          // Seed INITIAL_PAYMENT_GATEWAYS if empty in Firestore
+          for (const gw of INITIAL_PAYMENT_GATEWAYS) {
+            try {
+              await setDoc(doc(db, 'payment_gateways', gw.id), {
+                name: gw.name,
+                iconName: gw.iconName,
+                isEnabled: gw.isEnabled,
+                instructions: gw.instructions,
+                accountIdentifier: gw.accountIdentifier || null,
+                qrCodeUrl: gw.qrCodeUrl || null,
+                fields: gw.fields || []
+              });
+            } catch (err) {
+              console.warn(`Error seeding gateway ${gw.name} to Firestore:`, err);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Firebase payment gateways fetch failed.", e);
+      }
+    };
+    fetchGateways();
+  }, []);
+
   // Synchronize products with Firestore
   useEffect(() => {
     const fetchProducts = async () => {

@@ -498,48 +498,30 @@ export default function Cart({
 
     // Verify gateway fields
     const selectedGateway = applicableGateways.find(gw => gw.id === selectedGatewayId);
-    if (selectedGateway) {
-      if (selectedGateway.id !== 'cash_on_delivery') {
-        if (selectedGateway.id === 'mtn_cash') {
-          if (!mtnSenderName.trim()) {
-            setCheckoutError('يرجى كتابة اسم المرسل الكامل (الاسم الثلاثي للزبون) لتأكيد الدفع.');
-            return;
-          }
-          if (!mtnPhone.trim()) {
-            setCheckoutError('يرجى كتابة رقم الهاتف المشترك بخدمة MTN Cash.');
-            return;
-          }
-          if (!mtnTransactionId.trim()) {
-            setCheckoutError('يرجى كتابة معرف العملية / رقم الحوالة لتأكيد الدفع.');
-            return;
-          }
-        } else if (selectedGateway.id === 'syriatel_cash') {
-          if (!syriatelSenderName.trim()) {
-            setCheckoutError('يرجى كتابة اسم المرسل الكامل (الاسم الثلاثي للزبون) لتأكيد الدفع.');
-            return;
-          }
-          if (!syriatelPhone.trim()) {
-            setCheckoutError('يرجى كتابة رقم الهاتف المشترك بخدمة سيريتل كاش.');
-            return;
-          }
-          if (!syriatelTransactionId.trim()) {
-            setCheckoutError('يرجى كتابة معرف العملية / رقم الحوالة لتأكيد الدفع.');
-            return;
-          }
-        } else {
-          if (!senderName.trim()) {
-            setCheckoutError('يرجى كتابة اسم المرسل الكامل لتأكيد الدفع.');
-            return;
-          }
-          if (!transactionId.trim()) {
-            setCheckoutError('يرجى كتابة معرف العملية / رقم الحوالة لتأكيد الدفع.');
+    if (selectedGateway && selectedGateway.id !== 'cash_on_delivery') {
+      // Dynamic validation of fields
+      if (selectedGateway.fields && selectedGateway.fields.length > 0) {
+        for (const field of selectedGateway.fields) {
+          if (!gatewayFieldValues[field.key]?.trim()) {
+            setCheckoutError(`يرجى ملء حقل "${field.label}" لتأكيد الدفع.`);
             return;
           }
         }
-        if (!receiptBase64) {
-          setCheckoutError('يرجى رفع لقطة شاشة لإيصال التحويل لإتمام الطلب.');
+      } else {
+        // Fallback validation for default fields
+        if (!senderName.trim()) {
+          setCheckoutError('يرجى كتابة اسم المرسل الكامل لتأكيد الدفع.');
           return;
         }
+        if (!transactionId.trim()) {
+          setCheckoutError('يرجى كتابة معرف العملية / رقم الحوالة لتأكيد الدفع.');
+          return;
+        }
+      }
+
+      if (!receiptBase64) {
+        setCheckoutError('يرجى رفع لقطة شاشة لإيصال التحويل لإتمام الطلب.');
+        return;
       }
     }
 
@@ -555,23 +537,9 @@ export default function Cart({
       selectedOptions: item.selectedOptions
     }));
 
-    const finalSenderName = selectedGatewayId === 'mtn_cash' 
-      ? mtnSenderName 
-      : selectedGatewayId === 'syriatel_cash' 
-        ? syriatelSenderName 
-        : (selectedGatewayId !== 'cash_on_delivery' ? senderName : undefined);
-
-    const finalTransactionId = selectedGatewayId === 'mtn_cash' 
-      ? mtnTransactionId 
-      : selectedGatewayId === 'syriatel_cash' 
-        ? syriatelTransactionId 
-        : (selectedGatewayId !== 'cash_on_delivery' ? transactionId : undefined);
-
-    const finalPhoneNumber = selectedGatewayId === 'mtn_cash' 
-      ? mtnPhone 
-      : selectedGatewayId === 'syriatel_cash' 
-        ? syriatelPhone 
-        : undefined;
+    const finalSenderName = gatewayFieldValues.sender_name || gatewayFieldValues.senderName || senderName || mtnSenderName || syriatelSenderName || (selectedGatewayId !== 'cash_on_delivery' ? senderName : undefined);
+    const finalTransactionId = gatewayFieldValues.txn_id || gatewayFieldValues.transactionId || transactionId || mtnTransactionId || syriatelTransactionId || (selectedGatewayId !== 'cash_on_delivery' ? transactionId : undefined);
+    const finalPhoneNumber = gatewayFieldValues.phone_number || gatewayFieldValues.phoneNumber || mtnPhone || syriatelPhone || undefined;
 
     const newOrder: Order = {
       id: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -1229,103 +1197,30 @@ export default function Cart({
 
                               {gw.id !== 'cash_on_delivery' && (
                                 <div className="mt-2 border-t border-amber-500/10 pt-3 space-y-3">
-                                  {gw.id === 'mtn_cash' ? (
-                                    <>
-                                      {/* اسم المرسل الكامل */}
-                                      <div>
+                                  {/* Dynamic fields from Firestore */}
+                                  {gw.fields && gw.fields.length > 0 ? (
+                                    gw.fields.map((field) => (
+                                      <div key={field.key}>
                                         <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          اسم المرسل الكامل (الاسم الثلاثي للزبون) *
+                                          {field.label} *
                                         </label>
                                         <input
                                           type="text"
-                                          value={mtnSenderName || ""}
-                                          onChange={(e) => setMtnSenderName(e.target.value)}
-                                          placeholder="اكتب اسمك الثلاثي كما هو في حساب الدفع"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans"
+                                          value={gatewayFieldValues[field.key] || ""}
+                                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                                          placeholder={field.placeholder}
+                                          className={`block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                            field.key.includes('txn') || field.key.includes('id') || field.key.includes('number') || field.key.includes('phone')
+                                              ? 'font-mono'
+                                              : 'font-sans'
+                                          }`}
                                           required
                                         />
                                       </div>
-
-                                      {/* رقم الهاتف المشترك بخدمة MTN Cash */}
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          رقم الهاتف (المشترك بخدمة MTN Cash) *
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={mtnPhone || ""}
-                                          onChange={(e) => setMtnPhone(e.target.value)}
-                                          placeholder="اكتب رقم الهاتف المكون من أرقام (مثال: 09xxxxxxxx)"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                                          required
-                                        />
-                                      </div>
-
-                                      {/* معرف العملية / رقم الحوالة */}
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          معرف العملية / رقم الحوالة المستورد من التطبيق *
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={mtnTransactionId || ""}
-                                          onChange={(e) => setMtnTransactionId(e.target.value)}
-                                          placeholder="اكتب رقم العملية المكون من أرقام"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                                          required
-                                        />
-                                      </div>
-                                    </>
-                                  ) : gw.id === 'syriatel_cash' ? (
-                                    <>
-                                      {/* اسم المرسل الكامل */}
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          اسم المرسل الكامل (الاسم الثلاثي للزبون) *
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={syriatelSenderName || ""}
-                                          onChange={(e) => setSyriatelSenderName(e.target.value)}
-                                          placeholder="اكتب اسمك الثلاثي كما هو في حساب الدفع"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-sans"
-                                          required
-                                        />
-                                      </div>
-
-                                      {/* رقم الهاتف المشترك بخدمة سيريتل كاش */}
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          رقم الهاتف (المشترك بخدمة سيريتل كاش) *
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={syriatelPhone || ""}
-                                          onChange={(e) => setSyriatelPhone(e.target.value)}
-                                          placeholder="اكتب رقم الهاتف المكون من أرقام (مثال: 09xxxxxxxx)"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                                          required
-                                        />
-                                      </div>
-
-                                      {/* معرف العملية / رقم الحوالة */}
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
-                                          معرف العملية / رقم الحوالة المستورد من التطبيق *
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={syriatelTransactionId || ""}
-                                          onChange={(e) => setSyriatelTransactionId(e.target.value)}
-                                          placeholder="اكتب رقم العملية المكون من أرقام"
-                                          className="block w-full text-xs border border-amber-500/20 rounded-lg p-2.5 bg-slate-950 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                                          required
-                                        />
-                                      </div>
-                                    </>
+                                    ))
                                   ) : (
                                     <>
-                                      {/* اسم المرسل الكامل */}
+                                      {/* Fallback to default fields if no fields defined in database */}
                                       <div>
                                         <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
                                           {t('senderNameLabel')}
@@ -1340,7 +1235,6 @@ export default function Cart({
                                         />
                                       </div>
 
-                                      {/* معرف العملية / رقم الحوالة */}
                                       <div>
                                         <label className="block text-[11px] font-semibold text-amber-200/70 mb-1">
                                           {t('transactionIdLabel')}
