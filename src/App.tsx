@@ -37,7 +37,8 @@ import {
   User as UserIcon,
   ShoppingCart,
   Users,
-  MessageSquare
+  MessageSquare,
+  History
 } from 'lucide-react';
 import ProductDetailsModal from './components/ProductDetailsModal';
 import MyOrders from './components/MyOrders';
@@ -49,9 +50,59 @@ import WalletModal from './components/WalletModal';
 import AgentDashboard from './components/AgentDashboard';
 import MessagingSystem from './components/MessagingSystem';
 import { WelcomeSplash } from './components/WelcomeSplash';
-import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, auth, signOut, onAuthStateChanged, messaging, getToken, onMessage } from './lib/firebase';
+import RoyalRecoveryPopup from './components/RoyalRecoveryPopup';
+import { CustomRequestForm } from './components/CustomRequestForm';
+import { UserCustomRequests } from './components/UserCustomRequests';
+import { db, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, query, orderBy, auth, signOut, onAuthStateChanged, messaging, getToken, onMessage, awardPointsForOrder, where, onSnapshot } from './lib/firebase';
+
+// Firestore Error Handler helper for security rule debugging
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error Details:', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
+import { safeLocalStorageSetItem } from './lib/safeJson';
 
 export default function App() {
   return (
@@ -68,7 +119,7 @@ function AppContent() {
   const { isSypEnabled, setIsSypEnabled, exchangeRate } = useCurrency();
   const [isAppReady, setIsAppReady] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders'>('store');
+  const [activeCustomerView, setActiveCustomerView] = useState<'store' | 'tracking' | 'wishlist' | 'my-orders' | 'custom-requests'>('store');
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [rewardsConfig, setRewardsConfig] = useState<{ [key: string]: number }>({
     day1: 10, day2: 20, day3: 30, day4: 40, day5: 50, day6: 60, day7: 100
@@ -172,12 +223,13 @@ function AppContent() {
   }, []);
 
   const handleTabChange = (tab: string) => {
-    if (tab === 'admin') {
+    if (tab === 'admin' || tab === 'admin-custom-requests') {
       setIsAdminMode(true);
-      setCurrentTab('admin');
+      setCurrentTab(tab);
     } else {
       setIsAdminMode(false);
       setCurrentTab(tab);
+      setActiveCustomerView('store'); // Reset special views when switching tabs
     }
   };
 
@@ -335,34 +387,95 @@ function AppContent() {
     return saved ? JSON.parse(saved) : [];
   });
   const [wishlist, setWishlist] = useState<string[]>([]);
+  const [pointsHistory, setPointsHistory] = useState<any[]>([]);
 
-  // Synchronize wishlist with currentUser and localStorage
+  // Synchronize points history with currentUser in real-time
   useEffect(() => {
-    if (currentUser) {
-      setWishlist(currentUser.wishlist || []);
-    } else {
+    if (!currentUser?.email) {
+      setPointsHistory([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'points_history'),
+      where('userId', '==', currentUser.email.toLowerCase())
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const historyList: any[] = [];
+      snapshot.forEach((doc) => {
+        historyList.push({ id: doc.id, ...doc.data() });
+      });
+      // Sort in-memory safely to prevent requiring a composite index
+      historyList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setPointsHistory(historyList);
+    }, (error) => {
+      console.warn("Error listening to points history:", error);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.email]);
+
+  // Synchronize wishlist with Firestore subcollection in real-time
+  useEffect(() => {
+    if (!currentUser?.email) {
       const saved = localStorage.getItem('king_store_wishlist');
       setWishlist(saved ? JSON.parse(saved) : []);
+      return;
     }
-  }, [currentUser?.email, currentUser?.wishlist?.length]);
+
+    const userEmail = currentUser.email.toLowerCase();
+    const wishColl = collection(db, 'users', userEmail, 'wishlist');
+    
+    const unsubscribe = onSnapshot(wishColl, (snapshot) => {
+      const wishList: string[] = [];
+      snapshot.forEach((doc) => {
+        wishList.push(doc.id);
+      });
+      setWishlist(wishList);
+    }, (err) => {
+      console.warn("Wishlist sync error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.email]);
 
   const handleToggleWishlist = async (productId: string) => {
-    const newWishlist = wishlist.includes(productId)
-      ? wishlist.filter((id) => id !== productId)
-      : [...wishlist, productId];
-    
-    setWishlist(newWishlist);
-    localStorage.setItem('king_store_wishlist', JSON.stringify(newWishlist));
+    if (!currentUser) {
+      const newWishlist = wishlist.includes(productId)
+        ? wishlist.filter((id) => id !== productId)
+        : [...wishlist, productId];
+      
+      setWishlist(newWishlist);
+      safeLocalStorageSetItem('king_store_wishlist', newWishlist);
+      return;
+    }
 
-    if (currentUser) {
-      try {
-        const userRef = doc(db, 'users', currentUser.email.toLowerCase());
-        await updateDoc(userRef, { wishlist: newWishlist });
-        // Update local currentUser state as well
-        setCurrentUser(prev => prev ? { ...prev, wishlist: newWishlist } : null);
-      } catch (err) {
-        console.error("Error updating wishlist in Firestore:", err);
+    try {
+      const userEmail = currentUser.email.toLowerCase();
+      const wishDocRef = doc(db, 'users', userEmail, 'wishlist', productId);
+      
+      if (wishlist.includes(productId)) {
+        // Remove from wishlist
+        try {
+          await deleteDoc(wishDocRef);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, `users/${userEmail}/wishlist/${productId}`);
+        }
+      } else {
+        // Add to wishlist
+        try {
+          await setDoc(wishDocRef, {
+            id: productId,
+            addedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${userEmail}/wishlist/${productId}`);
+        }
       }
+      // Let the onSnapshot listener update the local state.
+    } catch (err) {
+      console.error("Error toggling wishlist item in Firestore:", err);
     }
   };
 
@@ -383,7 +496,7 @@ function AppContent() {
 
   // Categories synchronization is now handled in initializeApp for better performance
   useEffect(() => {
-    localStorage.setItem('king_store_categories', JSON.stringify(categories));
+    safeLocalStorageSetItem('king_store_categories', categories);
   }, [categories]);
 
   // Synchronize products with Firestore
@@ -546,7 +659,7 @@ function AppContent() {
   }, [currentUser?.email, currentUser?.role]);
 
   useEffect(() => {
-    localStorage.setItem('king_store_notifications', JSON.stringify(notifications));
+    safeLocalStorageSetItem('king_store_notifications', notifications);
   }, [notifications]);
 
 
@@ -570,6 +683,7 @@ function AppContent() {
 
   // Synchronize authentication state with Firebase
   useEffect(() => {
+    let userUnsubscribe: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
         const adminEmail = 'khdersy808@gmail.com';
@@ -581,87 +695,198 @@ function AppContent() {
             const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
             const userDocSnap = await getDoc(userDocRef);
             
+            let currentPoints = 0;
+            let currentCoupons: any[] = [];
+            let role = 'customer';
+            let nameVal = fbUser.displayName || fbUser.email!.split('@')[0];
+            let refCode = '';
+
             if (userDocSnap.exists()) {
               const uData = userDocSnap.data();
-              const currentPoints = typeof uData.points === 'number' ? uData.points : 0;
-              const currentCoupons = Array.isArray(uData.coupons) ? uData.coupons : [];
-              const role = uData.role || 'customer';
-              const nameVal = uData.name || fbUser.displayName || fbUser.email!.split('@')[0];
-              let refCode = uData.referralCode || '';
+              currentPoints = typeof uData.points === 'number' ? uData.points : 0;
+              currentCoupons = Array.isArray(uData.coupons) ? uData.coupons : [];
+              role = uData.role || 'customer';
+              nameVal = uData.name || fbUser.displayName || fbUser.email!.split('@')[0];
+              refCode = uData.referralCode || '';
                 
-                // If the user already has an account but has no referral code (older accounts)
-                if (!refCode) {
-                  refCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+              // If the user already has an account but has no referral code (older accounts)
+              if (!refCode) {
+                refCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+                try {
+                  // Update ONLY if missing to avoid snapshot loop
+                  await updateDoc(userDocRef, {
+                    referralCode: refCode
+                  });
+                } catch (updateErr) {
+                  console.error("Error setting missing referral code:", updateErr);
+                }
+              }
+              
+              // Real-time automated conversion check - only if currentPoints is high
+              // Added a guard to prevent conversion loop if points are already being processed
+              if (currentPoints >= 1000 && !uData.isConvertingPoints) {
+                const { convertPointsToCoupons } = await import('./lib/firebase');
+                try {
+                  // Mark as converting to prevent concurrent triggers from multiple snapshots
+                  await updateDoc(userDocRef, { isConvertingPoints: true });
+                  await convertPointsToCoupons(fbUser.email!.toLowerCase(), currentPoints, currentCoupons);
+                  await updateDoc(userDocRef, { isConvertingPoints: false });
+                } catch (err) {
+                  console.error("Error during automatic points conversion:", err);
+                  await updateDoc(userDocRef, { isConvertingPoints: false });
+                }
+              }
+
+              // --- Royal Customer Recovery Check ---
+              const lastActiveVal = uData.lastActive || uData.lastOrderDate || uData.createdAt || '';
+              if (lastActiveVal && role !== 'admin') {
+                const lastActiveDate = new Date(lastActiveVal);
+                const now = new Date();
+                const diffDays = (now.getTime() - lastActiveDate.getTime()) / (1000 * 60 * 60 * 24);
+
+                // Load settings/recovery dynamic values or defaults
+                let customDaysLimit = 14;
+                let customDiscount = 10;
+                let customExpiryDays = 30;
+                let customTitle = '👑 اشتقنا لملكنا!';
+                let customMessage = 'أهلاً بعودتك يا صاحب الجلالة! لقد تم تفعيل كود خصم خاص 10% لك على سلتك القادمة. الكود: {code}';
+
+                try {
+                  const { getDoc, doc } = await import('firebase/firestore');
+                  const recSnap = await getDoc(doc(db, 'settings', 'recovery'));
+                  if (recSnap.exists()) {
+                    const recData = recSnap.data();
+                    if (typeof recData.daysLimit === 'number') customDaysLimit = recData.daysLimit;
+                    if (typeof recData.discount === 'number') customDiscount = recData.discount;
+                    if (typeof recData.expiryDays === 'number') customExpiryDays = recData.expiryDays;
+                    if (recData.title) customTitle = recData.title;
+                    if (recData.message) customMessage = recData.message;
+                  }
+                } catch (err) {
+                  console.warn("Failed to load custom recovery settings:", err);
+                }
+
+                if (diffDays >= customDaysLimit) {
+                  const code = `ROYAL-MISS-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
                   try {
-                    // Update ONLY if missing to avoid snapshot loop
-                    await updateDoc(userDocRef, {
-                      referralCode: refCode
+                    const { addDoc, collection } = await import('firebase/firestore');
+                    const expiryDateStr = new Date(Date.now() + customExpiryDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+                    // Add Coupon to database securely
+                    await addDoc(collection(db, 'coupons'), {
+                      code: code,
+                      type: 'percentage',
+                      value: customDiscount,
+                      minAmount: 0,
+                      isActive: true,
+                      expiryDate: expiryDateStr,
+                      usageCount: 0,
+                      createdAt: new Date().toISOString(),
+                      userId: fbUser.email!.toLowerCase(),
+                      is_used: false,
+                      usage_status: 'active'
                     });
-                  } catch (updateErr) {
-                    console.error("Error setting missing referral code:", updateErr);
-                  }
-                }
-                
-                // Real-time automated conversion check - only if currentPoints is high
-                // Added a guard to prevent conversion loop if points are already being processed
-                if (currentPoints >= 1000 && !uData.isConvertingPoints) {
-                  const { convertPointsToCoupons } = await import('./lib/firebase');
-                  try {
-                    // Mark as converting to prevent concurrent triggers from multiple snapshots
-                    await updateDoc(userDocRef, { isConvertingPoints: true });
-                    await convertPointsToCoupons(fbUser.email!.toLowerCase(), currentPoints, currentCoupons);
-                    await updateDoc(userDocRef, { isConvertingPoints: false });
+
+                    // Format custom message
+                    const formattedMessage = customMessage
+                      .replace('{code}', code)
+                      .replace('{discount}', customDiscount.toString());
+
+                    // Add Notification
+                    await addDoc(collection(db, 'notifications'), {
+                      userId: fbUser.email!.toLowerCase(),
+                      title: customTitle,
+                      message: formattedMessage,
+                      date: new Date().toISOString(),
+                      isRead: false,
+                      type: 'system'
+                    });
+
+                    setRecoveryPromoCode(code);
+                    setShowRecoveryPopup(true);
                   } catch (err) {
-                    console.error("Error during automatic points conversion:", err);
-                    await updateDoc(userDocRef, { isConvertingPoints: false });
+                    console.error("Error generating automated recovery coupon:", err);
                   }
                 }
-                
+              }
+
+              // Update lastActive in database once to current date/time to mark activity
+              try {
+                await updateDoc(userDocRef, {
+                  lastActive: new Date().toISOString()
+                });
+              } catch (updateErr) {
+                console.error("Error updating user lastActive:", updateErr);
+              }
+            } else {
+              // If profile missing in Firestore, create it
+              const isDefaultAdmin = fbUser.email!.toLowerCase() === adminEmail.toLowerCase();
+              const roleVal = isDefaultAdmin ? 'admin' : 'customer';
+              const referralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+              
+              await setDoc(userDocRef, {
+                id: fbUser.uid,
+                name: nameVal,
+                email: fbUser.email!.toLowerCase(),
+                role: roleVal,
+                referralCode: referralCode,
+                points: 0,
+                coupons: [],
+                lastActive: new Date().toISOString(),
+                createdAt: new Date().toISOString()
+              });
+            }
+
+            // Unsubscribe existing snapshot first if any
+            if (userUnsubscribe) {
+              userUnsubscribe();
+            }
+
+            // Set up real-time listener for current user state
+            userUnsubscribe = onSnapshot(userDocRef, (snap) => {
+              if (snap.exists()) {
+                const uData = snap.data();
                 setCurrentUser({
                   id: fbUser.uid,
-                  name: nameVal,
+                  name: uData.name || nameVal,
                   email: fbUser.email!.toLowerCase(),
                   password: '',
-                  role: role as 'admin' | 'customer' | 'agent',
-                  referralCode: refCode,
-                  points: currentPoints,
-                  coupons: currentCoupons,
+                  role: (uData.role || role) as 'admin' | 'customer' | 'agent',
+                  referralCode: uData.referralCode || refCode,
+                  points: typeof uData.points === 'number' ? uData.points : 0,
+                  coupons: Array.isArray(uData.coupons) ? uData.coupons : [],
                   deviceId: uData.deviceId || '',
                   referredBy: uData.referredBy || '',
                   referralApplied: uData.referralApplied || false,
                   paymentPin: uData.paymentPin || '',
                   lastCheckInDate: uData.lastCheckInDate || '',
+                  lastActive: uData.lastActive || new Date().toISOString(),
+                  lastOrderDate: uData.lastOrderDate || '',
                   checkInStreak: typeof uData.checkInStreak === 'number' ? uData.checkInStreak : 0
                 });
-              } else {
-                // If profile missing in Firestore, create it
-                const isDefaultAdmin = fbUser.email!.toLowerCase() === adminEmail.toLowerCase();
-                const role = isDefaultAdmin ? 'admin' : 'customer';
-                const nameVal = fbUser.displayName || fbUser.email!.split('@')[0];
-                const referralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-                
-                await setDoc(userDocRef, {
-                  id: fbUser.uid,
-                  name: nameVal,
-                  email: fbUser.email!.toLowerCase(),
-                  role: role,
-                  referralCode: referralCode,
-                  points: 0,
-                  coupons: [],
-                  createdAt: new Date().toISOString()
-                });
               }
+            }, (snapshotErr) => {
+              console.warn("User document real-time sync failed:", snapshotErr);
+            });
+
           } catch (err) {
             console.warn("Error in onAuthStateChanged setup:", err);
           }
         }
       } else {
         // If logged out from Firebase, clear client-side state
+        if (userUnsubscribe) {
+          userUnsubscribe();
+          userUnsubscribe = null;
+        }
         setCurrentUser(null);
       }
     });
     return () => {
       unsubscribe();
+      if (userUnsubscribe) {
+        userUnsubscribe();
+      }
     };
   }, []);
 
@@ -818,6 +1043,8 @@ function AppContent() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
+  const [showRecoveryPopup, setShowRecoveryPopup] = useState<boolean>(false);
+  const [recoveryPromoCode, setRecoveryPromoCode] = useState<string>('');
 
 
   // --- Admin Invitation Detection Engine ---
@@ -850,7 +1077,7 @@ function AppContent() {
               ? { ...inv, status: 'completed' }
               : inv
           );
-          localStorage.setItem('king_store_admin_invitations', JSON.stringify(updated));
+          safeLocalStorageSetItem('king_store_admin_invitations', updated);
         }
       } catch (err) {
         console.error('Error updating invitation status:', err);
@@ -901,29 +1128,68 @@ function AppContent() {
   };
 
   useEffect(() => {
-    localStorage.setItem('king_store_products', JSON.stringify(products));
+    safeLocalStorageSetItem('king_store_products', products);
   }, [products]);
 
   useEffect(() => {
-    localStorage.setItem('king_store_gateways', JSON.stringify(gateways));
+    safeLocalStorageSetItem('king_store_gateways', gateways);
   }, [gateways]);
 
   useEffect(() => {
-    localStorage.setItem('king_store_orders', JSON.stringify(orders));
+    safeLocalStorageSetItem('king_store_orders', orders);
   }, [orders]);
 
   useEffect(() => {
-    localStorage.setItem('king_store_cart', JSON.stringify(cartItems));
+    safeLocalStorageSetItem('king_store_cart', cartItems);
   }, [cartItems]);
 
   useEffect(() => {
-    localStorage.setItem('king_store_users', JSON.stringify(users));
+    safeLocalStorageSetItem('king_store_users', users);
   }, [users]);
+
+  // Synchronize all users from Firestore in real-time if logged in as admin
+  useEffect(() => {
+    // Only subscribe if we are SURE the user is an admin
+    if (currentUser?.role === 'admin' && (currentUser.email === 'khdersy808@gmail.com' || currentUser.email === 'khdersy080@gmail.com')) {
+      const usersColl = collection(db, 'users');
+      const unsubscribe = onSnapshot(usersColl, (snapshot) => {
+        const usersList: User[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          usersList.push({
+            id: data.id || doc.id,
+            name: data.name || '',
+            email: data.email || doc.id,
+            password: data.password || '',
+            role: data.role || 'customer',
+            referralCode: data.referralCode || '',
+            points: typeof data.points === 'number' ? data.points : 0,
+            coupons: Array.isArray(data.coupons) ? data.coupons : [],
+            deviceId: data.deviceId || '',
+            referredBy: data.referredBy || '',
+            referralApplied: data.referralApplied || false,
+            paymentPin: data.paymentPin || '',
+            lastCheckInDate: data.lastCheckInDate || '',
+            lastActive: data.lastActive || '',
+            lastOrderDate: data.lastOrderDate || '',
+            checkInStreak: typeof data.checkInStreak === 'number' ? data.checkInStreak : 0
+          });
+        });
+        setUsers(usersList);
+      }, (err) => {
+        console.warn("Failed to subscribe to users collection:", err);
+      });
+      return () => unsubscribe();
+    } else {
+      // Clear users list if not admin
+      setUsers([]);
+    }
+  }, [currentUser?.role, currentUser?.email]);
 
   useEffect(() => {
     const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
     if (currentUser && rememberMe) {
-      localStorage.setItem('king_store_current_user', JSON.stringify(currentUser));
+      safeLocalStorageSetItem('king_store_current_user', currentUser);
     } else {
       localStorage.removeItem('king_store_current_user');
     }
@@ -1310,6 +1576,15 @@ function AppContent() {
       console.warn("Firestore error adding order:", fsErr);
     }
 
+    // Sync points for checkout completion
+    if (newOrder.customerEmail) {
+      try {
+        await awardPointsForOrder(newOrder.id, newOrder.customerEmail, newOrder.totalAmount);
+      } catch (pointsErr) {
+        console.warn("[Loyalty] Error awarding loyalty points on order placement:", pointsErr);
+      }
+    }
+
     // Persist order to Cloud SQL PostgreSQL database via backend API
     try {
       const response = await fetch('/api/orders', {
@@ -1417,6 +1692,12 @@ function AppContent() {
     // Sync status with Firestore
     try {
       await setDoc(doc(db, 'orders', orderId), { status }, { merge: true });
+      if (status === 'completed') {
+        const existingOrder = orders.find((o) => o.id === orderId);
+        if (existingOrder && existingOrder.customerEmail) {
+          await awardPointsForOrder(orderId, existingOrder.customerEmail, existingOrder.totalAmount);
+        }
+      }
     } catch (fsErr) {
       console.warn("Firestore error updating order status:", fsErr);
     }
@@ -1559,6 +1840,55 @@ function AppContent() {
                 </div>
                 <AgentDashboard isAdminMode={isAdminMode} />
               </section>
+            ) : currentTab === 'admin-custom-requests' ? (
+              <AdminPanel
+                products={products}
+                onAddProduct={handleAddProduct}
+                onUpdateProduct={handleUpdateProduct}
+                onDeleteProduct={handleDeleteProduct}
+                gateways={gateways}
+                onUpdateGateway={handleUpdateGateway}
+                onAddGateway={handleAddGateway}
+                onDeleteGateway={handleDeleteGateway}
+                orders={orders}
+                onUpdateOrderStatus={handleUpdateOrderStatus}
+                users={users}
+                onDeleteUser={handleDeleteUser}
+                currentUser={currentUser}
+                categories={categories}
+                onAddCategory={handleAddCategory}
+                onDeleteCategory={handleDeleteCategory}
+                onUpdateCategory={handleUpdateCategory}
+                onShowToast={showToast}
+                initialTab="custom-requests"
+              />
+            ) : currentTab === 'custom-requests' ? (
+              currentUser ? (
+                <UserCustomRequests 
+                  currentUser={currentUser} 
+                  onBack={() => setCurrentTab('home')} 
+                />
+              ) : (
+                <section className="mx-auto max-w-4xl px-4 py-20 text-center">
+                  <div className="bg-slate-900/50 border border-slate-800 rounded-[2.5rem] p-12 space-y-6">
+                    <div className="mx-auto w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center text-slate-600">
+                      <Sparkles className="h-10 w-10 opacity-20" />
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-xl font-bold text-white">يرجى تسجيل الدخول</h4>
+                      <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                        يجب تسجيل الدخول لمتابعة طلباتك المخصصة وتتبع حالتها الملكية.
+                      </p>
+                    </div>
+                    <button
+                      onClick={openAuthModal}
+                      className="bg-amber-500 text-slate-950 px-8 py-3 rounded-2xl font-black text-sm hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20"
+                    >
+                      تسجيل الدخول الآن 👑
+                    </button>
+                  </div>
+                </section>
+              )
             ) : currentTab === 'messaging' ? (
               <section className="mx-auto max-w-4xl px-4 py-12 sm:px-6 text-right">
                 <div className="mb-8 space-y-2">
@@ -1591,6 +1921,7 @@ function AppContent() {
                 onUpdateOrderStatus={handleUpdateOrderStatus}
                 users={users}
                 onDeleteUser={handleDeleteUser}
+                currentUser={currentUser}
                 categories={categories}
                 onAddCategory={handleAddCategory}
                 onDeleteCategory={handleDeleteCategory}
@@ -1869,6 +2200,15 @@ function AppContent() {
                       </div>
                     </div>
                   </div>
+                </section>
+
+                {/* Custom Product Request Section */}
+                <section className="mx-auto max-w-7xl px-4 sm:px-6">
+                  <CustomRequestForm 
+                    currentUser={currentUser} 
+                    onShowToast={showToast} 
+                    openAuthModal={openAuthModal}
+                  />
                 </section>
 
                 {/* Storefront Navigation / Filtering Control Bar */}
@@ -2487,6 +2827,48 @@ function AppContent() {
 
                       </div>
 
+                      {/* Points History Section */}
+                      <div className="bg-slate-900 rounded-2xl border border-zinc-800 p-4.5 space-y-3.5">
+                        <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
+                          <History className="h-4 w-4 text-amber-500" />
+                          <span className="text-xs font-bold text-zinc-300 font-sans">سجل حركات النقاط الملكية 📜</span>
+                        </div>
+
+                        {pointsHistory.length === 0 ? (
+                          <p className="text-[11px] text-zinc-500 text-center py-4 font-semibold">
+                            لا يوجد سجل حركات نقاط حالياً. ابدأ الشراء الآن لكسب النقاط! 🛍️
+                          </p>
+                        ) : (
+                          <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                            {pointsHistory.map((historyItem) => (
+                              <div
+                                key={historyItem.id}
+                                className="flex items-center justify-between bg-zinc-950 rounded-xl p-3 border border-zinc-850 hover:border-zinc-800 transition-all text-right"
+                              >
+                                <div className="space-y-1">
+                                  <span className="text-xs font-bold text-zinc-300 block font-sans">
+                                    {historyItem.orderId ? `مشتريات الطلب #${historyItem.orderId}` : 'مكافأة الإحالة'}
+                                  </span>
+                                  <span className="text-[10px] font-mono text-zinc-500 block">
+                                    {new Date(historyItem.date).toLocaleDateString('ar-EG', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-black text-emerald-400">+{historyItem.points_added}</span>
+                                  <span className="text-[10px] font-bold text-zinc-500">نقطة</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Earned Coupons Wallet */}
                       <div className="space-y-3 pt-2">
                         <div className="flex items-center gap-2">
@@ -2717,6 +3099,14 @@ function AppContent() {
         showToast={showToast}
       />
 
+      {/* 6.7. Royal Customer Recovery Popup */}
+      <RoyalRecoveryPopup
+        isOpen={showRecoveryPopup}
+        onClose={() => setShowRecoveryPopup(false)}
+        promoCode={recoveryPromoCode}
+        onShowToast={showToast}
+      />
+
       {/* Floating Active Toast Notification Overlay */}
       <div className={`fixed top-24 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none ${dir === 'rtl' ? 'left-6' : 'right-6'}`} dir={dir}>
         {toasts.map((toast) => (
@@ -2747,18 +3137,11 @@ function AppContent() {
       {/* 8. Mobile Floating Bottom Navigation Bar (Visible on All Screens) */}
       <BottomNav 
         currentTab={currentTab} 
-        setCurrentTab={(tab) => {
-          if (tab === 'admin') {
-            setIsAdminMode(true);
-            setCurrentTab('admin');
-          } else {
-            setIsAdminMode(false);
-            setCurrentTab(tab);
-          }
-        }}
+        setCurrentTab={handleTabChange}
         cartCount={cartItems?.length || 0} 
         onOpenMenu={() => setIsMobileMenuOpen(true)}
         isAdmin={currentUser?.role === 'admin'}
+        userEmail={currentUser?.email}
       />
 
     </>

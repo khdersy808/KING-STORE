@@ -136,6 +136,8 @@ export interface User {
   paymentPin?: string;
   wishlist?: string[];
   lastCheckInDate?: string;
+  lastActive?: string;
+  lastOrderDate?: string;
   checkInStreak?: number;
   tempPassword?: string;
   tempPasswordExpiry?: string;
@@ -198,6 +200,17 @@ export interface Coupon {
   is_used?: boolean; // For single-use redeemed coupons
   usage_status?: 'unused' | 'used';
   usedAt?: string;
+}
+
+export interface CustomProductRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  description: string;
+  imageUrl: string;
+  timestamp: string;
+  status: 'pending' | 'secured' | 'available' | 'cancelled' | 'قيد المراجعة' | 'تم التوفير' | 'ملغى';
 }
 
 export interface Policy {

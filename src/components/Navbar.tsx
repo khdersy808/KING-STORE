@@ -25,8 +25,8 @@ interface NavbarProps {
   onMarkAllAsRead: () => void;
   onMarkAsRead: (id: string) => void;
   onDeleteNotification: (id: string) => void;
-  activeCustomerView?: 'store' | 'tracking' | 'wishlist' | 'my-orders';
-  setActiveCustomerView?: (view: 'store' | 'tracking' | 'wishlist' | 'my-orders') => void;
+  activeCustomerView?: 'store' | 'tracking' | 'wishlist' | 'my-orders' | 'custom-requests';
+  setActiveCustomerView?: (view: 'store' | 'tracking' | 'wishlist' | 'my-orders' | 'custom-requests') => void;
   isSypEnabled?: boolean;
   setIsSypEnabled?: (enabled: boolean) => void;
   isMobileMenuOpen?: boolean;
@@ -608,7 +608,26 @@ export default function Navbar({
                       )}
                     </button>
 
-                     {/* Settings Button */}
+                     {/* Custom Requests Button */}
+                    <button
+                      onClick={() => {
+                        const superAdmin = currentUser?.role === 'admin' || currentUser?.email === 'khdersy080@gmail.com' || currentUser?.email === 'khdersy808@gmail.com';
+                        setCurrentTab?.(superAdmin ? 'admin-custom-requests' : 'custom-requests');
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 rounded-xl bg-slate-900/50 border border-amber-500/10 border-r-4 border-r-amber-500 hover:bg-gradient-to-l hover:from-amber-500/10 hover:to-transparent hover:border-r-amber-500 hover:border-amber-500/25 p-4 text-xs font-black text-white transition-all duration-300 cursor-pointer group"
+                    >
+                      {currentUser?.role === 'admin' || currentUser?.email === 'khdersy080@gmail.com' || currentUser?.email === 'khdersy808@gmail.com' ? (
+                        <Package className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      ) : (
+                        <Sparkles className="h-5 w-5 text-amber-400 group-hover:scale-110 transition-transform" />
+                      )}
+                      <span className="text-white text-sm font-bold">
+                        {currentUser?.role === 'admin' || currentUser?.email === 'khdersy080@gmail.com' || currentUser?.email === 'khdersy808@gmail.com' ? t('navAdminRequests') : t('navRequests')}
+                      </span>
+                    </button>
+
+                    {/* Settings Button */}
                     <button
                       onClick={() => {
                         setActiveCustomerView?.('my-orders');

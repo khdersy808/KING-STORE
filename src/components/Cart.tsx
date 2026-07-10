@@ -8,6 +8,7 @@ import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySett
 import PaymentReceipt from './PaymentReceipt';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { safeLocalStorageSetItem } from '../lib/safeJson';
 import { db, collection, query, where, getDocs, doc, updateDoc, encryptPin } from '../lib/firebase';
 import {
   X,
@@ -208,7 +209,7 @@ export default function Cart({
               updatedAt: new Date().toLocaleDateString('ar-EG')
             }
           ];
-          localStorage.setItem('king_store_policies', JSON.stringify(loadedPolicies));
+          safeLocalStorageSetItem('king_store_policies', loadedPolicies);
         }
       }
 
@@ -285,7 +286,7 @@ export default function Cart({
         return;
       }
 
-      if (foundCoupon.userId && currentUser?.email && foundCoupon.userId !== currentUser.email) {
+      if (foundCoupon.userId && currentUser?.email && foundCoupon.userId.toLowerCase() !== currentUser.email.toLowerCase()) {
         setCouponFeedback({ message: 'هذا الكوبون غير مصرح لك باستخدامه.', type: 'error' });
         setAppliedCoupon(null);
         return;
@@ -646,7 +647,7 @@ export default function Cart({
         if (localCouponsRaw) {
           const localCoupons = JSON.parse(localCouponsRaw) as Coupon[];
           const updated = localCoupons.map(c => c.id === appliedCoupon.id ? { ...c, usageCount: (c.usageCount || 0) + 1 } : c);
-          localStorage.setItem('king_store_coupons', JSON.stringify(updated));
+          safeLocalStorageSetItem('king_store_coupons', updated);
         }
       } catch (e) {
         console.warn("Could not update local storage coupon:", e);

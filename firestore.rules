@@ -11,17 +11,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+@?[a-zA-Z0-9_\\-\\.]*$');
+    }
+
     function isOwner(email) {
-      return isSignedIn() && request.auth.token.email.lower() == email.lower();
+      return isSignedIn() && 
+             request.auth.token.email != null && 
+             request.auth.token.email.lower() == email.lower();
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email.lower() == 'khdersy808@gmail.com' || (
-          exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && 
-          get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'admin'
-        )
-      );
+      return isSignedIn() && 
+             request.auth.token.email != null && (
+               request.auth.token.email.lower() == 'khdersy080@gmail.com' ||
+               request.auth.token.email.lower() == 'khdersy808@gmail.com' || (
+                 exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) && 
+                 get(/databases/$(database)/documents/users/$(request.auth.token.email.lower())).data.role == 'admin'
+               )
+             );
     }
 
     // Rules for products
@@ -57,16 +65,17 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid || 
-        resource.data.customerEmail.lower() == request.auth.token.email.lower() || 
+        (resource.data.customerEmail != null && request.auth.token.email != null && resource.data.customerEmail.lower() == request.auth.token.email.lower()) || 
         isAdmin()
       );
-      allow write: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // Rules for users
     match /users/{email} {
-      allow read: if isSignedIn();
-      allow create: if true; // Allow user signup
+      allow read: if isSignedIn() && (isOwner(email) || isAdmin());
+      allow create: if isSignedIn() && isOwner(email);
       allow update: if isSignedIn() && (
         (isOwner(email) && (!request.resource.data.keys().hasAll(['role']) || request.resource.data.role == resource.data.role)) || 
         isAdmin() ||
@@ -74,6 +83,23 @@ service cloud.firestore {
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'coupons']))
       );
       allow delete: if isAdmin();
+
+      // Rules for user wishlist subcollection
+      match /wishlist/{productId} {
+        allow read, write: if isOwner(email) || isAdmin();
+      }
+    }
+
+    // Rules for points history
+    match /points_history/{historyId} {
+      allow create: if isSignedIn() && (
+        request.resource.data.userId.lower() == request.auth.token.email.lower() || 
+        isAdmin()
+      );
+      allow read: if isSignedIn() && (
+        resource.data.userId.lower() == request.auth.token.email.lower() || 
+        isAdmin()
+      );
     }
 
     // Rules for categories
@@ -113,6 +139,16 @@ service cloud.firestore {
     match /agents/{agentId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Rules for custom product requests
+    match /custom_requests/{requestId} {
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
     }
   }
 }

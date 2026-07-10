@@ -9,6 +9,8 @@ export interface TranslationSchema {
   navChat: string;
   navCart: string;
   navAdmin: string;
+  navRequests: string;
+  navAdminRequests: string;
   navMore: string;
   cartTitle: string;
   cartEmpty: string;
@@ -386,6 +388,8 @@ export const translations: Record<Language, TranslationSchema> = {
     navChat: 'المحادثة',
     navCart: 'السلة',
     navAdmin: 'الإدارة',
+    navRequests: 'طلباتي ✨',
+    navAdminRequests: 'طلبات الزبائن 👑',
     navMore: 'المزيد',
     cartTitle: 'سلة المشتريات',
     cartEmpty: 'سلة المشتريات فارغة',
@@ -761,6 +765,8 @@ export const translations: Record<Language, TranslationSchema> = {
     navChat: 'Chat',
     navCart: 'Cart',
     navAdmin: 'Admin',
+    navRequests: 'My Requests ✨',
+    navAdminRequests: 'Customer Requests 👑',
     navMore: 'More',
     cartTitle: 'Shopping Cart',
     cartEmpty: 'Your cart is empty',

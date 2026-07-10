@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Home, ShoppingBag, Menu, LayoutDashboard, MessageSquare } from 'lucide-react';
+import { Home, ShoppingBag, Menu, LayoutDashboard, MessageSquare, Sparkles, Package } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface BottomNavProps {
@@ -9,13 +9,19 @@ interface BottomNavProps {
   cartCount: number;
   onOpenMenu: () => void;
   isAdmin?: boolean;
+  userEmail?: string;
 }
 
-export function BottomNav({ currentTab, setCurrentTab, cartCount, onOpenMenu, isAdmin }: BottomNavProps) {
+export function BottomNav({ currentTab, setCurrentTab, cartCount, onOpenMenu, isAdmin, userEmail }: BottomNavProps) {
   const { t } = useLanguage();
+
+  const isSuperAdmin = isAdmin || userEmail === 'khdersy080@gmail.com' || userEmail === 'khdersy808@gmail.com';
 
   const tabs = [
     { id: 'home', icon: Home, label: t('navHome') },
+    ...(isSuperAdmin 
+      ? [{ id: 'admin-custom-requests', icon: Package, label: t('navAdminRequests') }] 
+      : [{ id: 'custom-requests', icon: Sparkles, label: t('navRequests') }]),
     { id: 'messaging', icon: MessageSquare, label: t('supportSystemTitle') },
     { id: 'cart', icon: ShoppingBag, label: t('navCart'), badge: cartCount },
     { id: isAdmin ? 'admin' : 'menu', icon: isAdmin ? LayoutDashboard : Menu, label: isAdmin ? t('navAdmin') : t('navMore') },

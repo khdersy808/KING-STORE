@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, CouponRule, User, DeliverySettings, Policy } from '../types';
+import { Product, PaymentGateway, Order, ProductType, OrderStatus, Coupon, CouponRule, User, DeliverySettings, Policy, CustomProductRequest } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import CustomSelect from './CustomSelect';
@@ -58,6 +58,7 @@ import {
   Calendar,
   FileText,
   Mail,
+  Database,
   Phone,
   MapPin,
   Activity,
@@ -68,11 +69,15 @@ import {
   Link as LinkIcon,
   RotateCcw,
   Gift,
-  ShieldAlert
+  ShieldAlert,
+  Coins,
+  History,
+  Minus
 } from 'lucide-react';
-import { auth, db, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, OperationType, handleFirestoreError, hashPassword, encryptPin } from '../lib/firebase';
+import { auth, db, collection, doc, addDoc, updateDoc, deleteDoc, setDoc, getDoc, getDocs, OperationType, handleFirestoreError, hashPassword, encryptPin, query, where, onSnapshot, orderBy } from '../lib/firebase';
 import AgentDashboard from './AgentDashboard';
 import MessagingSystem from './MessagingSystem';
+import { safeLocalStorageSetItem } from '../lib/safeJson';
 
 interface AdminPanelProps {
   products: Product[];
@@ -87,14 +92,16 @@ interface AdminPanelProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
   users: User[];
   onDeleteUser: (userId: string) => void;
+  currentUser: User | null;
   categories: string[];
   onAddCategory: (categoryName: string) => Promise<void>;
   onDeleteCategory: (categoryName: string) => Promise<void>;
   onUpdateCategory: (oldName: string, newName: string) => Promise<void>;
   onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
+  initialTab?: AdminTab;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users' | 'rewards' | 'audit';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users' | 'rewards' | 'audit' | 'recovery' | 'custom-requests';
 
 export default function AdminPanel({
   products,
@@ -109,15 +116,30 @@ export default function AdminPanel({
   onUpdateOrderStatus,
   users,
   onDeleteUser,
+  currentUser,
   categories,
   onAddCategory,
   onDeleteCategory,
   onUpdateCategory,
-  onShowToast
+  onShowToast,
+  initialTab
 }: AdminPanelProps) {
   const { t, texts, dir } = useLanguage();
   const { formatPrice, currency } = useCurrency();
-  const [activeTab, setActiveTab] = useState<AdminTab>('products');
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab || 'products');
+
+  const getUserLastActivity = (user: User, ordersList: Order[]) => {
+    const userOrders = ordersList.filter(o => o.customerEmail.toLowerCase() === user.email.toLowerCase());
+    const lastOrder = userOrders.length > 0 ? userOrders[0] : null;
+    
+    const dates = [];
+    if (user.lastActive) dates.push(new Date(user.lastActive));
+    if (lastOrder && lastOrder.date) dates.push(new Date(lastOrder.date));
+    if (user.updatedAt) dates.push(new Date(user.updatedAt));
+    
+    if (dates.length === 0) return null;
+    return new Date(Math.max(...dates.map(d => d.getTime())));
+  };
   const [adminEmail, setAdminEmail] = useState<string | null>(() => {
     const saved = localStorage.getItem('king_store_current_user');
     if (saved) {
@@ -259,6 +281,12 @@ export default function AdminPanel({
   const [productCategoryFilter, setProductCategoryFilter] = useState('all');
   const [productTypeFilter, setProductTypeFilter] = useState('all');
 
+  // Custom Product Requests States
+  const [customRequests, setCustomRequests] = useState<CustomProductRequest[]>([]);
+  const [isUpdatingRequestStatus, setIsUpdatingRequestStatus] = useState<string | null>(null);
+  const [requestSearchQuery, setRequestSearchQuery] = useState('');
+  const [requestStatusFilter, setRequestStatusFilter] = useState<string>('all');
+
   // Discounts & Coupons States
   const [coupons, setCoupons] = useState<Coupon[]>(() => {
     try {
@@ -270,7 +298,7 @@ export default function AdminPanel({
   });
 
   useEffect(() => {
-    localStorage.setItem('king_store_coupons', JSON.stringify(coupons));
+    safeLocalStorageSetItem('king_store_coupons', coupons);
   }, [coupons]);
 
   const [isAddingCoupon, setIsAddingCoupon] = useState(false);
@@ -330,6 +358,23 @@ export default function AdminPanel({
   const [rewardsSuccess, setRewardsSuccess] = useState('');
   const [isDailyCheckInCustomizerOpen, setIsDailyCheckInCustomizerOpen] = useState(false);
 
+  // Purchase Loyalty & Loyalty Points Management States
+  const [isPurchasePointsEnabled, setIsPurchasePointsEnabled] = useState(true);
+  const [pointsPerDollar, setPointsPerDollar] = useState(100);
+  const [isSavingLoyaltySettings, setIsSavingLoyaltySettings] = useState(false);
+  const [loyaltySuccess, setLoyaltySuccess] = useState('');
+
+  // Manual Points Adjustment states
+  const [selectedUserEmailForPoints, setSelectedUserEmailForPoints] = useState('');
+  const [pointsAdjustmentAmount, setPointsAdjustmentAmount] = useState(100);
+  const [pointsAdjustmentType, setPointsAdjustmentType] = useState<'add' | 'deduct'>('add');
+  const [pointsAdjustmentReason, setPointsAdjustmentReason] = useState('مكافأة خاصة من الإدارة');
+  const [isAdjustingPoints, setIsAdjustingPoints] = useState(false);
+
+  // Points history table state
+  const [adminPointsHistory, setAdminPointsHistory] = useState<any[]>([]);
+  const [pointsSearchQuery, setPointsSearchQuery] = useState('');
+
   // Exclusive Discounts Section States
   const [discountsSectionTitle, setDiscountsSectionTitle] = useState('عروض ملوك الأسبوع الحصرية 👑');
   const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
@@ -337,6 +382,21 @@ export default function AdminPanel({
   const [selectedProductIdToAdd, setSelectedProductIdToAdd] = useState('');
   const [isUpdatingDiscountsSection, setIsUpdatingDiscountsSection] = useState(false);
   const [discountsSectionSuccess, setDiscountsSectionSuccess] = useState('');
+
+  // Recovery Customization States
+  const [recoveryDiscount, setRecoveryDiscount] = useState<number>(10);
+  const [recoveryDaysLimit, setRecoveryDaysLimit] = useState<number>(14);
+  const [recoveryExpiryDays, setRecoveryExpiryDays] = useState<number>(30);
+  const [recoveryTitle, setRecoveryTitle] = useState<string>('👑 عرض الاستعادة الملكي الخاص بك!');
+  const [recoveryMessage, setRecoveryMessage] = useState<string>('اشتقنا لك كثيراً يا ملكنا! لقد تم تفعيل كود خصم خاص 10% لك خصيصاً على سلتك القادمة. استخدم الكود: {code}');
+  const [isSavingRecoverySettings, setIsSavingRecoverySettings] = useState<boolean>(false);
+  const [recoverySettingsSuccess, setRecoverySettingsSuccess] = useState<string>('');
+
+  // Points Management States
+  const [editingPointsUser, setEditingPointsUser] = useState<User | null>(null);
+  const [pointsChangeAmount, setPointsChangeAmount] = useState<number>(0);
+  const [pointsChangeReason, setPointsChangeReason] = useState<string>('');
+  const [isUpdatingPoints, setIsUpdatingPoints] = useState<boolean>(false);
 
   // Push Notification States
   const [showNotificationModal, setShowNotificationModal] = useState(false);
@@ -445,7 +505,7 @@ export default function AdminPanel({
   });
 
   useEffect(() => {
-    localStorage.setItem('king_store_policies', JSON.stringify(policies));
+    safeLocalStorageSetItem('king_store_policies', policies);
   }, [policies]);
 
   const [isAddingPolicy, setIsAddingPolicy] = useState(false);
@@ -609,6 +669,53 @@ export default function AdminPanel({
     fetchPolicies();
   }, []);
 
+  // Synchronize Custom Product Requests from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'custom_requests'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: CustomProductRequest[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as CustomProductRequest);
+      });
+      setCustomRequests(list);
+    }, (error) => {
+      console.warn("Error syncing custom requests:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleUpdateRequestStatus = async (requestId: string, newStatus: CustomProductRequest['status'], userEmail: string) => {
+    setIsUpdatingRequestStatus(requestId);
+    try {
+      const docRef = doc(db, 'custom_requests', requestId);
+      await updateDoc(docRef, { status: newStatus });
+
+      // Send notification to user
+      const statusLabels: Record<string, string> = {
+        'pending': 'قيد المراجعة 📝',
+        'secured': 'تم تأمين المنتج 🤝',
+        'available': 'المنتج متاح الآن 👑',
+        'cancelled': 'تم إلغاء الطلب ❌'
+      };
+
+      await addDoc(collection(db, 'notifications'), {
+        userId: userEmail.toLowerCase(),
+        title: 'تحديث حالة طلب منتج مخصص 👑',
+        message: `تمت مراجعة طلبك للمنتج المخصص وحالته الآن هي: ${statusLabels[newStatus] || newStatus}`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'system'
+      });
+
+      onShowToast('تم بنجاح', `تم تحديث حالة الطلب إلى ${newStatus} وإشعار العميل.`, 'success');
+    } catch (err) {
+      console.error("Error updating request status:", err);
+      onShowToast('خطأ!', 'فشل في تحديث حالة الطلب.', 'error');
+    } finally {
+      setIsUpdatingRequestStatus(null);
+    }
+  };
+
   // Implement missing fetch function for rewards
   const fetchDailyCheckInSettings = async () => {
     try {
@@ -642,15 +749,27 @@ export default function AdminPanel({
           discSnap,
           waSnap,
           currSnap,
-          dsSnap
+          dsSnap,
+          recSnap
         ] = await Promise.all([
           getDoc(doc(db, 'settings', 'discounts')),
           getDoc(doc(db, 'settings', 'whatsapp')),
           getDoc(doc(db, 'settings', 'currency')),
-          getDoc(doc(db, 'settings', 'discounts_section'))
+          getDoc(doc(db, 'settings', 'discounts_section')),
+          getDoc(doc(db, 'settings', 'recovery'))
         ]);
 
         if (!isMounted) return;
+
+        // Recovery
+        if (recSnap.exists()) {
+          const data = recSnap.data();
+          if (typeof data.discount === 'number') setRecoveryDiscount(data.discount);
+          if (typeof data.daysLimit === 'number') setRecoveryDaysLimit(data.daysLimit);
+          if (typeof data.expiryDays === 'number') setRecoveryExpiryDays(data.expiryDays);
+          if (data.title) setRecoveryTitle(data.title);
+          if (data.message) setRecoveryMessage(data.message);
+        }
 
         // Discount
         if (discSnap.exists()) {
@@ -690,6 +809,39 @@ export default function AdminPanel({
     return () => { isMounted = false; };
   }, []);
 
+  // Listen to loyalty settings and points history in real-time
+  useEffect(() => {
+    // 1. Listen to settings/loyalty
+    const unsubscribeLoyalty = onSnapshot(doc(db, 'settings', 'loyalty'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setIsPurchasePointsEnabled(data.isEnabled !== false);
+        setPointsPerDollar(data.pointsPerDollar ?? 100);
+      }
+    }, (error) => {
+      console.warn("Error loading loyalty settings in AdminPanel:", error);
+    });
+
+    // 2. Listen to points_history
+    const q = query(collection(db, 'points_history'));
+    const unsubscribeHistory = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      // Sort descending by date
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setAdminPointsHistory(list);
+    }, (error) => {
+      console.warn("Error loading points history in AdminPanel:", error);
+    });
+
+    return () => {
+      unsubscribeLoyalty();
+      unsubscribeHistory();
+    };
+  }, []);
+
   // Save Daily Check-In Rewards Settings
   const handleSaveDailyCheckInRewards = async () => {
     setIsSavingRewards(true);
@@ -712,6 +864,98 @@ export default function AdminPanel({
     }
   };
 
+  // Save Purchase Loyalty Settings
+  const handleSavePurchaseLoyaltySettings = async () => {
+    setIsSavingLoyaltySettings(true);
+    setLoyaltySuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'loyalty');
+      await setDoc(docRef, {
+        isEnabled: isPurchasePointsEnabled,
+        pointsPerDollar: pointsPerDollar,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      setLoyaltySuccess('تم حفظ إعدادات نقاط الشراء والولاء بنجاح! 👑🛍️');
+      onShowToast('تم الحفظ بنجاح', 'تم تحديث قواعد كسب النقاط من المشتريات بنجاح.', 'success');
+      setTimeout(() => setLoyaltySuccess(''), 4000);
+    } catch (error) {
+      console.error("Error saving purchase loyalty settings:", error);
+      onShowToast('حدث خطأ', 'فشل حفظ الإعدادات، يرجى المحاولة لاحقاً.', 'warning');
+    } finally {
+      setIsSavingLoyaltySettings(false);
+    }
+  };
+
+  // Manually adjust points for a selected user
+  const handleAdjustUserPoints = async () => {
+    if (!selectedUserEmailForPoints) {
+      onShowToast('خطأ!', 'يرجى تحديد حساب مستخدم أولاً.', 'warning');
+      return;
+    }
+    if (pointsAdjustmentAmount <= 0) {
+      onShowToast('خطأ!', 'يرجى تحديد كمية نقاط أكبر من الصفر.', 'warning');
+      return;
+    }
+
+    setIsAdjustingPoints(true);
+    try {
+      const email = selectedUserEmailForPoints.toLowerCase();
+      const userRef = doc(db, 'users', email);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        onShowToast('خطأ!', 'المستند الخاص بالمستخدم غير موجود في قاعدة البيانات.', 'error');
+        setIsAdjustingPoints(false);
+        return;
+      }
+
+      const userData = userSnap.data();
+      const currentPoints = userData.points || 0;
+      
+      const change = pointsAdjustmentType === 'add' ? pointsAdjustmentAmount : -pointsAdjustmentAmount;
+      const newPoints = Math.max(0, currentPoints + change);
+
+      // Save updated points
+      await updateDoc(userRef, {
+        points: newPoints,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Insert transaction history record
+      const historyRef = doc(collection(db, 'points_history'));
+      await setDoc(historyRef, {
+        userId: email,
+        points_added: change,
+        reason: pointsAdjustmentReason,
+        date: new Date().toISOString()
+      });
+
+      // Create a push notification for this user
+      await addDoc(collection(db, 'notifications'), {
+        userId: email,
+        title: change > 0 ? '🎁 تعديل رصيد النقاط (إضافة)' : '⚖️ تعديل رصيد النقاط (خصم)',
+        message: change > 0 
+          ? `لقد قامت الإدارة بإضافة ${pointsAdjustmentAmount} نقطة ملكية لحسابك. السبب: ${pointsAdjustmentReason}.`
+          : `لقد قامت الإدارة بخصم ${pointsAdjustmentAmount} نقطة ملكية من حسابك. السبب: ${pointsAdjustmentReason}.`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'system'
+      });
+
+      onShowToast('نجاح العملية!', `تم ${change > 0 ? 'إضافة' : 'خصم'} ${pointsAdjustmentAmount} نقطة للمستخدم ${email} بنجاح!`, 'success');
+      
+      // Reset input fields
+      setPointsAdjustmentAmount(100);
+      setPointsAdjustmentReason('مكافأة خاصة من الإدارة');
+    } catch (err) {
+      console.error("Error adjusting user points manually:", err);
+      onShowToast('خطأ!', 'حدث خطأ غير متوقع أثناء تعديل النقاط.', 'error');
+    } finally {
+      setIsAdjustingPoints(false);
+    }
+  };
+
   // Save Currency Exchange Rate Settings
   const handleSaveExchangeRate = async (value: number) => {
     setSavingExchangeRate(true);
@@ -728,6 +972,31 @@ export default function AdminPanel({
     }
   };
 
+  // Save Customer Recovery Configuration
+  const handleSaveRecoverySettings = async () => {
+    setIsSavingRecoverySettings(true);
+    setRecoverySettingsSuccess('');
+    try {
+      const docRef = doc(db, 'settings', 'recovery');
+      await setDoc(docRef, {
+        discount: recoveryDiscount,
+        daysLimit: recoveryDaysLimit,
+        expiryDays: recoveryExpiryDays,
+        title: recoveryTitle,
+        message: recoveryMessage,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setRecoverySettingsSuccess('تم تحديث إعدادات استعادة الزبائن الملكية بنجاح! 👑');
+      onShowToast('تم الحفظ بنجاح! 👑', 'تم تحديث قواعد استعادة الزبائن الملكية وتطبيقها بنجاح.', 'success');
+      setTimeout(() => setRecoverySettingsSuccess(''), 4000);
+    } catch (err) {
+      console.error("Error saving recovery settings:", err);
+      onShowToast('خطأ أثناء الحفظ', 'فشلت عملية حفظ إعدادات الاستعادة.', 'error');
+    } finally {
+      setIsSavingRecoverySettings(false);
+    }
+  };
+
   // Save Global Storewide Discount
   const handleSaveGlobalDiscount = async (value: number) => {
     setSavingGlobalDiscount(true);
@@ -741,6 +1010,55 @@ export default function AdminPanel({
       console.error("Error saving global discount:", err);
     } finally {
       setSavingGlobalDiscount(false);
+    }
+  };
+
+  // Update User Loyalty Points
+  const handleUpdatePoints = async () => {
+    if (!editingPointsUser || pointsChangeAmount === 0) return;
+    
+    setIsUpdatingPoints(true);
+    try {
+      const userRef = doc(db, 'users', editingPointsUser.email.toLowerCase());
+      const newPoints = (editingPointsUser.points || 0) + pointsChangeAmount;
+      
+      // 1. Update User Document
+      await updateDoc(userRef, {
+        points: newPoints
+      });
+
+      // 2. Add to Points History (Audit Log)
+      const historyRef = doc(collection(db, 'points_history'));
+      await setDoc(historyRef, {
+        userId: editingPointsUser.email.toLowerCase(),
+        userName: editingPointsUser.name,
+        adminName: currentUser?.name || 'مدير النظام',
+        amount: pointsChangeAmount,
+        type: pointsChangeAmount > 0 ? 'earn' : 'burn',
+        reason: pointsChangeReason || (pointsChangeAmount > 0 ? 'تعديل يدوي من الإدارة (إضافة)' : 'تعديل يدوي من الإدارة (خصم)'),
+        date: new Date().toISOString(),
+        status: 'completed'
+      });
+
+      // 3. Send Notification to User
+      await addDoc(collection(db, 'notifications'), {
+        userId: editingPointsUser.email.toLowerCase(),
+        title: pointsChangeAmount > 0 ? '🎁 تم إضافة نقاط ولاء!' : '📉 تم خصم نقاط ولاء',
+        message: `تم ${pointsChangeAmount > 0 ? 'إضافة' : 'خصم'} ${Math.abs(pointsChangeAmount)} نقطة إلى محفظتك الملكية. رصيدك الحالي هو ${newPoints} نقطة.`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'system'
+      });
+
+      onShowToast('تم التحديث بنجاح!', `تم تحديث رصيد ${editingPointsUser.name} ليصبح ${newPoints} نقطة.`, 'success');
+      setEditingPointsUser(null);
+      setPointsChangeAmount(0);
+      setPointsChangeReason('');
+    } catch (err) {
+      console.error("Error updating user points:", err);
+      onShowToast('خطأ!', 'فشل في تحديث نقاط الولاء.', 'error');
+    } finally {
+      setIsUpdatingPoints(false);
     }
   };
 
@@ -1882,6 +2200,17 @@ export default function AdminPanel({
             <span>إدارة المستخدمين ({users.length})</span>
           </button>
           <button
+            onClick={() => { setActiveTab('recovery'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'recovery'
+                ? 'bg-gradient-to-r from-purple-600 to-amber-500 text-white shadow-md shadow-purple-500/10'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-purple-500/30'
+            }`}
+          >
+            <Sparkles className={`h-4 w-4 ${activeTab === 'recovery' ? 'text-white' : 'text-purple-600'}`} />
+            <span>إدارة الزبائن الغائبين ✨</span>
+          </button>
+          <button
             onClick={() => { setActiveTab('agents'); resetProductForm(); }}
             className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'agents'
@@ -1933,8 +2262,19 @@ export default function AdminPanel({
                 : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-amber-500/30'
             }`}
           >
-            <Gift className="h-4 w-4 text-amber-500" />
-            <span>REWARDS 🎁</span>
+            <Coins className="h-4 w-4 text-amber-500" />
+            <span>إدارة النقاط 🪙</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('custom-requests'); resetProductForm(); }}
+            className={`rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'custom-requests'
+                ? 'bg-gradient-to-r from-purple-700 to-amber-600 text-white shadow-md shadow-purple-500/20 border-0'
+                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-purple-500/30'
+            }`}
+          >
+            <Sparkles className={`h-4 w-4 ${activeTab === 'custom-requests' ? 'text-white' : 'text-purple-600'}`} />
+            <span>طلبات المنتجات ✨</span>
           </button>
           <button
             onClick={() => { setActiveTab('audit'); resetProductForm(); }}
@@ -4341,7 +4681,7 @@ export default function AdminPanel({
                             const val = e.target.value;
                             const updated = { ...trackingNotes, [selectedOrderForModal.id]: val };
                             setTrackingNotes(updated);
-                            localStorage.setItem('king_store_order_tracking_notes', JSON.stringify(updated));
+                            safeLocalStorageSetItem('king_store_order_tracking_notes', updated);
                           }}
                           className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs focus:border-amber-400 focus:outline-none min-h-[80px]"
                         />
@@ -5163,6 +5503,217 @@ export default function AdminPanel({
         </div>
       )}
 
+      {activeTab === 'custom-requests' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          {/* Header Card */}
+          <div className="rounded-[2.5rem] bg-gradient-to-br from-slate-950 to-purple-950 border border-purple-500/20 p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl -mr-48 -mt-48" />
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-amber-500/5 rounded-full blur-2xl -ml-32 -mb-32" />
+            
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-700 p-4 rounded-3xl text-white shadow-lg shadow-purple-500/30">
+                    <Sparkles className="h-8 w-8 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+                      طلبات المنتجات المخصصة ✨👑
+                    </h2>
+                    <p className="text-purple-300/60 text-xs sm:text-sm font-bold tracking-wide uppercase mt-1">
+                      Custom Product Requests & Sourcing
+                    </p>
+                  </div>
+                </div>
+                <p className="text-slate-300/80 text-sm sm:text-base leading-relaxed max-w-2xl font-medium">
+                  لوحة إدارة طلبات العملاء الخاصة. تابع طلبات الزبائن الذين لم يجدوا ضالتهم في المتجر، قم بتأمين المنتجات وتحديث الحالات لإشعارهم لحظياً.
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <div className="bg-white/5 backdrop-blur-md border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[100px]">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">إجمالي الطلبات</span>
+                  <span className="text-2xl font-black text-amber-500">{customRequests.length}</span>
+                </div>
+                <div className="bg-white/5 backdrop-blur-md border border-white/10 p-4 rounded-2xl flex flex-col items-center min-w-[100px]">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">قيد المراجعة</span>
+                  <span className="text-2xl font-black text-purple-400">{customRequests.filter(r => r.status === 'pending' || r.status === 'قيد المراجعة').length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering & Search */}
+          <div className="bg-white p-5 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="ابحث باسم العميل، البريد الإلكتروني، أو وصف المنتج..."
+                value={requestSearchQuery}
+                onChange={(e) => setRequestSearchQuery(e.target.value)}
+                className="w-full pr-11 pl-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-purple-500 transition-all outline-none text-sm font-bold text-slate-800"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <button
+                onClick={() => setRequestStatusFilter('all')}
+                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all border ${
+                  requestStatusFilter === 'all'
+                    ? 'bg-slate-900 border-slate-900 text-white'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                الكل
+              </button>
+              {['pending', 'secured', 'available', 'cancelled'].map(status => {
+                const labelMap: Record<string, string> = {
+                  'pending': 'قيد المراجعة',
+                  'secured': 'تم التأمين',
+                  'available': 'متاح الآن',
+                  'cancelled': 'ملغى'
+                };
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setRequestStatusFilter(status)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all border whitespace-nowrap ${
+                      requestStatusFilter === status
+                        ? 'bg-purple-600 border-purple-600 text-white shadow-lg shadow-purple-500/20'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {labelMap[status]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Requests Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {customRequests
+              .filter(req => {
+                const query = requestSearchQuery.toLowerCase();
+                const matchesSearch = 
+                  req.userName.toLowerCase().includes(query) || 
+                  req.userEmail.toLowerCase().includes(query) || 
+                  req.description.toLowerCase().includes(query);
+                
+                const matchesFilter = requestStatusFilter === 'all' || req.status === requestStatusFilter;
+                
+                return matchesSearch && matchesFilter;
+              })
+              .map((req) => (
+              <div key={req.id} className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 group flex flex-col">
+                {/* Image Section */}
+                <div className="relative h-64 overflow-hidden bg-slate-100">
+                  <img 
+                    src={req.imageUrl} 
+                    alt="صورة المنتج المطلوب" 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute top-4 left-4">
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black shadow-lg backdrop-blur-md border ${
+                      req.status === 'available' ? 'bg-emerald-500/90 text-white border-emerald-400' :
+                      req.status === 'secured' ? 'bg-blue-500/90 text-white border-blue-400' :
+                      req.status === 'cancelled' ? 'bg-red-500/90 text-white border-red-400' :
+                      'bg-amber-500/90 text-white border-amber-400'
+                    }`}>
+                      {req.status === 'pending' || req.status === 'قيد المراجعة' ? 'قيد المراجعة ⏳' :
+                       req.status === 'secured' || req.status === 'تم التوفير' ? 'تم تأمين المنتج ✅' :
+                       req.status === 'available' ? 'متاح للطلب الآن 👑' :
+                       req.status === 'cancelled' || req.status === 'ملغى' ? 'طلب ملغى ❌' : req.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Content Section */}
+                <div className="p-6 flex-1 flex flex-col space-y-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-black text-slate-900 truncate max-w-[70%]">{req.userName}</h4>
+                      <span className="text-[10px] font-mono text-slate-400">{new Date(req.timestamp).toLocaleDateString('ar-EG')}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-bold truncate">{req.userEmail}</p>
+                  </div>
+
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex-1">
+                    <span className="text-[10px] font-black text-purple-600 block mb-1 uppercase tracking-widest">وصف المنتج والمواصفات:</span>
+                    <p className="text-xs text-slate-700 font-semibold leading-relaxed line-clamp-4">
+                      {req.description}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-3 pt-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase text-center">تحديث حالة الطلب وإشعار العميل:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleUpdateRequestStatus(req.id, 'secured', req.userEmail)}
+                        disabled={isUpdatingRequestStatus === req.id}
+                        className="py-2.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-black hover:bg-blue-100 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isUpdatingRequestStatus === req.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        تم التأمين
+                      </button>
+                      <button
+                        onClick={() => handleUpdateRequestStatus(req.id, 'available', req.userEmail)}
+                        disabled={isUpdatingRequestStatus === req.id}
+                        className="py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black hover:bg-emerald-100 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isUpdatingRequestStatus === req.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                        متاح الآن
+                      </button>
+                      <button
+                        onClick={() => handleUpdateRequestStatus(req.id, 'pending', req.userEmail)}
+                        disabled={isUpdatingRequestStatus === req.id}
+                        className="py-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black hover:bg-amber-100 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isUpdatingRequestStatus === req.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Clock className="h-3 w-3" />}
+                        قيد المراجعة
+                      </button>
+                      <button
+                        onClick={() => handleUpdateRequestStatus(req.id, 'cancelled', req.userEmail)}
+                        disabled={isUpdatingRequestStatus === req.id}
+                        className="py-2.5 rounded-xl bg-red-50 text-red-700 border border-red-100 text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {isUpdatingRequestStatus === req.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+                        إلغاء الطلب
+                      </button>
+                    </div>
+                    
+                    <button
+                      onClick={() => window.open(`mailto:${req.userEmail}?subject=${encodeURIComponent('بخصوص طلبك لمنتج مخصص في KING STORE')}&body=${encodeURIComponent(`أهلاً ${req.userName}، نحن نتواصل معك بخصوص طلبك لمنتج مخصص بمواصفات: ${req.description}`)}`)}
+                      className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-[10px] font-black hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10"
+                    >
+                      <Send className="h-3.5 w-3.5 text-amber-500" />
+                      تواصل عبر البريد 📧
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {customRequests.length === 0 && (
+              <div className="col-span-full py-20 text-center space-y-4 bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
+                  <Sparkles className="h-10 w-10 text-slate-300" />
+                </div>
+                <div>
+                  <h4 className="text-base font-black text-slate-900">لا توجد طلبات مخصصة حالياً</h4>
+                  <p className="text-xs text-slate-400 font-bold max-w-xs mx-auto leading-relaxed">
+                    ستظهر هنا طلبات العملاء الخاصة فور إرسالها من الشاشة الرئيسية للمتجر.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* TAB: STORE SETTINGS */}
       {activeTab === 'settings' && (
         <div className="space-y-8 animate-fade-in" dir="rtl">
@@ -5497,6 +6048,7 @@ export default function AdminPanel({
                   <tr className="bg-slate-100/50 text-slate-500 font-black border-b border-slate-100">
                     <th className="px-6 py-4">المستخدم</th>
                     <th className="px-6 py-4">البريد الإلكتروني</th>
+                    <th className="px-6 py-4">نقاط الولاء 💎</th>
                     <th className="px-6 py-4">الدور</th>
                     <th className="px-6 py-4 text-center">التحكم في الوصول الآمن</th>
                     <th className="px-6 py-4 text-center">الإجراءات</th>
@@ -5514,6 +6066,24 @@ export default function AdminPanel({
                         </div>
                       </td>
                       <td className="px-6 py-4 font-mono text-slate-500">{user.email}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
+                            {user.points || 0}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setEditingPointsUser(user);
+                              setPointsChangeAmount(0);
+                              setPointsChangeReason('');
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                            title="تعديل النقاط يدوياً"
+                          >
+                            <Settings className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black border ${
                           user.role === 'admin' ? 'bg-amber-50 text-amber-600 border-amber-200' :
@@ -5641,6 +6211,270 @@ export default function AdminPanel({
         </div>
       )}
 
+      {activeTab === 'recovery' && (
+        <div className="space-y-8 animate-fade-in" dir="rtl">
+          {/* قسم إعدادات استعادة الزبائن المخصصة */}
+          <div className="bg-white rounded-3xl border border-purple-200 shadow-xl overflow-hidden p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-4">
+              <div className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-amber-500 animate-bounce" />
+                <h4 className="text-lg font-black text-slate-900">تخصيص العرض والرسالة الملكية ⚙️</h4>
+              </div>
+              {recoverySettingsSuccess && (
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl animate-pulse">
+                  {recoverySettingsSuccess}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* نسبة الخصم */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-700">نسبة الخصم الملكي (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={recoveryDiscount}
+                    onChange={(e) => setRecoveryDiscount(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:bg-white rounded-xl py-3 px-4 text-sm font-bold text-slate-800 transition-all outline-none"
+                    placeholder="10"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-semibold">قيمة كوبون الخصم التنشيطي الممنوح تلقائياً ومستقبلاً.</p>
+              </div>
+
+              {/* غياب الزبون */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-700">أيام الغياب المطلوبة (يوم)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={recoveryDaysLimit}
+                  onChange={(e) => setRecoveryDaysLimit(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:bg-white rounded-xl py-3 px-4 text-sm font-bold text-slate-800 transition-all outline-none"
+                  placeholder="14"
+                />
+                <p className="text-[10px] text-slate-400 font-semibold">عدد أيام انقطاع النشاط ليتم تصنيف الزبون كـ "غائب".</p>
+              </div>
+
+              {/* مدة الصلاحية */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-700">صلاحية الكود (يوم)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={recoveryExpiryDays}
+                  onChange={(e) => setRecoveryExpiryDays(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:bg-white rounded-xl py-3 px-4 text-sm font-bold text-slate-800 transition-all outline-none"
+                  placeholder="30"
+                />
+                <p className="text-[10px] text-slate-400 font-semibold">عدد أيام فاعلية كود الخصم قبل تعطيله تلقائياً.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* عنوان التنبيه والترحيب */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-700">عنوان التنبيه والترحيب 👑</label>
+                <input
+                  type="text"
+                  value={recoveryTitle}
+                  onChange={(e) => setRecoveryTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:bg-white rounded-xl py-3 px-4 text-sm font-bold text-slate-800 transition-all outline-none"
+                  placeholder="عنوان الترحيب التلقائي"
+                />
+                <p className="text-[10px] text-slate-400 font-semibold">عنوان الإشعار الملكي الموجه للزبون عند عودته أو تنشيطه.</p>
+              </div>
+
+              {/* نص الرسالة */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-700">نص الرسالة الترحيبية المخصصة</label>
+                <textarea
+                  value={recoveryMessage}
+                  onChange={(e) => setRecoveryMessage(e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-purple-300 focus:border-purple-500 focus:bg-white rounded-xl py-2 px-4 text-sm font-bold text-slate-800 transition-all outline-none resize-none"
+                  placeholder="نص الإشعار الملكي..."
+                />
+                <p className="text-[10px] text-amber-600 font-bold">
+                  * استخدم رمز <span className="font-mono bg-amber-50 px-1 rounded">{`{code}`}</span> لإدراج كود الخصم ديناميكياً، ورمز <span className="font-mono bg-amber-50 px-1 rounded">{`{discount}`}</span> لنسبة الخصم.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={handleSaveRecoverySettings}
+                disabled={isSavingRecoverySettings}
+                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-amber-500 text-white font-black text-sm rounded-xl shadow-lg shadow-purple-500/15 hover:shadow-purple-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSavingRecoverySettings ? 'جاري حفظ الإعدادات... ⏳' : 'حفظ الإعدادات الملكية وتطبيقها 💾'}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-purple-200 shadow-xl overflow-hidden">
+            <div className="p-6 border-b border-purple-100 flex flex-col md:flex-row md:items-center md:justify-between bg-purple-50/50 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-br from-purple-600 to-amber-500 text-white rounded-2xl shadow-lg shadow-purple-500/20">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">نظام استعادة الزبائن الملكي 👑</h3>
+                  <p className="text-xs text-slate-500 font-bold mt-1">
+                    تتبع واستهداف العملاء الذين غابوا عن المتجر لأكثر من {recoveryDaysLimit} يوماً وتنشيطهم بعروض ملكية حصرية.
+                  </p>
+                </div>
+              </div>
+              <div className="bg-purple-100/80 border border-purple-200 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                <span className="text-xs font-black text-purple-950">مجموع الزبائن الغائبين:</span>
+                <span className="text-sm font-black text-purple-700 bg-white px-2.5 py-1 rounded-lg border border-purple-200">
+                  {users.filter(u => {
+                    if (u.role === 'admin') return false;
+                    const lastActivity = getUserLastActivity(u, orders);
+                    if (!lastActivity) return true;
+                    const diffDays = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24);
+                    return diffDays >= recoveryDaysLimit;
+                  }).length}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 text-xs font-bold">
+                      <th className="pb-4 font-black text-right pr-4">اسم الزبون</th>
+                      <th className="pb-4 font-black text-right">البريد الإلكتروني</th>
+                      <th className="pb-4 font-black text-right">تاريخ آخر نشاط</th>
+                      <th className="pb-4 font-black text-center">أيام الغياب</th>
+                      <th className="pb-4 font-black text-center">عدد الطلبات السابقة</th>
+                      <th className="pb-4 font-black text-center">الإجراء الملكي</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {users
+                      .filter(u => {
+                        if (u.role === 'admin') return false;
+                        const lastActivity = getUserLastActivity(u, orders);
+                        if (!lastActivity) return true;
+                        const diffDays = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24);
+                        return diffDays >= recoveryDaysLimit;
+                      })
+                      .map((user) => {
+                        const lastActivityDate = getUserLastActivity(user, orders);
+                        const diffDays = lastActivityDate 
+                          ? Math.floor((new Date().getTime() - lastActivityDate.getTime()) / (1000 * 60 * 60 * 24))
+                          : 999;
+                        const previousOrders = orders.filter(o => o.customerEmail.toLowerCase() === user.email.toLowerCase());
+                        const ordersCount = previousOrders.length;
+                        
+                        return (
+                          <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-4 font-bold text-slate-900 pr-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold border border-purple-200">
+                                  {user.name ? user.name.charAt(0) : 'U'}
+                                </div>
+                                <span className="text-sm">{user.name || 'مستخدم غير معروف'}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 text-xs font-mono text-slate-500">{user.email}</td>
+                            <td className="py-4 text-sm text-slate-700">
+                              {lastActivityDate 
+                                ? lastActivityDate.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })
+                                : 'لم يسجل أي نشاط مسبقاً ⚠️'}
+                            </td>
+                            <td className="py-4 text-center">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                {diffDays === 999 ? 'غير نشط دائماً' : `${diffDays} يوم`}
+                              </span>
+                            </td>
+                            <td className="py-4 text-center">
+                              <span className="font-bold text-slate-800 text-sm">{ordersCount}</span>
+                            </td>
+                            <td className="py-4 text-center">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const { addDoc, collection } = await import('firebase/firestore');
+                                    const code = `ROYAL-RECOVERY-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                                    const expiryDateStr = new Date(Date.now() + recoveryExpiryDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                                    
+                                    // Add Coupon
+                                    await addDoc(collection(db, 'coupons'), {
+                                      code: code,
+                                      type: 'percentage',
+                                      value: recoveryDiscount,
+                                      minAmount: 0,
+                                      isActive: true,
+                                      expiryDate: expiryDateStr,
+                                      usageCount: 0,
+                                      createdAt: new Date().toISOString(),
+                                      userId: user.email.toLowerCase(),
+                                      is_used: false,
+                                      usage_status: 'active'
+                                    });
+
+                                    // Custom notification message
+                                    const finalMessage = recoveryMessage
+                                      .replace('{code}', code)
+                                      .replace('{discount}', recoveryDiscount.toString());
+
+                                    // Add Notification
+                                    await addDoc(collection(db, 'notifications'), {
+                                      userId: user.email.toLowerCase(),
+                                      title: recoveryTitle,
+                                      message: finalMessage,
+                                      date: new Date().toISOString(),
+                                      isRead: false,
+                                      type: 'system'
+                                    });
+
+                                    onShowToast(
+                                      'تم إرسال العرض الملكي! ✨',
+                                      `تم إنشاء كود الخصم ${code} وإرسال إشعار للزبون ${user.name} بنجاح.`,
+                                      'success'
+                                    );
+                                  } catch (error) {
+                                    console.error("Error sending recovery offer:", error);
+                                    onShowToast('فشلت العملية', 'حدث خطأ أثناء إرسال عرض الاستعادة.', 'error');
+                                  }
+                                }}
+                                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-amber-500 text-white rounded-xl text-xs font-black shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer flex items-center gap-1.5 mx-auto"
+                              >
+                                <Gift className="h-3.5 w-3.5" />
+                                <span>إرسال عرض استعادة</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {users.filter(u => {
+                      if (u.role === 'admin') return false;
+                      const lastActivity = getUserLastActivity(u, orders);
+                      if (!lastActivity) return true;
+                      const diffDays = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24);
+                      return diffDays >= recoveryDaysLimit;
+                    }).length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-slate-500 font-bold">
+                          🎉 لا يوجد زبائن غائبين حالياً! جميع الملوك متفاعلون ونشطون.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'admins' && (
         <div className="space-y-8" dir="rtl">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -5681,7 +6515,7 @@ export default function AdminPanel({
 
                     const updatedInvites = [...invitations, newInvite];
                     setInvitations(updatedInvites);
-                    localStorage.setItem('king_store_admin_invitations', JSON.stringify(updatedInvites));
+                    safeLocalStorageSetItem('king_store_admin_invitations', updatedInvites);
 
                     const link = `${window.location.origin}?invite_email=${encodeURIComponent(email)}&invite_role=admin`;
                     setGeneratedLink(link);
@@ -5803,7 +6637,7 @@ export default function AdminPanel({
                                   onClick={() => {
                                     const updated = invitations.filter(i => i.id !== inv.id);
                                     setInvitations(updated);
-                                    localStorage.setItem('king_store_admin_invitations', JSON.stringify(updated));
+                                    safeLocalStorageSetItem('king_store_admin_invitations', updated);
                                   }}
                                   className="text-red-600 bg-red-50 hover:bg-red-100 rounded-lg p-1.5 transition-colors cursor-pointer border border-red-200"
                                   title={texts.cancelInvite}
@@ -5975,9 +6809,314 @@ export default function AdminPanel({
                 ) : (
                   <CheckCircle2 className="h-5 w-5" />
                 )}
-                <span>{isSavingRewards ? 'جاري الحفظ...' : 'حفظ إعدادات الجوائز اليومية'}</span>
               </button>
             </div>
+          </div>
+
+          {/* New Section: Purchase Loyalty Settings & Manual Points Management */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-right font-sans">
+            
+            {/* Column 1: Configuration & Manual Adjustment */}
+            <div className="space-y-8">
+              
+              {/* Purchase Loyalty Settings Card */}
+              <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-600">
+                    <Coins className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">إعدادات نقاط الشراء التلقائية 🛍️🪙</h3>
+                    <p className="text-[10px] text-slate-500 font-bold mt-0.5">التحكم في نسبة كسب النقاط عند إتمام عمليات الشراء من المتجر.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Enabled/Disabled Toggle */}
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold text-slate-800 block">تفعيل كسب النقاط من المشتريات</span>
+                      <span className="text-[9px] text-slate-400 font-bold block">عند تفعيله، سيحصل العميل على نقاط تلقائياً بناءً على إجمالي فاتورته.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPurchasePointsEnabled(!isPurchasePointsEnabled)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                        isPurchasePointsEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isPurchasePointsEnabled ? '-translate-x-6' : '-translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Points Multiplier */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      عدد نقاط كسب الولاء لكل 1 دولار أمريكي من قيمة المشتريات 💸
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        value={pointsPerDollar}
+                        onChange={(e) => setPointsPerDollar(Math.max(1, Number(e.target.value)))}
+                        className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-black focus:border-emerald-400 focus:outline-none font-mono"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg border border-slate-150">نقطة لكل 1$</span>
+                    </div>
+                  </div>
+
+                  {/* Calculation Preview Banner */}
+                  <div className="p-3.5 bg-blue-50/50 border border-blue-100 rounded-xl text-[11px] text-blue-700 font-bold leading-relaxed">
+                    💡 <span className="underline">محاكاة عملية كسب النقاط:</span> عند شراء منتج أو سلة بقيمة <span className="font-mono text-xs underline">$15</span>، سيمنح النظام العميل تلقائياً <span className="font-mono text-xs underline">{(15 * pointsPerDollar).toLocaleString()}</span> نقطة ولاء ملكية في رصيده.
+                  </div>
+
+                  {loyaltySuccess && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-xs font-bold text-center">
+                      ✨ {loyaltySuccess} ✨
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={isSavingLoyaltySettings}
+                    onClick={handleSavePurchaseLoyaltySettings}
+                    className="w-full py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isSavingLoyaltySettings ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    )}
+                    <span>{isSavingLoyaltySettings ? 'جاري الحفظ...' : 'حفظ قواعد كسب النقاط'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Manual Customer Points Adjuster Card */}
+              <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-amber-100 text-amber-600">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">التعديل اليدوي المباشر للنقاط للعملاء ⚖️✍️</h3>
+                    <p className="text-[10px] text-slate-500 font-bold mt-0.5">زيادة أو خصم رصيد النقاط لأي عميل مع إدخال سبب الحركة وإشعار المستخدم تلقائياً.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Select User Dropdown */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">اختر العميل المستهدف 👤</label>
+                    <select
+                      value={selectedUserEmailForPoints}
+                      onChange={(e) => setSelectedUserEmailForPoints(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs font-bold text-slate-800 focus:border-amber-400 focus:outline-none"
+                    >
+                      <option value="">-- اختر حساب العميل المطلوب تعديله --</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.email}>
+                          {u.name} ({u.email}) — رصيده الحالي: {u.points || 0} نقطة
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Operation Type: Add or Deduct */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700">نوع الحركة ⚙️</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPointsAdjustmentType('add')}
+                          className={`py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border flex items-center justify-center gap-1 ${
+                            pointsAdjustmentType === 'add'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-200'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>إضافة نقاط</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPointsAdjustmentType('deduct')}
+                          className={`py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border flex items-center justify-center gap-1 ${
+                            pointsAdjustmentType === 'deduct'
+                              ? 'bg-red-50 text-red-700 border-red-300 ring-1 ring-red-200'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                          <span>خصم نقاط</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Amount to adjust */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-700">كمية النقاط 🔢</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={pointsAdjustmentAmount}
+                        onChange={(e) => setPointsAdjustmentAmount(Math.max(1, Number(e.target.value)))}
+                        className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-black focus:border-amber-400 focus:outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reason for manual adjustment */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">سبب تعديل رصيد النقاط 📝</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: تعويض لطلب مكرر، مكافأة مسابقة، إلخ..."
+                      value={pointsAdjustmentReason}
+                      onChange={(e) => setPointsAdjustmentReason(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold focus:border-amber-400 focus:outline-none text-slate-800"
+                    />
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="button"
+                    disabled={isAdjustingPoints}
+                    onClick={handleAdjustUserPoints}
+                    className={`w-full py-3.5 rounded-xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      pointsAdjustmentType === 'add'
+                        ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                        : 'bg-red-500 hover:bg-red-600 text-white'
+                    }`}
+                  >
+                    {isAdjustingPoints ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : pointsAdjustmentType === 'add' ? (
+                      <Plus className="h-4 w-4" />
+                    ) : (
+                      <Minus className="h-4 w-4" />
+                    )}
+                    <span>
+                      {isAdjustingPoints
+                        ? 'جاري التعديل وإرسال الإشعار...'
+                        : pointsAdjustmentType === 'add'
+                        ? `إضافة ${pointsAdjustmentAmount} نقطة لحساب العميل 🎁`
+                        : `خصم ${pointsAdjustmentAmount} نقطة من حساب العميل ⚖️`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Column 2: Points History Table */}
+            <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm flex flex-col h-full min-h-[500px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-blue-50 text-blue-600">
+                    <History className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">سجل حركات نقاط الولاء العام 📜🧭</h3>
+                    <p className="text-[10px] text-slate-500 font-bold mt-0.5">تتبع مباشر لجميع نقاط المشتريات والتعديلات اليدوية.</p>
+                  </div>
+                </div>
+                <span className="bg-slate-100 text-slate-700 text-[10px] font-black px-3 py-1 rounded-full border border-slate-150">
+                  {adminPointsHistory.length} حركة
+                </span>
+              </div>
+
+              {/* Search filter for history */}
+              <div className="mb-4 relative">
+                <input
+                  type="text"
+                  placeholder="ابحث عن طريق البريد الإلكتروني، رمز الطلب، أو السبب..."
+                  value={pointsSearchQuery}
+                  onChange={(e) => setPointsSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white p-3 pr-10 text-xs font-semibold focus:border-amber-400 focus:outline-none transition-all"
+                />
+                <Search className="h-4 w-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+              </div>
+
+              {/* Real-time points history scrollable area */}
+              <div className="flex-1 overflow-y-auto max-h-[520px] space-y-3 pr-1">
+                {adminPointsHistory.filter((item) => {
+                  const queryLower = pointsSearchQuery.toLowerCase().trim();
+                  if (!queryLower) return true;
+                  return (
+                    (item.userId || '').toLowerCase().includes(queryLower) ||
+                    (item.orderId || '').toLowerCase().includes(queryLower) ||
+                    (item.reason || '').toLowerCase().includes(queryLower)
+                  );
+                }).length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 font-semibold text-xs space-y-2">
+                    <p>📭 لا يوجد حركات مطابقة للبحث أو سجل حركات بعد.</p>
+                  </div>
+                ) : (
+                  adminPointsHistory
+                    .filter((item) => {
+                      const queryLower = pointsSearchQuery.toLowerCase().trim();
+                      if (!queryLower) return true;
+                      return (
+                        (item.userId || '').toLowerCase().includes(queryLower) ||
+                        (item.orderId || '').toLowerCase().includes(queryLower) ||
+                        (item.reason || '').toLowerCase().includes(queryLower)
+                      );
+                    })
+                    .map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100/70 border border-slate-100 transition-all flex items-center justify-between gap-4 text-right"
+                      >
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-bold text-slate-900 truncate max-w-[200px]" title={item.userId}>
+                              {item.userId}
+                            </span>
+                            <span className="text-[9px] bg-white border border-slate-200 text-slate-500 px-2 py-0.5 rounded-lg font-black font-mono">
+                              {item.orderId ? `طلب #${item.orderId}` : 'تعديل إدارة'}
+                            </span>
+                          </div>
+                          
+                          <p className="text-[10px] text-slate-500 font-semibold truncate leading-relaxed">
+                            {item.orderId 
+                              ? `نقاط شراء مكتسبة من الفاتورة` 
+                              : `السبب: ${item.reason || 'مكافأة خاصة'}`}
+                          </p>
+
+                          <span className="text-[9px] text-slate-400 font-medium block font-mono">
+                            {new Date(item.date).toLocaleDateString('ar-EG', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span
+                            className={`text-sm font-black font-mono ${
+                              item.points_added > 0 ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {item.points_added > 0 ? `+${item.points_added}` : item.points_added}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400">نقطة</span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Analytics Shortcut */}
@@ -6356,6 +7495,108 @@ export default function AdminPanel({
                   <>
                     <Send className="h-4 w-4" />
                     <span>إرسال التنبيه الفردي</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Point Management Modal */}
+      {editingPointsUser && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm" dir="rtl">
+          <div 
+            className="relative bg-white rounded-3xl border border-slate-200 max-w-md w-full overflow-hidden shadow-2xl p-6 text-slate-800 animate-fade-in text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-amber-600 mb-6 justify-start border-b border-slate-100 pb-4">
+              <div className="bg-amber-50 p-3 rounded-2xl text-amber-600 border border-amber-100">
+                <Settings className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">تعديل نقاط الولاء (Loyalty Points)</h3>
+                <p className="text-[10px] text-slate-500 font-bold mt-0.5">تعديل رصيد النقاط يدوياً للمستخدم: <span className="text-amber-600 underline">{editingPointsUser.name}</span></p>
+              </div>
+            </div>
+            
+            <div className="space-y-5">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-bold">الرصيد الحالي</p>
+                  <p className="text-xl font-black text-slate-900">{editingPointsUser.points || 0} نقطة</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center text-amber-500 shadow-sm">
+                  <Database className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-2">مقدار التعديل (أدخل قيمة موجبة للإضافة أو سالبة للخصم)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={pointsChangeAmount || ''}
+                    onChange={(e) => setPointsChangeAmount(parseInt(e.target.value) || 0)}
+                    placeholder="مثال: 100 أو -50"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-sm transition-all font-mono text-center"
+                  />
+                  <div className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black px-2 py-1 rounded-lg ${pointsChangeAmount >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                    {pointsChangeAmount >= 0 ? 'إضافة +' : 'خصم -'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-2">سبب التعديل (اختياري - سيظهر في السجل)</label>
+                <textarea
+                  value={pointsChangeReason}
+                  onChange={(e) => setPointsChangeReason(e.target.value)}
+                  placeholder="مثال: تعويض عن تأخير طلب، مكافأة خاصة، تصحيح رصيد..."
+                  rows={3}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none text-sm transition-all resize-none"
+                />
+              </div>
+
+              <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-100/50">
+                <p className="text-[10px] text-amber-700 font-bold leading-relaxed flex items-center gap-2">
+                  <AlertCircle className="h-3 w-3" />
+                  <span>سيتم تحديث الرصيد فوراً في حساب المستخدم وسيصل له إشعار فوري بالتغيير.</span>
+                </p>
+                <p className="text-sm font-black text-slate-900 mt-2">
+                  الرصيد الجديد المتوقع: <span className="text-amber-600">{(editingPointsUser.points || 0) + pointsChangeAmount} نقطة</span>
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3 justify-end mt-8 border-t border-slate-100 pt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingPointsUser(null);
+                  setPointsChangeAmount(0);
+                  setPointsChangeReason('');
+                }}
+                className="px-6 py-3 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-black hover:bg-slate-50 transition-colors cursor-pointer"
+                disabled={isUpdatingPoints}
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdatePoints}
+                disabled={isUpdatingPoints || pointsChangeAmount === 0}
+                className="px-8 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-xl shadow-slate-900/15 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUpdatingPoints ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>جاري التحديث...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 text-amber-500" />
+                    <span>تأكيد تحديث النقاط ✅</span>
                   </>
                 )}
               </button>

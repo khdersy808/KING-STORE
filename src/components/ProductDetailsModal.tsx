@@ -22,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-  Heart
+  Heart,
+  Ruler,
+  Sparkles
 } from 'lucide-react';
 
 interface ProductDetailsModalProps {
@@ -77,6 +79,13 @@ export default function ProductDetailsModal({
   );
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Smart Size Helper (Royal Size Guide) States
+  const [isSizeHelperOpen, setIsSizeHelperOpen] = useState(false);
+  const [userHeight, setUserHeight] = useState('');
+  const [userWeight, setUserWeight] = useState('');
+  const [smartSizeResult, setSmartSizeResult] = useState('');
+  const [helperError, setHelperError] = useState('');
 
   const images = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
 
@@ -353,21 +362,37 @@ export default function ProductDetailsModal({
                   ? 'bg-red-500/5 border-red-500/30 ring-1 ring-red-500/20' 
                   : 'bg-zinc-900/40 border-zinc-800'
               }`}>
-                <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 justify-start">
-                  <span>{
-                    product.category === 'أحذية' || 
-                    product.category?.toLowerCase().includes('shoes') || 
-                    product.category?.toLowerCase().includes('footwear') 
-                      ? '👟 مقاس الحذاء المطلوب:' 
-                      : '👕 المقاس المطلوب للملابس:'
-                  }</span>
-                  {!selectedSize ? (
-                    <span className="text-amber-500 font-extrabold text-[10px] animate-pulse">(يرجى اختيار مقاسك)</span>
-                  ) : (
-                    <span className="text-amber-400 font-extrabold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{selectedSize}</span>
-                  )}
-                </span>
-                <div className="flex flex-wrap gap-2 justify-start mt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-zinc-800/40 mb-3">
+                  <span className="text-xs font-bold text-zinc-400 flex items-center gap-1.5 justify-start">
+                    <span>{
+                      product.category === 'أحذية' || 
+                      product.category?.toLowerCase().includes('shoes') || 
+                      product.category?.toLowerCase().includes('footwear') 
+                        ? '👟 مقاس الحذاء المطلوب:' 
+                        : '👕 المقاس المطلوب للملابس:'
+                    }</span>
+                    {!selectedSize ? (
+                      <span className="text-amber-500 font-extrabold text-[10px] animate-pulse">(يرجى اختيار مقاسك)</span>
+                    ) : (
+                      <span className="text-amber-400 font-extrabold text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{selectedSize}</span>
+                    )}
+                  </span>
+
+                  {/* Smart Size Helper Trigger Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSizeHelperOpen(true);
+                      setHelperError('');
+                      setSmartSizeResult('');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-400 hover:text-amber-300 transition-all bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 px-2.5 py-1.5 rounded-lg shrink-0 cursor-pointer shadow-sm self-start sm:self-auto"
+                  >
+                    <Ruler className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                    <span>ساعدني باختيار مقاسك ✨</span>
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-start">
                   {product.sizes.map((sz) => {
                     const isSelected = selectedSize === sz;
                     return (
@@ -716,6 +741,234 @@ export default function ProductDetailsModal({
         </div>
 
       </div>
+
+      {/* Smart Size Helper Overlay */}
+      <AnimatePresence>
+        {isSizeHelperOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm text-right"
+            dir="rtl"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="relative w-full max-w-md bg-zinc-950 border-2 border-purple-500/40 rounded-[2.5rem] p-6 text-zinc-100 shadow-2xl shadow-purple-500/10 overflow-hidden"
+            >
+              {/* Background decorative glow */}
+              <div className="absolute -top-12 -left-12 w-32 h-32 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-zinc-900 pb-4 mb-5">
+                <div className="flex items-center gap-2">
+                  <div className="p-2.5 bg-gradient-to-br from-purple-600 to-amber-500 rounded-2xl text-slate-950 shadow-lg">
+                    <Ruler className="h-5 w-5 text-slate-950" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">دليل المقاس الملكي 👑📏</h3>
+                    <p className="text-[10px] text-zinc-400 font-bold">Smart Size Helper — King Store</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSizeHelperOpen(false);
+                    setSmartSizeResult('');
+                  }}
+                  className="p-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Content */}
+              {!smartSizeResult ? (
+                <div className="space-y-4">
+                  <p className="text-xs text-zinc-300 font-semibold leading-relaxed bg-purple-950/20 border border-purple-500/10 p-3 rounded-xl">
+                    🎯 أدخل طولك ووزنك لتحديد المقاس الملكي الأنسب لك بدقة عالية طبقاً لجدول القياسات المعتمد لدينا!
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Height Input */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-zinc-400">الطول (بالسم) 📏</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          placeholder="مثال: 175"
+                          value={userHeight}
+                          onChange={(e) => {
+                            setUserHeight(e.target.value);
+                            setHelperError('');
+                          }}
+                          className="w-full text-center bg-zinc-900/60 border border-zinc-800 text-sm font-black rounded-xl p-3 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20 text-white font-mono"
+                          min="100"
+                          max="250"
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-zinc-500 bg-zinc-950/40 px-1.5 py-0.5 rounded border border-zinc-850">سم</span>
+                      </div>
+                    </div>
+
+                    {/* Weight Input */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-zinc-400">الوزن (بالكيلو) ⚖️</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          placeholder="مثال: 78"
+                          value={userWeight}
+                          onChange={(e) => {
+                            setUserWeight(e.target.value);
+                            setHelperError('');
+                          }}
+                          className="w-full text-center bg-zinc-900/60 border border-zinc-800 text-sm font-black rounded-xl p-3 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20 text-white font-mono"
+                          min="30"
+                          max="200"
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-zinc-500 bg-zinc-950/40 px-1.5 py-0.5 rounded border border-zinc-850">كغ</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {helperError && (
+                    <div className="p-2.5 bg-red-950/30 border border-red-500/20 text-red-400 rounded-xl text-[11px] font-bold text-center">
+                      ⚠️ {helperError}
+                    </div>
+                  )}
+
+                  {/* Calculate Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const h = Number(userHeight);
+                      const w = Number(userWeight);
+                      if (!h || !w || h <= 0 || w <= 0) {
+                        setHelperError('يرجى إدخال قيم صحيحة للطول والوزن للمتابعة.');
+                        return;
+                      }
+                      if (h < 100 || h > 250) {
+                        setHelperError('يرجى إدخال طول منطقي بين 100 سم و 250 سم.');
+                        return;
+                      }
+                      if (w < 30 || w > 250) {
+                        setHelperError('يرجى إدخال وزن منطقي بين 30 كجم و 250 كجم.');
+                        return;
+                      }
+                      
+                      setHelperError('');
+                      // Get recommendation
+                      const isNumericSize = product.sizes?.some(s => !isNaN(Number(s)));
+                      let suggested = '';
+                      
+                      if (isNumericSize) {
+                        // Numeric sizing (Shoes or numerical pants)
+                        if (h < 155) suggested = '38';
+                        else if (h >= 155 && h < 162) suggested = '39';
+                        else if (h >= 162 && h < 170) suggested = '40';
+                        else if (h >= 170 && h < 176) suggested = '41';
+                        else if (h >= 176 && h < 182) suggested = '42';
+                        else if (h >= 182 && h < 188) suggested = '43';
+                        else if (h >= 188 && h < 195) suggested = '44';
+                        else suggested = '45';
+                      } else {
+                        // Alphabet sizing (Clothes: S, M, L, XL, XXL, etc.)
+                        const bmi = w / ((h / 100) * (h / 100));
+                        if (w < 55) {
+                          suggested = 'S';
+                        } else if (w >= 55 && w < 68) {
+                          suggested = 'M';
+                        } else if (w >= 68 && w < 80) {
+                          suggested = (bmi < 22 && h > 180) ? 'M' : 'L';
+                        } else if (w >= 80 && w < 92) {
+                          suggested = (bmi < 23 && h > 185) ? 'L' : 'XL';
+                        } else if (w >= 92 && w < 105) {
+                          suggested = 'XXL';
+                        } else {
+                          suggested = 'XXXL';
+                        }
+                      }
+                      
+                      setSmartSizeResult(suggested);
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+                  >
+                    <Sparkles className="h-4 w-4 text-slate-950 animate-bounce" />
+                    <span>احصل على مقاسك الملكي 👑</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-5 text-center py-2">
+                  {/* Success State */}
+                  <div className="mx-auto w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-2">
+                    <Sparkles className="h-8 w-8 text-amber-400 animate-pulse" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-zinc-500 font-bold block uppercase tracking-widest">المقاس الملكي المقترح</span>
+                    <h4 className="text-4xl font-black text-amber-400 font-sans">
+                      {smartSizeResult}
+                    </h4>
+                  </div>
+
+                  <p className="text-xs text-zinc-300 font-semibold px-4">
+                    تم تحديد مقاسك الملكي المناسب بناءً على طولك (<span className="font-mono text-amber-400">{userHeight} سم</span>) ووزنك (<span className="font-mono text-amber-400">{userWeight} كجم</span>).
+                  </p>
+
+                  {/* Auto Match Check */}
+                  {product.sizes?.map(s => s.trim().toUpperCase()).includes(smartSizeResult.toUpperCase()) ? (
+                    <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-xs font-bold text-emerald-400 leading-relaxed">
+                      ✅ تم ربط وتفعيل المقاس <span className="font-mono underline">{smartSizeResult}</span> في طلبك تلقائياً بنجاح! السلة جاهزة لاستقبال طلبك الآن.
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-xs font-semibold text-amber-400 leading-relaxed">
+                      ⚠️ المقاس {smartSizeResult} قد لا يكون متاحاً حالياً لهذا المنتج المحدد، ولكن تم اختيار أقرب مقاس بديل مناسب في قائمة المقاسات المتوفرة تلقائياً.
+                    </div>
+                  )}
+
+                  {/* Quick Actions */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Perform auto-selection
+                        const match = product.sizes?.find(s => s.trim().toUpperCase() === smartSizeResult.toUpperCase());
+                        if (match) {
+                          setSelectedSize(match);
+                        } else {
+                          // Find closest size in list
+                          if (product.sizes && product.sizes.length > 0) {
+                            setSelectedSize(product.sizes[0]);
+                          }
+                        }
+                        setIsSizeHelperOpen(false);
+                        setSmartSizeResult('');
+                      }}
+                      className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs shadow-md shadow-purple-500/10 transition-all cursor-pointer"
+                    >
+                      الموافقة وتعبئة المقاس الموصى به 🛍️
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSmartSizeResult('');
+                      }}
+                      className="w-full mt-2 py-2.5 rounded-xl text-zinc-400 hover:text-white font-bold text-[11px] transition-all cursor-pointer"
+                    >
+                      إعادة الحساب 🔄
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

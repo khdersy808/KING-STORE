@@ -209,6 +209,101 @@ export async function convertPointsToCoupons(userEmail: string, currentPoints: n
   return { points: remainingPoints, coupons: newCoupons, generated: generatedCodes };
 }
 
+export async function awardPointsForOrder(orderId: string, customerEmail: string, totalAmount: number): Promise<void> {
+  if (!customerEmail) return;
+  const userEmail = customerEmail.toLowerCase();
+  
+  try {
+    // 1. Check if points are already awarded for this order
+    const pointsHistoryQuery = query(
+      collection(db, 'points_history'),
+      where('orderId', '==', orderId)
+    );
+    const querySnap = await getDocs(pointsHistoryQuery);
+    if (!querySnap.empty) {
+      console.log(`[Loyalty] Points already awarded for order ${orderId}`);
+      return; // Already awarded!
+    }
+
+    // 2. Fetch loyalty settings
+    let isEnabled = true;
+    let pointsPerDollar = 100;
+    try {
+      const loyaltySnap = await getDoc(doc(db, 'settings', 'loyalty'));
+      if (loyaltySnap.exists()) {
+        const loyaltyData = loyaltySnap.data();
+        isEnabled = loyaltyData.isEnabled !== false; // default true
+        pointsPerDollar = loyaltyData.pointsPerDollar ?? 100;
+      }
+    } catch (err) {
+      console.warn("[Loyalty] Error fetching loyalty settings, using defaults:", err);
+    }
+
+    if (!isEnabled) {
+      console.log(`[Loyalty] Purchase points are currently disabled.`);
+      return;
+    }
+
+    // Calculate points: $1 = pointsPerDollar
+    const pointsAdded = Math.round(totalAmount * pointsPerDollar);
+    if (pointsAdded <= 0) return;
+
+    // 3. Add to points_history
+    const historyRef = doc(collection(db, 'points_history'));
+    await setDoc(historyRef, {
+      userId: userEmail,
+      points_added: pointsAdded,
+      orderId: orderId,
+      date: new Date().toISOString()
+    });
+
+    // 4. Update user's points
+    const userRef = doc(db, 'users', userEmail);
+    const userSnap = await getDoc(userRef);
+    let currentPoints = 0;
+    let currentCoupons: string[] = [];
+    let userName = userEmail;
+
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      currentPoints = userData.points || 0;
+      currentCoupons = userData.coupons || [];
+      userName = userData.name || userEmail;
+    }
+
+    const newPoints = currentPoints + pointsAdded;
+
+    // Save points
+    await setDoc(userRef, {
+      points: newPoints
+    }, { merge: true });
+
+    // 5. Trigger auto-conversion for every 1000 points
+    if (newPoints >= 1000) {
+      await convertPointsToCoupons(userEmail, newPoints, currentCoupons);
+    }
+
+    // 6. Create system notification for the user
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        userId: userEmail,
+        title: '🎉 تم كسب نقاط ملكية جديدة!',
+        message: `تهانينا يا ${userName}! لقد حصلت على ${pointsAdded} نقطة ملكية مقابل مشترياتك في الطلب #${orderId}.`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'system',
+        orderId: orderId
+      });
+    } catch (notifErr) {
+      console.warn("Could not create points earned notification:", notifErr);
+    }
+
+    console.log(`[Loyalty] Awarded ${pointsAdded} points to ${userEmail} for order ${orderId}`);
+  } catch (error) {
+    console.error("[Loyalty] Error awarding points for order:", error);
+  }
+}
+
 export const encryptPin = (pin: string): string => {
   if (!pin) return "";
   try {
