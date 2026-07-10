@@ -403,6 +403,8 @@ export default function AuthModal({
           errorMsgAr = t('accountDisabled');
         } else if (error.code === 'auth/too-many-requests') {
           errorMsgAr = t('tooManyRequests');
+        } else if (error.code === 'auth/network-request-failed') {
+          errorMsgAr = 'خطأ في الاتصال بالخادم. قد تكون الخدمة محجوبة في بلدك، يرجى استخدام VPN أو التحقق من جودة الإنترنت ⚠️';
         } else if (error.message) {
           errorMsgAr = t('errorWithMsg').replace('{message}', error.message);
         }
@@ -544,6 +546,8 @@ export default function AuthModal({
           errorMsgAr = t('weakPassword');
         } else if (err.code === 'auth/invalid-email') {
           errorMsgAr = t('invalidEmail');
+        } else if (err.code === 'auth/network-request-failed') {
+          errorMsgAr = 'خطأ في الاتصال بالخادم. قد تكون الخدمة محجوبة في بلدك، يرجى استخدام VPN أو التحقق من جودة الإنترنت ⚠️';
         }
         setErrorMsg(errorMsgAr);
       } finally {

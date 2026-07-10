@@ -334,25 +334,27 @@ export default function WalletModal({
                     >
                       <AnimatePresence mode="wait" initial={false}>
                         {copiedCode ? (
-                          <motion.div
+                          <motion.span
                             key="check"
                             initial={{ scale: 0, rotate: -45 }}
                             animate={{ scale: 1, rotate: 0 }}
                             exit={{ scale: 0 }}
                             transition={{ duration: 0.15 }}
+                            className="inline-block"
                           >
                             <Check className="h-3.5 w-3.5 stroke-[3]" />
-                          </motion.div>
+                          </motion.span>
                         ) : (
-                          <motion.div
+                          <motion.span
                             key="copy"
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0 }}
                             transition={{ duration: 0.15 }}
+                            className="inline-block"
                           >
                             <Copy className="h-3.5 w-3.5" />
-                          </motion.div>
+                          </motion.span>
                         )}
                       </AnimatePresence>
                     </motion.button>
@@ -369,9 +371,9 @@ export default function WalletModal({
                   >
                     <AnimatePresence mode="wait" initial={false}>
                       {copiedLink ? (
-                        <motion.div
+                        <motion.span
                           key="copied"
-                          className="flex items-center gap-1.5"
+                          className="flex items-center gap-1.5 justify-center"
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -5 }}
@@ -379,11 +381,11 @@ export default function WalletModal({
                         >
                           <Check className="h-3.5 w-3.5 stroke-[3]" />
                           <span>تم نسخ رابط الدعوة الملكي بنجاح! 🎉</span>
-                        </motion.div>
+                        </motion.span>
                       ) : (
-                        <motion.div
+                        <motion.span
                           key="copy"
-                          className="flex items-center gap-1.5"
+                          className="flex items-center gap-1.5 justify-center"
                           initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -5 }}
@@ -391,7 +393,7 @@ export default function WalletModal({
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           <span>نسخ رابط الدعوة المباشر</span>
-                        </motion.div>
+                        </motion.span>
                       )}
                     </AnimatePresence>
                   </motion.button>

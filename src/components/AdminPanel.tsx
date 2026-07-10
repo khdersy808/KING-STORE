@@ -94,7 +94,7 @@ interface AdminPanelProps {
   onShowToast: (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users' | 'rewards';
+type AdminTab = 'analytics' | 'products' | 'categories' | 'gateways' | 'orders' | 'admins' | 'agents' | 'messages' | 'discounts' | 'settings' | 'ai-lab' | 'policies' | 'users' | 'rewards' | 'audit';
 
 export default function AdminPanel({
   products,
