@@ -375,28 +375,32 @@ function AppContent() {
         const { getDoc, doc, getDocs, collection, query, orderBy } = await import('firebase/firestore');
         
         // 0. Test connection
-        try {
-          const { doc, getDocFromServer } = await import('firebase/firestore');
-          await getDocFromServer(doc(db, 'settings', 'daily_checkin'));
-        } catch (error) {
+        if (db) {
+          try {
+            const { doc, getDocFromServer } = await import('firebase/firestore');
+            await getDocFromServer(doc(db, 'settings', 'daily_checkin'));
+          } catch (error) {
+          }
         }
 
         // 1. Wait for Auth and User Profile to resolve
-        await new Promise<void>((resolve) => {
-          const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-            if (fbUser) {
-              try {
-                const userDocRef = doc(db, 'users', fbUser.uid);
-                const userDocSnap = await getDoc(userDocRef);
-              } catch (e) {
+        if (auth) {
+          await new Promise<void>((resolve) => {
+            const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+              if (fbUser && db) {
+                try {
+                  const userDocRef = doc(db, 'users', fbUser.uid);
+                  const userDocSnap = await getDoc(userDocRef);
+                } catch (e) {
+                }
               }
-            }
-            unsubscribe();
-            resolve();
+              unsubscribe();
+              resolve();
+            });
+            // Timeout as safety
+            setTimeout(resolve, 3000);
           });
-          // Timeout as safety
-          setTimeout(resolve, 3000);
-        });
+        }
 
         // 2. Fetch all configuration data in parallel
         await Promise.resolve();
@@ -548,7 +552,7 @@ function AppContent() {
 
   // Synchronize points history with currentUser in real-time
   useEffect(() => {
-    if (!auth.currentUser || !currentUser?.email) {
+    if (!auth?.currentUser || !currentUser?.email || !db) {
       setPointsHistory([]);
       return;
     }
@@ -575,7 +579,7 @@ function AppContent() {
 
   // Synchronize wishlist with Firestore subcollection in real-time
   useEffect(() => {
-    if (!auth.currentUser || !currentUser?.id) {
+    if (!auth?.currentUser || !currentUser?.id || !db) {
       const saved = localStorage.getItem('king_store_wishlist');
       setWishlist(saved ? JSON.parse(saved) : []);
       return;
@@ -642,8 +646,8 @@ function AppContent() {
 
     const listenToCategories = async () => {
       try {
+        if (!db || !active) return;
         const { onSnapshot, collection } = await import('firebase/firestore');
-        if (!active) return;
         const q = collection(db, 'categories');
         
         unsubscribe = onSnapshot(q, (snapshot) => {
@@ -676,8 +680,8 @@ function AppContent() {
 
     const listenToSettings = async () => {
       try {
+        if (!db || !active) return;
         const { onSnapshot, doc } = await import('firebase/firestore');
-        if (!active) return;
         
         // Daily Checkin Rewards
         const unsubCheckin = onSnapshot(doc(db, 'settings', 'daily_checkin'), (snap) => {
@@ -784,8 +788,12 @@ function AppContent() {
     const listenToGateways = async () => {
       setIsLoadingGateways(true);
       try {
+        if (!db || !active) {
+          setGateways(INITIAL_PAYMENT_GATEWAYS);
+          setIsLoadingGateways(false);
+          return;
+        }
         const { onSnapshot, collection, setDoc, doc } = await import('firebase/firestore');
-        if (!active) return;
         const q = collection(db, 'payment_gateways');
         
         unsubscribe = onSnapshot(q, (snapshot) => {
@@ -856,8 +864,11 @@ function AppContent() {
 
     const listenToProducts = async () => {
       try {
+        if (!db || !active) {
+          setProducts(INITIAL_PRODUCTS);
+          return;
+        }
         const { onSnapshot, collection, setDoc, doc } = await import('firebase/firestore');
-        if (!active) return;
         const q = collection(db, 'products');
         
         unsubscribe = onSnapshot(q, (snapshot) => {
@@ -934,7 +945,7 @@ function AppContent() {
                           currentUser?.email === 'khdersy080@gmail.com' ||
                           currentUser?.email === 'nagamwesam1998@gmail.com';
                            
-      if (!auth.currentUser || !isAdminUser) {
+      if (!auth?.currentUser || !isAdminUser || !db) {
         setOrders([]);
         return;
       }
@@ -1003,7 +1014,7 @@ function AppContent() {
   // Synchronize notifications with Firestore
   useEffect(() => {
     const fetchNotifications = async () => {
-      if (!auth.currentUser || !currentUser) {
+      if (!auth?.currentUser || !currentUser || !db) {
         setNotifications([]);
         return;
       }
@@ -1067,6 +1078,7 @@ function AppContent() {
   // Synchronize authentication state with Firebase
   useEffect(() => {
     let userUnsubscribe: (() => void) | null = null;
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
         const adminEmail = 'khdersy808@gmail.com';

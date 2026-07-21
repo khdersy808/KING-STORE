@@ -51,6 +51,10 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -60,7 +64,7 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
 
   useEffect(() => {
     let active = true;
-    if (!auth.currentUser) {
+    if (!auth?.currentUser || !db) {
       setAgents([]);
       setAllProducts([]);
       return;

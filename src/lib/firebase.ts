@@ -23,32 +23,59 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Initialize Firebase App
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase App safely
+export let app: any = null;
+export let db: any = null;
+export let auth: any = null;
+export let storage: any = null;
+export let messaging: any = null;
 
-const dbId = (firebaseConfig as any).firestoreDatabaseId && (firebaseConfig as any).firestoreDatabaseId !== '(default)'
-  ? (firebaseConfig as any).firestoreDatabaseId
-  : undefined;
-
-// Initialize Firestore with custom database ID and long polling to bypass network/sandbox constraints
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-}, dbId);
-
-// Initialize and export Auth
-export const auth = getAuth(app);
-
-// Initialize Storage
-export const storage = getStorage(app);
-
-// Initialize Messaging
-let messaging = null;
 try {
-  messaging = getMessaging(app);
+  const cfg = firebaseConfig as any;
+  if (cfg && (cfg.apiKey || cfg.projectId)) {
+    app = initializeApp(cfg);
+  } else {
+    console.warn('[Firebase Init Warning]: Config missing apiKey/projectId. Operating in offline fallback mode.');
+  }
 } catch (e) {
+  console.warn('[Firebase Init Warning]: Failed to initialize Firebase App safely:', e);
 }
-export { messaging };
+
+if (app) {
+  const dbId = (firebaseConfig as any)?.firestoreDatabaseId && (firebaseConfig as any)?.firestoreDatabaseId !== '(default)'
+    ? (firebaseConfig as any).firestoreDatabaseId
+    : undefined;
+
+  // Initialize Firestore with custom database ID and long polling to bypass network/sandbox constraints
+  try {
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    }, dbId);
+  } catch (err) {
+    console.warn('[Firebase Init Warning]: Could not initialize Firestore:', err);
+  }
+
+  // Initialize and export Auth
+  try {
+    auth = getAuth(app);
+  } catch (err) {
+    console.warn('[Firebase Init Warning]: Could not initialize Auth:', err);
+  }
+
+  // Initialize Storage
+  try {
+    storage = getStorage(app);
+  } catch (err) {
+    console.warn('[Firebase Init Warning]: Could not initialize Storage:', err);
+  }
+
+  // Initialize Messaging
+  try {
+    messaging = getMessaging(app);
+  } catch (e) {
+  }
+}
 
 // Collection References
 export const PRODUCTS_COLLECTION = 'products';
@@ -125,10 +152,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 async function getUserDocRef(emailOrUid: string) {
-  if (!emailOrUid) return null;
+  if (!emailOrUid || !db) return null;
   const normalized = emailOrUid.trim().toLowerCase();
   
-  if (auth.currentUser) {
+  if (auth?.currentUser) {
     if (auth.currentUser.uid === emailOrUid || auth.currentUser.email?.toLowerCase() === normalized) {
       return doc(db, 'users', auth.currentUser.uid);
     }
@@ -139,7 +166,7 @@ async function getUserDocRef(emailOrUid: string) {
   }
 
   // Only admins have collection-level read permissions on 'users' collection to query by email
-  const isAdmin = auth.currentUser?.email?.toLowerCase() === 'khdersy808@gmail.com' || auth.currentUser?.email?.toLowerCase() === 'nagamwesam1998@gmail.com';
+  const isAdmin = auth?.currentUser?.email?.toLowerCase() === 'khdersy808@gmail.com' || auth?.currentUser?.email?.toLowerCase() === 'nagamwesam1998@gmail.com';
   
   if (isAdmin) {
     try {
@@ -153,7 +180,7 @@ async function getUserDocRef(emailOrUid: string) {
   }
 
   // Fallback to prevent permission errors: never return the email as the document ID
-  if (auth.currentUser) {
+  if (auth?.currentUser) {
     return doc(db, 'users', auth.currentUser.uid);
   }
   return doc(db, 'users', 'anonymous_user_fallback');

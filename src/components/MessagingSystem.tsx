@@ -21,6 +21,10 @@ export default function MessagingSystem({ currentUser }: MessagingSystemProps) {
   const [whatsappMessage, setWhatsappMessage] = useState('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -30,6 +34,7 @@ export default function MessagingSystem({ currentUser }: MessagingSystemProps) {
 
   useEffect(() => {
     let active = true;
+    if (!db) return;
     // Sync WhatsApp Settings
     const settingsRef = doc(db, 'settings', 'whatsapp');
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {

@@ -152,6 +152,7 @@ export default function AdminPanel({
   });
 
   useEffect(() => {
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user?.email) {
         setAdminEmail(user.email);

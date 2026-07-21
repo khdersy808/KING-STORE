@@ -7,9 +7,13 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 // Register the PWA Service Worker and signal readiness
 if ('serviceWorker' in navigator) {
   // Listen for controllerchange to reload the page with new service worker assets immediately
+  let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('[PWA] New service worker activated. Reloading to apply fresh updates!');
-    window.location.reload();
+    if (!refreshing) {
+      refreshing = true;
+      console.log('[PWA] New service worker activated. Reloading to apply fresh updates!');
+      window.location.reload();
+    }
   });
 
   window.addEventListener('load', () => {
