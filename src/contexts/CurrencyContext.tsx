@@ -38,7 +38,6 @@ export const CurrencyProvider: React.FC<{ children: ReactNode }> = ({ children }
           }
         }
       } catch (e) {
-        console.warn("Error fetching exchange rate in CurrencyContext:", e);
       }
     };
     fetchExchangeRate();

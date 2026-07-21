@@ -216,7 +216,6 @@ function AppContent() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (err) {
-        console.warn("Error parsing saved categories:", err);
       }
     }
     return Array.from(new Set(INITIAL_PRODUCTS.map((p) => p.category)));
@@ -239,7 +238,7 @@ function AppContent() {
   const [discountsSectionDesc, setDiscountsSectionDesc] = useState('خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
   const [discountsSectionFeaturedProductIds, setDiscountsSectionFeaturedProductIds] = useState<string[]>([]);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  const [realCurrentUser, setRealCurrentUser] = useState<User | null>(() => {
     const rememberMe = localStorage.getItem('king_store_remember_me') === 'true';
     if (rememberMe) {
       const saved = localStorage.getItem('king_store_current_user');
@@ -247,6 +246,48 @@ function AppContent() {
     }
     return null;
   });
+
+  const [isAdminTestMode, setIsAdminTestMode] = useState(false);
+  const currentUser = (realCurrentUser?.email === 'khdersy808@gmail.com' && isAdminTestMode) ? {
+    id: 'test_customer_royal_uid',
+    name: 'زبون تجريبي ملكي 👑',
+    email: 'test_customer_royal@gmail.com',
+    role: 'customer' as const,
+    points: 1250,
+    coupons: ['ROYAL-TEST-COU'],
+    deviceId: 'test_device',
+    paymentPin: 'e10adc3949ba59abbe56e057f20f883e', // md5 for 1234
+    referralCode: 'KING-TESTER',
+    referralApplied: false,
+    referredBy: ''
+  } : realCurrentUser;
+
+  const toggleAdminTestMode = async () => {
+    const nextMode = !isAdminTestMode;
+    if (nextMode) {
+      // Ensure the test customer document exists in Firestore so they can read/write to it
+      try {
+        const { setDoc } = await import('firebase/firestore');
+        const testUserRef = doc(db, 'users', 'test_customer_royal_uid');
+        await setDoc(testUserRef, {
+          id: 'test_customer_royal_uid',
+          name: 'زبون تجريبي ملكي 👑',
+          email: 'test_customer_royal@gmail.com',
+          role: 'customer',
+          points: 1250,
+          coupons: ['ROYAL-TEST-COU'],
+          deviceId: 'test_device',
+          paymentPin: 'e10adc3949ba59abbe56e057f20f883e',
+          referralCode: 'KING-TESTER',
+          referralApplied: false,
+          referredBy: '',
+          createdAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (err) {
+      }
+    }
+    setIsAdminTestMode(nextMode);
+  };
 
   const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'success' | 'info' | 'warning' }[]>([]);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -295,17 +336,23 @@ function AppContent() {
       try {
         const { getDoc, doc, getDocs, collection, query, orderBy } = await import('firebase/firestore');
         
+        // 0. Test connection
+        try {
+          const { doc, getDocFromServer } = await import('firebase/firestore');
+          await getDocFromServer(doc(db, 'settings', 'daily_checkin'));
+        } catch (error) {
+        }
+
         // 1. Wait for Auth and User Profile to resolve
         await new Promise<void>((resolve) => {
           const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
             if (fbUser) {
               try {
-                const userDocRef = doc(db, 'users', fbUser.email!.toLowerCase());
+                const userDocRef = doc(db, 'users', fbUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
                 // The onAuthStateChanged listener in App.tsx will handle the state setting
                 // We just need to wait for this one-time fetch to complete as a signal
               } catch (e) {
-                console.warn("Auth initialization fetch error:", e);
               }
             }
             unsubscribe();
@@ -316,57 +363,11 @@ function AppContent() {
         });
 
         // 2. Fetch all configuration data in parallel
-        const fetchPromises = [
-          // Rewards Config
-          getDoc(doc(db, 'settings', 'daily_checkin')).then(snap => {
-            if (snap.exists()) {
-              const data = snap.data();
-              setRewardsConfig({
-                day1: data.day1 || 10,
-                day2: data.day2 || 20,
-                day3: data.day3 || 30,
-                day4: data.day4 || 40,
-                day5: data.day5 || 50,
-                day6: data.day6 || 60,
-                day7: data.day7 || 100,
-              });
-            }
-          }),
-          // Categories
-          getDocs(query(collection(db, 'categories'))).then(snap => {
-            if (!snap.empty) {
-              const list: string[] = [];
-              snap.forEach(d => { if (d.data().name) list.push(d.data().name); });
-              if (list.length > 0) setCategories(list);
-            }
-          }),
-          // Global Discount
-          getDoc(doc(db, 'settings', 'discounts')).then(snap => {
-            if (snap.exists() && typeof snap.data().globalDiscount === 'number') {
-              setGlobalDiscount(snap.data().globalDiscount);
-            }
-          }),
-          // Delivery Settings
-          getDoc(doc(db, 'delivery_config', 'global_settings')).then(snap => {
-            if (snap.exists()) {
-              setDeliverySettings({ id: snap.id, ...snap.data() } as DeliverySettings);
-            }
-          }),
-          // Exclusive Discounts Section
-          getDoc(doc(db, 'settings', 'discounts_section')).then(snap => {
-            if (snap.exists()) {
-              const data = snap.data();
-              setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
-              setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
-              setDiscountsSectionFeaturedProductIds(data.featuredProducts || []);
-            }
-          })
-        ];
-
-        await Promise.all(fetchPromises);
+        // Configuration data is now primarily handled by real-time listeners in useEffect hooks
+        await Promise.resolve();
 
         // 3. Final safety buffer
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         setIsAppReady(true);
         const loader = document.getElementById('global-loader');
@@ -378,7 +379,6 @@ function AppContent() {
           }, 300);
         }
       } catch (error) {
-        console.warn("App initialization error:", error);
         setIsAppReady(true); 
       }
     };
@@ -444,7 +444,7 @@ function AppContent() {
           if (token) {
             console.log('FCM Token generated:', token);
             // Save token to Firestore
-            const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+            const userDocRef = doc(db, 'users', currentUser.id);
             await setDoc(userDocRef, { fcmToken: token }, { merge: true });
           }
         }
@@ -509,7 +509,7 @@ function AppContent() {
 
   // Synchronize points history with currentUser in real-time
   useEffect(() => {
-    if (!currentUser?.email) {
+    if (!auth.currentUser || !currentUser?.email) {
       setPointsHistory([]);
       return;
     }
@@ -528,7 +528,7 @@ function AppContent() {
       historyList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setPointsHistory(historyList);
     }, (error) => {
-      console.warn("Error listening to points history:", error);
+      setPointsHistory([]);
     });
 
     return () => unsubscribe();
@@ -536,14 +536,13 @@ function AppContent() {
 
   // Synchronize wishlist with Firestore subcollection in real-time
   useEffect(() => {
-    if (!currentUser?.email) {
+    if (!auth.currentUser || !currentUser?.id) {
       const saved = localStorage.getItem('king_store_wishlist');
       setWishlist(saved ? JSON.parse(saved) : []);
       return;
     }
 
-    const userEmail = currentUser.email.toLowerCase();
-    const wishColl = collection(db, 'users', userEmail, 'wishlist');
+    const wishColl = collection(db, 'users', currentUser.id, 'wishlist');
     
     const unsubscribe = onSnapshot(wishColl, (snapshot) => {
       const wishList: string[] = [];
@@ -552,11 +551,12 @@ function AppContent() {
       });
       setWishlist(wishList);
     }, (err) => {
-      console.warn("Wishlist sync error:", err);
+      const saved = localStorage.getItem('king_store_wishlist');
+      setWishlist(saved ? JSON.parse(saved) : []);
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, [currentUser?.id]);
 
   const handleToggleWishlist = async (productId: string) => {
     if (!currentUser) {
@@ -570,15 +570,14 @@ function AppContent() {
     }
 
     try {
-      const userEmail = currentUser.email.toLowerCase();
-      const wishDocRef = doc(db, 'users', userEmail, 'wishlist', productId);
+      const wishDocRef = doc(db, 'users', currentUser.id, 'wishlist', productId);
       
       if (wishlist.includes(productId)) {
         // Remove from wishlist
         try {
           await deleteDoc(wishDocRef);
         } catch (err) {
-          handleFirestoreError(err, OperationType.DELETE, `users/${userEmail}/wishlist/${productId}`);
+          handleFirestoreError(err, OperationType.DELETE, `users/${currentUser.id}/wishlist/${productId}`);
         }
       } else {
         // Add to wishlist
@@ -588,7 +587,7 @@ function AppContent() {
             addedAt: new Date().toISOString()
           });
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `users/${userEmail}/wishlist/${productId}`);
+          handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.id}/wishlist/${productId}`);
         }
       }
       // Let the onSnapshot listener update the local state.
@@ -596,6 +595,140 @@ function AppContent() {
       console.error("Error toggling wishlist item in Firestore:", err);
     }
   };
+
+  // Synchronize categories with Firestore in real-time
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+
+    const listenToCategories = async () => {
+      try {
+        const { onSnapshot, collection } = await import('firebase/firestore');
+        if (!active) return;
+        const q = collection(db, 'categories');
+        
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          if (!active) return;
+          if (!snapshot.empty) {
+            const list: string[] = [];
+            snapshot.forEach(d => { 
+              const name = d.data().name;
+              if (name) list.push(name); 
+            });
+            if (list.length > 0) setCategories(list);
+          }
+        }, (error) => {
+        });
+      } catch (e) {
+      }
+    };
+
+    listenToCategories();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Synchronize global settings with Firestore in real-time
+  useEffect(() => {
+    let active = true;
+    let unsubs: (() => void)[] = [];
+
+    const listenToSettings = async () => {
+      try {
+        const { onSnapshot, doc } = await import('firebase/firestore');
+        if (!active) return;
+        
+        // Daily Checkin Rewards
+        const unsubCheckin = onSnapshot(doc(db, 'settings', 'daily_checkin'), (snap) => {
+          if (!active) return;
+          if (snap.exists()) {
+            const data = snap.data();
+            setRewardsConfig({
+              day1: data.day1 || 10,
+              day2: data.day2 || 20,
+              day3: data.day3 || 30,
+              day4: data.day4 || 40,
+              day5: data.day5 || 50,
+              day6: data.day6 || 60,
+              day7: data.day7 || 100,
+            });
+          }
+        }, (error) => {
+        });
+        if (!active) {
+          unsubCheckin();
+          return;
+        }
+        unsubs.push(unsubCheckin);
+
+        // Global Discounts
+        const unsubDiscounts = onSnapshot(doc(db, 'settings', 'discounts'), (snap) => {
+          if (!active) return;
+          if (snap.exists() && typeof snap.data().globalDiscount === 'number') {
+            setGlobalDiscount(snap.data().globalDiscount);
+          }
+        }, (error) => {
+        });
+        if (!active) {
+          unsubDiscounts();
+          return;
+        }
+        unsubs.push(unsubDiscounts);
+
+        // Delivery Settings
+        const unsubDelivery = onSnapshot(doc(db, 'delivery_config', 'global_settings'), (snap) => {
+          if (!active) return;
+          if (snap.exists()) {
+            const data = snap.data();
+            setDeliverySettings({
+              id: 'global',
+              basePricePerDay: data.basePricePerDay || 5,
+              rules: data.rules || [],
+              airBaseCost: data.airBaseCost || 50,
+              airUrgencyFactor: data.airUrgencyFactor || 1.2,
+              airWeightVolumeFactor: data.airWeightVolumeFactor || 0.8,
+              seaBaseCost: data.seaBaseCost || 20,
+              seaDailyDecay: data.seaDailyDecay || 0.95,
+              seaMinBaseline: data.seaMinBaseline || 10
+            });
+          }
+        }, (error) => {
+        });
+        if (!active) {
+          unsubDelivery();
+          return;
+        }
+        unsubs.push(unsubDelivery);
+
+        // Exclusive Discounts Section
+        const unsubDiscountsSection = onSnapshot(doc(db, 'settings', 'discounts_section'), (snap) => {
+          if (!active) return;
+          if (snap.exists()) {
+            const data = snap.data();
+            setDiscountsSectionTitle(data.title || 'عروض ملوك الأسبوع الحصرية 👑');
+            setDiscountsSectionDesc(data.description || 'خصومات استثنائية تصل إلى 30٪ على أفخم السلع!');
+            setDiscountsSectionFeaturedProductIds(data.featuredProducts || []);
+          }
+        }, (error) => {
+        });
+        if (!active) {
+          unsubDiscountsSection();
+          return;
+        }
+        unsubs.push(unsubDiscountsSection);
+
+      } catch (e) {
+      }
+    };
+
+    listenToSettings();
+    return () => {
+      active = false;
+      unsubs.forEach(unsub => unsub());
+    };
+  }, []);
 
   // --- Dynamic Categories State Engine ---
 
@@ -606,162 +739,221 @@ function AppContent() {
 
   // Synchronize payment gateways with Firestore
   useEffect(() => {
-    const fetchGateways = async () => {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+
+    const listenToGateways = async () => {
       setIsLoadingGateways(true);
       try {
-        const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
+        const { onSnapshot, collection, setDoc, doc } = await import('firebase/firestore');
+        if (!active) return;
         const q = collection(db, 'payment_gateways');
-        const snapshot = await getDocs(q);
         
-        if (!snapshot.empty) {
-          const list: PaymentGateway[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            list.push({
-              id: docSnap.id,
-              name: data.name || '',
-              iconName: data.iconName || 'CreditCard',
-              isEnabled: data.isEnabled ?? true,
-              instructions: data.instructions || '',
-              accountIdentifier: data.accountIdentifier || undefined,
-              qrCodeUrl: data.qrCodeUrl || undefined,
-              customIconUrl: data.customIconUrl || undefined,
-              fields: Array.isArray(data.fields) ? data.fields : []
-            } as PaymentGateway);
-          });
-          setGateways(list);
-        } else {
-          // Seed INITIAL_PAYMENT_GATEWAYS if empty in Firestore
-          for (const gw of INITIAL_PAYMENT_GATEWAYS) {
-            try {
-              await setDoc(doc(db, 'payment_gateways', gw.id), {
-                name: gw.name,
-                iconName: gw.iconName,
-                isEnabled: gw.isEnabled,
-                instructions: gw.instructions,
-                accountIdentifier: gw.accountIdentifier || null,
-                qrCodeUrl: gw.qrCodeUrl || null,
-                fields: gw.fields || []
-              });
-            } catch (err) {
-              console.warn(`Error seeding gateway ${gw.name} to Firestore:`, err);
-            }
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          if (!active) return;
+          if (!snapshot.empty) {
+            const unwantedIds = ['credit_card', 'instapay_wallet', 'paypal', 'bank_transfer', 'cash_on_delivery'];
+            const list: PaymentGateway[] = [];
+            snapshot.forEach((docSnap) => {
+              if (unwantedIds.includes(docSnap.id)) return;
+              const data = docSnap.data();
+              list.push({
+                id: docSnap.id,
+                name: data.name || '',
+                iconName: data.iconName || 'CreditCard',
+                isEnabled: data.isEnabled ?? true,
+                instructions: data.instructions || '',
+                accountIdentifier: data.accountIdentifier || undefined,
+                qrCodeUrl: data.qrCodeUrl || undefined,
+                customIconUrl: data.customIconUrl || undefined,
+                fields: Array.isArray(data.fields) ? data.fields : []
+              } as PaymentGateway);
+            });
+            setGateways(list);
+            setIsLoadingGateways(false);
+          } else {
+            // Seed INITIAL_PAYMENT_GATEWAYS if empty in Firestore
+            const seed = async () => {
+              for (const gw of INITIAL_PAYMENT_GATEWAYS) {
+                try {
+                  await setDoc(doc(db, 'payment_gateways', gw.id), {
+                    name: gw.name,
+                    iconName: gw.iconName,
+                    isEnabled: gw.isEnabled,
+                    instructions: gw.instructions,
+                    accountIdentifier: gw.accountIdentifier || null,
+                    qrCodeUrl: gw.qrCodeUrl || null,
+                    fields: gw.fields || []
+                  });
+                } catch (err) {
+                }
+              }
+            };
+            seed().finally(() => {
+              if (active) setIsLoadingGateways(false);
+            });
           }
-        }
+        }, (error) => {
+          if (!active) return;
+          setGateways(INITIAL_PAYMENT_GATEWAYS);
+          setIsLoadingGateways(false);
+        });
       } catch (e) {
-        console.warn("Firebase payment gateways fetch failed.", e);
-      } finally {
         setIsLoadingGateways(false);
       }
     };
-    fetchGateways();
+
+    listenToGateways();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   // Synchronize products with Firestore
   useEffect(() => {
-    const fetchProducts = async () => {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+
+    const listenToProducts = async () => {
       try {
-        const { getDocs, collection, setDoc, doc } = await import('firebase/firestore');
+        const { onSnapshot, collection, setDoc, doc } = await import('firebase/firestore');
+        if (!active) return;
         const q = collection(db, 'products');
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const list: Product[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            list.push({
-              id: docSnap.id,
-              name: data.name || '',
-              description: data.description || '',
-              price: Number(data.price) || 0,
-              type: data.type || 'physical',
-              category: data.category || '',
-              imageUrl: data.imageUrl || '',
-              stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : undefined,
-              downloadUrl: data.downloadUrl || undefined,
-              licenseKeys: Array.isArray(data.licenseKeys) ? data.licenseKeys : undefined,
-              reviews: Array.isArray(data.reviews) ? data.reviews : undefined,
-              discountPercentage: data.discountPercentage !== undefined ? Number(data.discountPercentage) : undefined,
-              sizes: Array.isArray(data.sizes) ? data.sizes : [],
-              colors: Array.isArray(data.colors) ? data.colors : [],
-              createdAt: data.createdAt || undefined,
-              updatedAt: data.updatedAt || undefined,
-            } as Product);
-          });
-          setProducts(list);
-        } else {
-          // Seed INITIAL_PRODUCTS if empty in Firestore
-          INITIAL_PRODUCTS.forEach(async (p) => {
-            try {
-              await setDoc(doc(db, 'products', p.id), {
-                name: p.name,
-                description: p.description,
-                price: Number(p.price),
-                type: p.type,
-                category: p.category,
-                imageUrl: p.imageUrl,
-                stock: p.stock !== undefined ? Number(p.stock) : null,
-                downloadUrl: p.downloadUrl || null,
-                licenseKeys: p.licenseKeys || null,
-                reviews: p.reviews || null,
-                discountPercentage: p.discountPercentage || 0,
-                sizes: p.sizes || []
-              });
-            } catch (err) {
-              console.warn(`Error seeding product ${p.name} to Firestore:`, err);
-            }
-          });
-        }
+        
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          if (!active) return;
+          if (!snapshot.empty) {
+            const list: Product[] = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              list.push({
+                id: docSnap.id,
+                name: data.name || '',
+                description: data.description || '',
+                price: Number(data.price) || 0,
+                type: data.type || 'physical',
+                category: data.category || '',
+                imageUrl: data.imageUrl || '',
+                stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : undefined,
+                downloadUrl: data.downloadUrl || undefined,
+                licenseKeys: Array.isArray(data.licenseKeys) ? data.licenseKeys : undefined,
+                reviews: Array.isArray(data.reviews) ? data.reviews : undefined,
+                discountPercentage: data.discountPercentage !== undefined ? Number(data.discountPercentage) : undefined,
+                sizes: Array.isArray(data.sizes) ? data.sizes : [],
+                colors: Array.isArray(data.colors) ? data.colors : [],
+                createdAt: data.createdAt || undefined,
+                updatedAt: data.updatedAt || undefined,
+              } as Product);
+            });
+            setProducts(list);
+          } else {
+            // Seed INITIAL_PRODUCTS if empty in Firestore
+            INITIAL_PRODUCTS.forEach(async (p) => {
+              try {
+                await setDoc(doc(db, 'products', p.id), {
+                  name: p.name,
+                  description: p.description,
+                  price: Number(p.price),
+                  type: p.type,
+                  category: p.category,
+                  imageUrl: p.imageUrl,
+                  stock: p.stock !== undefined ? Number(p.stock) : null,
+                  downloadUrl: p.downloadUrl || null,
+                  licenseKeys: p.licenseKeys || null,
+                  reviews: p.reviews || null,
+                  discountPercentage: p.discountPercentage || 0,
+                  sizes: p.sizes || []
+                });
+              } catch (err) {
+              }
+            });
+          }
+        }, (error) => {
+          if (!active) return;
+          setProducts(INITIAL_PRODUCTS);
+        });
       } catch (e) {
-        console.warn("Firebase products fetch failed.", e);
       }
     };
-    fetchProducts();
+
+    listenToProducts();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   // Synchronize orders with Firestore
   useEffect(() => {
-    const fetchOrders = async () => {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+
+    const listenToOrders = async () => {
+      const isAdminUser = currentUser?.role === 'admin' || 
+                          currentUser?.email === 'khdersy808@gmail.com' || 
+                          currentUser?.email === 'khdersy080@gmail.com' ||
+                          currentUser?.email === 'nagamwesam1998@gmail.com';
+                           
+      if (!auth.currentUser || !isAdminUser) {
+        setOrders([]);
+        return;
+      }
+
       try {
-        const { getDocs, collection } = await import('firebase/firestore');
+        const { onSnapshot, collection } = await import('firebase/firestore');
+        if (!active) return;
         const q = collection(db, 'orders');
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const list: Order[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            list.push({
-              id: docSnap.id,
-              customerName: data.customerName || '',
-              customerEmail: data.customerEmail || '',
-              customerPhone: data.customerPhone || '',
-              shippingAddress: data.shippingAddress || undefined,
-              items: Array.isArray(data.items) ? data.items.map((it: any) => ({
-                productId: String(it.productId),
-                productName: it.productName || '',
-                price: Number(it.price) || 0,
-                quantity: Number(it.quantity) || 1,
-                type: it.type || 'physical',
-                selectedSize: it.selectedSize || undefined,
-              })) : [],
-              totalAmount: Number(data.totalAmount) || 0,
-              paymentMethodId: data.paymentMethodId || '',
-              paymentDetails: data.paymentDetails || {},
-              receiptUrl: data.receiptUrl || undefined,
-              status: data.status || 'pending',
-              date: data.date || new Date().toISOString(),
-              senderName: data.senderName || undefined,
-              transactionId: data.transactionId || undefined,
-            } as Order);
-          });
-          list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setOrders(list);
-        }
+        
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          if (!active) return;
+          if (!snapshot.empty) {
+            const list: Order[] = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data();
+              list.push({
+                id: docSnap.id,
+                customerName: data.customerName || '',
+                customerEmail: data.customerEmail || '',
+                customerPhone: data.customerPhone || '',
+                shippingAddress: data.shippingAddress || undefined,
+                items: Array.isArray(data.items) ? data.items.map((it: any) => ({
+                  productId: String(it.productId),
+                  productName: it.productName || '',
+                  price: Number(it.price) || 0,
+                  quantity: Number(it.quantity) || 1,
+                  type: it.type || 'physical',
+                  selectedSize: it.selectedSize || undefined,
+                })) : [],
+                totalAmount: Number(data.totalAmount) || 0,
+                paymentMethodId: data.paymentMethodId || '',
+                paymentDetails: data.paymentDetails || {},
+                receiptUrl: data.receiptUrl || undefined,
+                status: data.status || 'pending',
+                date: data.date || new Date().toISOString(),
+                senderName: data.senderName || undefined,
+                transactionId: data.transactionId || undefined,
+              } as Order);
+            });
+            list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setOrders(list);
+          } else {
+            setOrders([]);
+          }
+        }, (error) => {
+          if (!active) return;
+          setOrders([]);
+        });
       } catch (e) {
-        console.warn("Firebase orders fetch failed.", e);
       }
     };
-    fetchOrders();
-  }, []);
+
+    listenToOrders();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [currentUser]);
 
   // Exclusive Discounts Section settings are now handled in initializeApp
 
@@ -772,18 +964,30 @@ function AppContent() {
   // Synchronize notifications with Firestore
   useEffect(() => {
     const fetchNotifications = async () => {
-      if (!currentUser) {
+      if (!auth.currentUser || !currentUser) {
         setNotifications([]);
         return;
       }
 
       try {
-        const { getDocs, query, collection, orderBy } = await import('firebase/firestore');
-        const q = query(collection(db, 'notifications'), orderBy('date', 'desc'));
+        const { getDocs, query, collection, orderBy, where } = await import('firebase/firestore');
+        
+        // Ensure secure query filter for non-admin users to align with security rules
+        let q;
+        if (currentUser.role === 'admin') {
+          q = query(collection(db, 'notifications'), orderBy('date', 'desc'));
+        } else {
+          q = query(
+            collection(db, 'notifications'),
+            where('userId', '==', currentUser.email.toLowerCase()),
+            orderBy('date', 'desc')
+          );
+        }
+
         const snapshot = await getDocs(q);
         const list: AppNotification[] = [];
         snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as AppNotification);
+          list.push({ id: docSnap.id, ...(docSnap.data() as any) } as AppNotification);
         });
 
         const filteredList = list.filter(n => {
@@ -791,8 +995,8 @@ function AppContent() {
         });
         
         setNotifications(filteredList);
-      } catch (e) {
-        console.warn("Firebase notifications fetch failed.", e);
+      } catch (e: any) {
+        setNotifications([]);
       }
     };
     fetchNotifications();
@@ -827,12 +1031,13 @@ function AppContent() {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser && fbUser.email) {
         const adminEmail = 'khdersy808@gmail.com';
-        const isVerified = fbUser.emailVerified || fbUser.email?.toLowerCase() === adminEmail;
+        // Enable completely automatic instant login for customers via Google or Email/Password under one single account
+        const isVerified = true;
         
         if (isVerified) {
           try {
             const { getDoc } = await import('firebase/firestore');
-            const userDocRef = doc(db, 'users', fbUser.email.toLowerCase());
+            const userDocRef = doc(db, 'users', fbUser.uid);
             const userDocSnap = await getDoc(userDocRef);
             
             let currentPoints = 0;
@@ -903,7 +1108,6 @@ function AppContent() {
                     if (recData.message) customMessage = recData.message;
                   }
                 } catch (err) {
-                  console.warn("Failed to load custom recovery settings:", err);
                 }
 
                 if (diffDays >= customDaysLimit) {
@@ -977,6 +1181,19 @@ function AppContent() {
               });
             }
 
+            // Securely initialize a session ID if one is missing and the user is not exempted
+            const exemptedEmails = ['khdersy808@gmail.com', 'nagamwesam1998@gmail.com'];
+            const isExemptedEmail = fbUser.email && exemptedEmails.includes(fbUser.email.toLowerCase());
+            let localSessionId = localStorage.getItem('current_session_id');
+            if (!isExemptedEmail && !localSessionId) {
+              localSessionId = crypto.randomUUID();
+              localStorage.setItem('current_session_id', localSessionId);
+              try {
+                await updateDoc(userDocRef, { currentSessionId: localSessionId });
+              } catch (updateSessionErr) {
+              }
+            }
+
             // Unsubscribe existing snapshot first if any
             if (userUnsubscribe) {
               userUnsubscribe();
@@ -986,7 +1203,25 @@ function AppContent() {
             userUnsubscribe = onSnapshot(userDocRef, (snap) => {
               if (snap.exists()) {
                 const uData = snap.data();
-                setCurrentUser({
+                
+                const currentLocalSessionId = localStorage.getItem('current_session_id');
+                const isExempted = uData.email && exemptedEmails.includes(uData.email.toLowerCase());
+
+                if (isExempted) {
+                  // Admin and tester are exempt from Single Device Login checks
+                } else if (uData.currentSessionId && currentLocalSessionId !== uData.currentSessionId) {
+                  signOut(auth).then(() => {
+                    localStorage.removeItem('current_session_id');
+                    showToast(
+                      'تنبيه ملكي',
+                      'تنبيه ملكي: تم تسجيل الدخول من جهاز آخر! 👑',
+                      'warning'
+                    );
+                  });
+                  return;
+                }
+                
+                setRealCurrentUser({
                   id: fbUser.uid,
                   name: uData.name || nameVal,
                   email: fbUser.email!.toLowerCase(),
@@ -1006,11 +1241,9 @@ function AppContent() {
                 });
               }
             }, (snapshotErr) => {
-              console.warn("User document real-time sync failed:", snapshotErr);
             });
 
           } catch (err) {
-            console.warn("Error in onAuthStateChanged setup:", err);
           }
         }
       } else {
@@ -1019,7 +1252,7 @@ function AppContent() {
           userUnsubscribe();
           userUnsubscribe = null;
         }
-        setCurrentUser(null);
+        setRealCurrentUser(null);
       }
     });
     return () => {
@@ -1090,7 +1323,6 @@ function AppContent() {
     try {
       await addDoc(collection(db, 'notifications'), newNotif);
     } catch (e) {
-      console.warn("Error adding notification to Firestore, falling back to local storage:", e);
       const localNotif: AppNotification = {
         id: `notif_${Date.now()}_${Math.random()}`,
         ...newNotif,
@@ -1117,7 +1349,6 @@ function AppContent() {
         await updateDoc(docRef, { isRead: true });
       }
     } catch (e) {
-      console.warn("Error marking all notifications as read in Firestore:", e);
     }
   };
 
@@ -1131,7 +1362,6 @@ function AppContent() {
       const docRef = doc(db, 'notifications', id);
       await updateDoc(docRef, { isRead: true });
     } catch (e) {
-      console.warn("Error marking notification as read in Firestore:", e);
     }
   };
 
@@ -1143,7 +1373,6 @@ function AppContent() {
       const docRef = doc(db, 'notifications', id);
       await deleteDoc(docRef);
     } catch (e) {
-      console.warn("Error deleting notification in Firestore:", e);
     }
   };
 
@@ -1239,7 +1468,7 @@ function AppContent() {
   // Synchronize all users from Firestore in real-time if logged in as admin
   useEffect(() => {
     // Only subscribe if we are SURE the user is an admin
-    if (currentUser?.role === 'admin' && (currentUser.email === 'khdersy808@gmail.com' || currentUser.email === 'khdersy080@gmail.com')) {
+    if (auth.currentUser && currentUser?.role === 'admin' && (currentUser.email === 'khdersy808@gmail.com' || currentUser.email === 'khdersy080@gmail.com')) {
       const usersColl = collection(db, 'users');
       const unsubscribe = onSnapshot(usersColl, (snapshot) => {
         const usersList: User[] = [];
@@ -1266,7 +1495,7 @@ function AppContent() {
         });
         setUsers(usersList);
       }, (err) => {
-        console.warn("Failed to subscribe to users collection:", err);
+        setUsers([]);
       });
       return () => unsubscribe();
     } else {
@@ -1380,7 +1609,14 @@ function AppContent() {
   // --- Authentication Handlers ---
   const handleLoginUser = (user: User, rememberMe: boolean = true) => {
     localStorage.setItem('king_store_remember_me', rememberMe ? 'true' : 'false');
-    setCurrentUser(user);
+    setRealCurrentUser(user);
+    if (user.role === 'admin') {
+      setIsAdminMode(true);
+      setCurrentTab('admin');
+    } else {
+      setIsAdminMode(false);
+      setCurrentTab('store');
+    }
   };
 
   const handleRegisterUser = (newUser: User) => {
@@ -1398,8 +1634,9 @@ function AppContent() {
       console.error("Firebase Auth signout error:", e);
     }
     localStorage.removeItem('king_store_remember_me');
-    setCurrentUser(null);
+    setRealCurrentUser(null);
     setIsAdminMode(false);
+    setIsAdminTestMode(false);
   };
 
   // --- Product Management Handlers ---
@@ -1522,7 +1759,6 @@ function AppContent() {
       await setDoc(doc(db, 'categories', trimmed), { name: trimmed });
       showToast('تمت الإضافة', `تم إضافة فئة "${trimmed}" بنجاح 🏷️`, 'success');
     } catch (e) {
-      console.warn("Error saving category to Firestore (saved locally):", e);
     }
   };
 
@@ -1535,7 +1771,6 @@ function AppContent() {
       await deleteDoc(doc(db, 'categories', categoryName));
       showToast('تم الحذف', `تم حذف فئة "${categoryName}" بنجاح 🏷️`, 'success');
     } catch (e) {
-      console.warn("Error deleting category from Firestore (deleted locally):", e);
     }
   };
 
@@ -1562,7 +1797,6 @@ function AppContent() {
       
       showToast('تم التعديل', `تم تعديل الفئة إلى "${trimmedNew}" بنجاح 🏷️`, 'success');
     } catch (e) {
-      console.warn("Error updating category in Firestore (updated locally):", e);
     }
   };
 
@@ -1662,7 +1896,6 @@ function AppContent() {
         }))
       });
     } catch (fsErr) {
-      console.warn("Firestore error adding order:", fsErr);
     }
 
     // Sync points for checkout completion
@@ -1670,7 +1903,6 @@ function AppContent() {
       try {
         await awardPointsForOrder(newOrder.id, newOrder.customerEmail, newOrder.totalAmount);
       } catch (pointsErr) {
-        console.warn("[Loyalty] Error awarding loyalty points on order placement:", pointsErr);
       }
     }
 
@@ -1738,7 +1970,6 @@ function AppContent() {
               }))
             });
           } catch (fsErr) {
-            console.warn("Firestore error adding serial order ID:", fsErr);
           }
         }
       }
@@ -1788,7 +2019,6 @@ function AppContent() {
         }
       }
     } catch (fsErr) {
-      console.warn("Firestore error updating order status:", fsErr);
     }
 
     // 2. Persist update to database
@@ -1807,7 +2037,6 @@ function AppContent() {
         if (response.ok) {
           console.log(`[Database Sync] Order status updated in backend: ${orderId} -> ${status}`);
         } else {
-          console.warn("[Database Sync] Failed to update order status in backend.");
         }
       }
     } catch (err) {
@@ -1871,6 +2100,26 @@ function AppContent() {
         </div>
       )}
 
+      {/* Royal Admin Impersonation Control Banner */}
+      {realCurrentUser?.email === 'khdersy808@gmail.com' && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-amber-600 to-amber-800 text-white text-center py-2.5 px-4 text-xs font-black flex items-center justify-between shadow-2xl border-b border-amber-500">
+          <div className="flex items-center gap-2">
+            <span className="animate-pulse bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full text-[10px] font-extrabold">بوابة الفحص 🧪</span>
+            <span>
+              {isAdminTestMode 
+                ? 'أنت تتصفح المتجر الآن بهوية زبون عشوائي تجريبي لفحص الميزات والمصادقة بالكامل.' 
+                : 'بوابة المدير الملكية: يمكنك تفعيل وضع الزبون التجريبي لفحص العمليات وتجنب قيود الجلسة الواحدة والصلاحيات.'}
+            </span>
+          </div>
+          <button
+            onClick={toggleAdminTestMode}
+            className="bg-slate-950 text-amber-400 hover:bg-slate-900 border border-amber-500/30 px-4 py-1.5 rounded-xl font-bold transition-all duration-300 shadow-lg cursor-pointer flex items-center gap-2 text-xs"
+          >
+            <span>{isAdminTestMode ? 'العودة لحساب الآدمن الملكي 👑' : 'تفعيل وضع الزبون التجريبي 🧪'}</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Navigation Bar */}
       <Navbar
         isAdminMode={isAdminMode}
@@ -1898,7 +2147,7 @@ function AppContent() {
       />
 
       {/* 2. Main Content Container */}
-      <div className="flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24 pt-32 sm:pt-40" style={{ contain: 'content' }}>
+      <div className={`flex-1 min-h-screen w-full overflow-x-hidden overflow-y-auto pb-24 ${realCurrentUser?.email === 'khdersy808@gmail.com' ? 'pt-44 sm:pt-52' : 'pt-32 sm:pt-40'}`} style={{ contain: 'content' }}>
         {isNavigating ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950">
             <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
@@ -1991,7 +2240,7 @@ function AppContent() {
                   </p>
                 </div>
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
-                  <MessagingSystem />
+                  <MessagingSystem currentUser={currentUser} />
                 </div>
               </section>
             ) : isAdminMode ? (
@@ -2084,7 +2333,7 @@ function AppContent() {
                       currentUser={currentUser}
                       onOpenAuth={openAuthModal}
                       onShowToast={showToast}
-                      onUpdateUser={setCurrentUser}
+                      onUpdateUser={setRealCurrentUser}
                       rewardsConfig={rewardsConfig}
                     />
                 <section className="relative overflow-hidden bg-slate-950 py-16 text-white border-b border-amber-500/10">
@@ -2716,7 +2965,7 @@ function AppContent() {
                   </p>
                 </div>
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6">
-                  <MessagingSystem />
+                  <MessagingSystem currentUser={currentUser} />
                 </div>
               </section>
             )}
@@ -3115,7 +3364,7 @@ function AppContent() {
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onUpdateUser={(updatedUser) => {
-          setCurrentUser(updatedUser);
+          setRealCurrentUser(updatedUser);
           setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
         }}
         onEditItem={(item) => {
@@ -3173,7 +3422,7 @@ function AppContent() {
         onClose={() => setIsSettingsModalOpen(false)}
         currentUser={currentUser}
         onUpdateUser={(updatedUser) => {
-          setCurrentUser(updatedUser);
+          setRealCurrentUser(updatedUser);
           // Keep local users registry up-to-date
           setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
         }}

@@ -154,14 +154,6 @@ export const INITIAL_PAYMENT_GATEWAYS: PaymentGateway[] = [
       { key: 'phone_number', label: 'رقم الهاتف المشترك بخدمة شام كاش', placeholder: '01xxxxxxxx', value: '' },
       { key: 'txn_id', label: 'معرف العملية / رقم الحوالة', placeholder: 'رقم العملية من تطبيق شام كاش', value: '' }
     ]
-  },
-  {
-    id: 'cash_on_delivery',
-    name: 'الدفع عند الاستلام (COD)',
-    iconName: 'Truck',
-    isEnabled: true,
-    instructions: 'ادفع نقداً أو بالبطاقة لمندوب التوصيل عند استلام طلبك في عنوانك. (متوفر فقط للمنتجات الملموسة).',
-    fields: []
   }
 ];
 
@@ -189,10 +181,11 @@ export const INITIAL_ORDERS: Order[] = [
       }
     ],
     totalAmount: 1278,
-    paymentMethodId: 'credit_card',
+    paymentMethodId: 'syriatel_cash',
     paymentDetails: {
-      card_number: '**** **** **** 4321',
-      card_name: 'Ahmed Al-Otaibi'
+      sender_name: 'أحمد محمود العتيبي',
+      phone_number: '0987654321',
+      txn_id: 'TXN-SH-54891'
     },
     status: 'completed',
     date: '2026-06-25T14:30:00Z'
@@ -219,10 +212,11 @@ export const INITIAL_ORDERS: Order[] = [
       }
     ],
     totalAmount: 157,
-    paymentMethodId: 'instapay_wallet',
+    paymentMethodId: 'sham_cash',
     paymentDetails: {
-      wallet_number: '01011223344',
-      txn_id: 'TXN99884433221'
+      sender_name: 'فاطمة الزهراء البلوشي',
+      phone_number: '0123456789',
+      txn_id: 'TXN-SH-93012'
     },
     status: 'pending',
     date: '2026-06-26T09:15:00Z'

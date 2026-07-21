@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc, limit, serverTimestamp } from 'firebase/firestore';
+import { initializeFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, orderBy, addDoc, updateDoc, deleteDoc, limit, serverTimestamp, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { 
@@ -17,6 +17,8 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  linkWithCredential,
+  EmailAuthProvider,
   type User as FirebaseUser
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -24,10 +26,15 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
+const dbId = (firebaseConfig as any).firestoreDatabaseId && (firebaseConfig as any).firestoreDatabaseId !== '(default)'
+  ? (firebaseConfig as any).firestoreDatabaseId
+  : undefined;
+
 // Initialize Firestore with custom database ID and long polling to bypass network/sandbox constraints
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+}, dbId);
 
 // Initialize and export Auth
 export const auth = getAuth(app);
@@ -40,7 +47,6 @@ let messaging = null;
 try {
   messaging = getMessaging(app);
 } catch (e) {
-  console.warn("Firebase Messaging is not supported in this environment.", e);
 }
 export { messaging };
 
@@ -97,6 +103,41 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+async function getUserDocRef(emailOrUid: string) {
+  if (!emailOrUid) return null;
+  const normalized = emailOrUid.trim().toLowerCase();
+  
+  if (auth.currentUser) {
+    if (auth.currentUser.uid === emailOrUid || auth.currentUser.email?.toLowerCase() === normalized) {
+      return doc(db, 'users', auth.currentUser.uid);
+    }
+  }
+
+  if (!normalized.includes('@')) {
+    return doc(db, 'users', emailOrUid);
+  }
+
+  // Only admins have collection-level read permissions on 'users' collection to query by email
+  const isAdmin = auth.currentUser?.email?.toLowerCase() === 'khdersy808@gmail.com' || auth.currentUser?.email?.toLowerCase() === 'nagamwesam1998@gmail.com';
+  
+  if (isAdmin) {
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', normalized));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return doc(db, 'users', snap.docs[0].id);
+      }
+    } catch (err) {
+    }
+  }
+
+  // Fallback to prevent permission errors: never return the email as the document ID
+  if (auth.currentUser) {
+    return doc(db, 'users', auth.currentUser.uid);
+  }
+  return doc(db, 'users', 'anonymous_user_fallback');
+}
+
 export async function redeemPoints(userEmail: string, currentPoints: number, currentCoupons: string[] = [], rule: any): Promise<{ points: number; coupons: string[]; generated: string }> {
   const pointsRequired = rule.discount * 1000;
   if (currentPoints < pointsRequired) {
@@ -125,11 +166,13 @@ export async function redeemPoints(userEmail: string, currentPoints: number, cur
   });
 
   // Update user document
-  const userDocRef = doc(db, 'users', userEmail);
-  await setDoc(userDocRef, {
-    points: remainingPoints,
-    coupons: newCoupons
-  }, { merge: true });
+  const userDocRef = await getUserDocRef(userEmail);
+  if (userDocRef) {
+    await setDoc(userDocRef, {
+      points: remainingPoints,
+      coupons: newCoupons
+    }, { merge: true });
+  }
 
   // Add system notifications for the coupon generated
   try {
@@ -143,7 +186,6 @@ export async function redeemPoints(userEmail: string, currentPoints: number, cur
       type: 'system'
     });
   } catch (notifErr) {
-    console.warn("Could not create notification for generated coupon:", notifErr);
   }
 
   return { points: remainingPoints, coupons: newCoupons, generated: code };
@@ -183,11 +225,13 @@ export async function convertPointsToCoupons(userEmail: string, currentPoints: n
   }
   
   // Update user document
-  const userDocRef = doc(db, 'users', userEmail);
-  await setDoc(userDocRef, {
-    points: remainingPoints,
-    coupons: newCoupons
-  }, { merge: true });
+  const userDocRef = await getUserDocRef(userEmail);
+  if (userDocRef) {
+    await setDoc(userDocRef, {
+      points: remainingPoints,
+      coupons: newCoupons
+    }, { merge: true });
+  }
 
   // Add system notifications for the coupons generated
   try {
@@ -203,7 +247,6 @@ export async function convertPointsToCoupons(userEmail: string, currentPoints: n
       });
     }
   } catch (notifErr) {
-    console.warn("Could not create notification for generated coupon:", notifErr);
   }
   
   return { points: remainingPoints, coupons: newCoupons, generated: generatedCodes };
@@ -236,7 +279,6 @@ export async function awardPointsForOrder(orderId: string, customerEmail: string
         pointsPerDollar = loyaltyData.pointsPerDollar ?? 100;
       }
     } catch (err) {
-      console.warn("[Loyalty] Error fetching loyalty settings, using defaults:", err);
     }
 
     if (!isEnabled) {
@@ -258,7 +300,8 @@ export async function awardPointsForOrder(orderId: string, customerEmail: string
     });
 
     // 4. Update user's points
-    const userRef = doc(db, 'users', userEmail);
+    const userRef = await getUserDocRef(userEmail);
+    if (!userRef) return;
     const userSnap = await getDoc(userRef);
     let currentPoints = 0;
     let currentCoupons: string[] = [];
@@ -295,7 +338,6 @@ export async function awardPointsForOrder(orderId: string, customerEmail: string
         orderId: orderId
       });
     } catch (notifErr) {
-      console.warn("Could not create points earned notification:", notifErr);
     }
 
     console.log(`[Loyalty] Awarded ${pointsAdded} points to ${userEmail} for order ${orderId}`);
@@ -355,6 +397,8 @@ export {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  linkWithCredential,
+  EmailAuthProvider,
   type FirebaseUser,
   getToken,
   onMessage

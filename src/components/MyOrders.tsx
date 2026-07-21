@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
-import { db, collection, query, where, onSnapshot } from '../lib/firebase';
+import { db, auth, collection, query, where, onSnapshot } from '../lib/firebase';
 import OrderTrackingStepper from './OrderTrackingStepper'; // I will create this simple one
 
 interface MyOrdersProps {
@@ -36,7 +36,12 @@ export default function MyOrders({ currentUser, gateways, onBack }: MyOrdersProp
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    if (!currentUser.email) return;
+    let active = true;
+    if (!auth.currentUser || !currentUser.email) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
 
     const q = query(
       collection(db, 'orders'),
@@ -44,6 +49,7 @@ export default function MyOrders({ currentUser, gateways, onBack }: MyOrdersProp
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!active) return;
       const ordersData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -55,11 +61,15 @@ export default function MyOrders({ currentUser, gateways, onBack }: MyOrdersProp
       setOrders(ordersData);
       setIsLoading(false);
     }, (error) => {
-      console.error("Error fetching my orders:", error);
+      if (!active) return;
+      setOrders([]);
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [currentUser.email]);
 
   const filteredOrders = orders.filter(order => 

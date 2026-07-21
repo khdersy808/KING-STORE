@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Clock, CheckCircle2, XCircle, Package, ArrowRight, MessageCircle } from 'lucide-react';
-import { db, collection, query, where, orderBy, onSnapshot } from '../lib/firebase';
+import { db, auth, collection, query, where, orderBy, onSnapshot } from '../lib/firebase';
 import { CustomProductRequest, User } from '../types';
 
 interface UserCustomRequestsProps {
@@ -14,7 +14,12 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser) return;
+    let active = true;
+    if (!auth.currentUser || !currentUser) {
+      setRequests([]);
+      setIsLoading(false);
+      return;
+    }
 
     const q = query(
       collection(db, 'custom_requests'),
@@ -22,6 +27,7 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!active) return;
       const list: CustomProductRequest[] = [];
       snapshot.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() } as CustomProductRequest);
@@ -37,11 +43,15 @@ export const UserCustomRequests: React.FC<UserCustomRequestsProps> = ({ currentU
       setRequests(list);
       setIsLoading(false);
     }, (error) => {
-      console.error("Error fetching user custom requests:", error);
+      if (!active) return;
+      setRequests([]);
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [currentUser?.id]);
 
   const getStatusInfo = (status: string) => {

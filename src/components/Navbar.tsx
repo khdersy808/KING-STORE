@@ -667,7 +667,7 @@ export default function Navbar({
                 )}
 
                 {activeDrawer === 'agent' && <AgentDashboard />}
-                {activeDrawer === 'messaging' && <MessagingSystem />}
+                {activeDrawer === 'messaging' && <MessagingSystem currentUser={currentUser} />}
               </div>
             </div>
 

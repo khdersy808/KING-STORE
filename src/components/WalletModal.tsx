@@ -135,7 +135,7 @@ export default function WalletModal({
       }
 
       // 1. Update Current User's profile in Firestore with referredBy & referralApplied
-      const currentUserDocRef = doc(db, 'users', currentUser.email);
+      const currentUserDocRef = doc(db, 'users', currentUser.id);
       await setDoc(currentUserDocRef, {
         referredBy: trimmedCode,
         referralApplied: true

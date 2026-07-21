@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Message } from '../types';
+import { Message, User } from '../types';
 import { db, auth, collection, onSnapshot, query, addDoc, doc, setDoc, onAuthStateChanged } from '../lib/firebase';
 import { serverTimestamp } from 'firebase/firestore';
 import { MessageSquare, Phone, Send, Sparkles, MessageCircle, ArrowLeftRight } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
-export default function MessagingSystem() {
+interface MessagingSystemProps {
+  currentUser?: User | null;
+}
+
+export default function MessagingSystem({ currentUser }: MessagingSystemProps) {
   const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
@@ -25,9 +29,11 @@ export default function MessagingSystem() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     // Sync WhatsApp Settings
     const settingsRef = doc(db, 'settings', 'whatsapp');
     const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
+      if (!active) return;
       if (docSnap.exists()) {
         const data = docSnap.data();
         const link = data.whatsappLink || data.supportUrl || 'https://wa.me/9639827419';
@@ -39,29 +45,60 @@ export default function MessagingSystem() {
         setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
       }
     }, (error) => {
-      console.warn("Error loading WhatsApp settings in MessagingSystem:", error);
+      if (!active) return;
       setWhatsappLink('https://wa.me/9639827419');
       setWhatsappMessage('أهلاً KING STORE، لدي استفسار بخصوص طلبي...');
     });
 
-    if (loading || !user) return () => unsubscribeSettings();
+    if (loading || !user || !auth.currentUser) return () => { active = false; unsubscribeSettings(); };
 
-    const q = query(collection(db, 'messages'));
-    const unsubscribeMessages = onSnapshot(q, 
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-        setMessages(data);
-      },
-      (error) => {
-        console.error("Error fetching messages:", error);
+    let unsubscribeMessages = () => {};
+
+    const listenToMessages = async () => {
+      try {
+        const { or, where, query, collection, onSnapshot } = await import('firebase/firestore');
+        if (!active) return;
+        
+        const isAdminOrAgent = currentUser?.role === 'admin' || 
+                              currentUser?.role === 'agent' ||
+                              currentUser?.email === 'khdersy808@gmail.com' || 
+                              currentUser?.email === 'khdersy080@gmail.com';
+
+        // Secure client-side query formulation to align with Firestore rules
+        const q = isAdminOrAgent 
+          ? query(collection(db, 'messages')) 
+          : query(
+              collection(db, 'messages'),
+              or(
+                where('senderId', '==', user.uid),
+                where('receiverId', '==', user.uid)
+              )
+            );
+
+        unsubscribeMessages = onSnapshot(q, 
+          (snapshot) => {
+            if (!active) return;
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+            setMessages(data);
+          },
+          (error) => {
+            if (!active) return;
+            setMessages([]);
+          }
+        );
+      } catch (err) {
+        console.warn("Failed to setup messages listener:", err);
       }
-    );
+    };
+
+    listenToMessages();
 
     return () => {
+      active = false;
       unsubscribeSettings();
       unsubscribeMessages();
     };
-  }, [loading, user]);
+  }, [loading, user, currentUser]);
 
   const handleSendMessage = async () => {
     if (!text.trim() || !user) return;

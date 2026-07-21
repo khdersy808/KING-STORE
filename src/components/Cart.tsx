@@ -640,7 +640,7 @@ export default function Cart({
 
       try {
         const encrypted = encryptPin(cleanSetup);
-        const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+        const userDocRef = doc(db, 'users', currentUser.id);
         const updates: any = {
           paymentPin: encrypted,
           tempPin: null,

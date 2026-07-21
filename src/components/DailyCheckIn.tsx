@@ -95,8 +95,7 @@ export const DailyCheckIn: React.FC<DailyCheckInProps> = memo(({
 
     setIsProcessing(true);
     try {
-      const email = currentUser.email.toLowerCase();
-      const userDocRef = doc(db, 'users', email);
+      const userDocRef = doc(db, 'users', currentUser.id);
 
       const yesterdayStr = getYesterdayString();
       const currentStreak = currentUser.checkInStreak || 0;

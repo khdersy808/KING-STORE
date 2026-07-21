@@ -546,7 +546,6 @@ export default function AdminPanel({
           } as DeliverySettings);
         }
       } catch (e) {
-        console.warn("Firebase delivery settings fetch failed.", e);
       }
     };
     fetchDelivery();
@@ -571,7 +570,6 @@ export default function AdminPanel({
         });
         setCoupons(list);
       } catch (e) {
-        console.warn("Firebase coupons fetch failed.", e);
       }
     };
     fetchCoupons();
@@ -590,7 +588,6 @@ export default function AdminPanel({
         list.sort((a, b) => a.discount - b.discount);
         setCouponRules(list);
       } catch (e) {
-        console.warn("Firebase coupon rules fetch failed.", e);
       }
     };
     fetchCouponRules();
@@ -663,7 +660,6 @@ export default function AdminPanel({
 
         setPolicies(list);
       } catch (e) {
-        console.warn("Firebase policies sync not active.", e);
       }
     };
     fetchPolicies();
@@ -671,18 +667,29 @@ export default function AdminPanel({
 
   // Synchronize Custom Product Requests from Firestore
   useEffect(() => {
+    let active = true;
+    if (!auth.currentUser || !currentUser) {
+      setCustomRequests([]);
+      return;
+    }
+
     const q = query(collection(db, 'custom_requests'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!active) return;
       const list: CustomProductRequest[] = [];
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as CustomProductRequest);
       });
       setCustomRequests(list);
     }, (error) => {
-      console.warn("Error syncing custom requests:", error);
+      if (!active) return;
+      setCustomRequests([]);
     });
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [currentUser]);
 
   const handleUpdateRequestStatus = async (requestId: string, newStatus: CustomProductRequest['status'], userEmail: string) => {
     setIsUpdatingRequestStatus(requestId);
@@ -801,7 +808,6 @@ export default function AdminPanel({
         // Load daily check-in separately using the stable fetch function
         await fetchDailyCheckInSettings();
       } catch (error) {
-        console.warn("Error loading settings in AdminPanel:", error);
       }
     };
 
@@ -811,20 +817,28 @@ export default function AdminPanel({
 
   // Listen to loyalty settings and points history in real-time
   useEffect(() => {
+    let active = true;
+    if (!auth.currentUser || !currentUser) {
+      setAdminPointsHistory([]);
+      return;
+    }
+
     // 1. Listen to settings/loyalty
     const unsubscribeLoyalty = onSnapshot(doc(db, 'settings', 'loyalty'), (snapshot) => {
+      if (!active) return;
       if (snapshot.exists()) {
         const data = snapshot.data();
         setIsPurchasePointsEnabled(data.isEnabled !== false);
         setPointsPerDollar(data.pointsPerDollar ?? 100);
       }
     }, (error) => {
-      console.warn("Error loading loyalty settings in AdminPanel:", error);
+      if (!active) return;
     });
 
     // 2. Listen to points_history
     const q = query(collection(db, 'points_history'));
     const unsubscribeHistory = onSnapshot(q, (snapshot) => {
+      if (!active) return;
       const list: any[] = [];
       snapshot.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() });
@@ -833,14 +847,16 @@ export default function AdminPanel({
       list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setAdminPointsHistory(list);
     }, (error) => {
-      console.warn("Error loading points history in AdminPanel:", error);
+      if (!active) return;
+      setAdminPointsHistory([]);
     });
 
     return () => {
+      active = false;
       unsubscribeLoyalty();
       unsubscribeHistory();
     };
-  }, []);
+  }, [currentUser]);
 
   // Save Daily Check-In Rewards Settings
   const handleSaveDailyCheckInRewards = async () => {
@@ -901,16 +917,19 @@ export default function AdminPanel({
     setIsAdjustingPoints(true);
     try {
       const email = selectedUserEmailForPoints.toLowerCase();
-      const userRef = doc(db, 'users', email);
-      const userSnap = await getDoc(userRef);
+      const usersColl = collection(db, 'users');
+      const q = query(usersColl, where('email', '==', email));
+      const querySnap = await getDocs(q);
 
-      if (!userSnap.exists()) {
-        onShowToast('خطأ!', 'المستند الخاص بالمستخدم غير موجود في قاعدة البيانات.', 'error');
+      if (querySnap.empty) {
+        onShowToast('خطأ!', 'لم يتم العثور على حساب المستخدم في قاعدة البيانات.', 'error');
         setIsAdjustingPoints(false);
         return;
       }
 
-      const userData = userSnap.data();
+      const userDoc = querySnap.docs[0];
+      const userRef = doc(db, 'users', userDoc.id);
+      const userData = userDoc.data();
       const currentPoints = userData.points || 0;
       
       const change = pointsAdjustmentType === 'add' ? pointsAdjustmentAmount : -pointsAdjustmentAmount;
@@ -1019,7 +1038,7 @@ export default function AdminPanel({
     
     setIsUpdatingPoints(true);
     try {
-      const userRef = doc(db, 'users', editingPointsUser.email.toLowerCase());
+      const userRef = doc(db, 'users', editingPointsUser.id);
       const newPoints = (editingPointsUser.points || 0) + pointsChangeAmount;
       
       // 1. Update User Document
@@ -2581,7 +2600,7 @@ export default function AdminPanel({
             {/* Messaging System Interface */}
             <div className="lg:col-span-7">
               <div className="rounded-3xl border border-zinc-800/80 bg-[#0d0d0d] shadow-2xl overflow-hidden h-full">
-                <MessagingSystem />
+                <MessagingSystem currentUser={currentUser} />
               </div>
             </div>
 
@@ -6115,7 +6134,7 @@ export default function AdminPanel({
                                 `هل أنت متأكد من توليد رمز دخول مؤقت للمستخدم ${user.name}؟ هذا الرمز سيكون صالحاً لمدة 10 دقائق فقط وسيتم إجبار المستخدم على تغيير كلمة سره فور الدخول.`,
                                 async () => {
                                   try {
-                                    const userRef = doc(db, 'users', user.email.toLowerCase());
+                                    const userRef = doc(db, 'users', user.id);
                                     await updateDoc(userRef, {
                                       tempPassword: hashPassword(tempCode),
                                       tempPasswordExpiry: expiry,
@@ -6160,7 +6179,7 @@ export default function AdminPanel({
                                 `هل أنت متأكد من توليد رمز PIN مؤقت للمستخدم ${user.name}؟ هذا الرمز سيكون صالحاً لمدة 10 دقائق فقط لإتمام عمليات الدفع أو الوصول للإعدادات.`,
                                 async () => {
                                   try {
-                                    const userRef = doc(db, 'users', user.email.toLowerCase());
+                                    const userRef = doc(db, 'users', user.id);
                                     await updateDoc(userRef, {
                                       tempPin: encryptPin(tempPin),
                                       tempPinExpiry: expiry,

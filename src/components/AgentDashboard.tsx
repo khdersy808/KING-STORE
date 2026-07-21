@@ -59,33 +59,52 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
   }, []);
 
   useEffect(() => {
+    let active = true;
+    if (!auth.currentUser) {
+      setAgents([]);
+      setAllProducts([]);
+      return;
+    }
+
     const q = query(collection(db, 'agents'));
 
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
+        if (!active) return;
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Agent));
         setAgents(data);
       },
       (error) => {
-        console.error("Error fetching agents:", error);
+        if (!active) return;
+        setAgents([]);
       }
     );
 
     // Fetch all products for the pricing/inventory list
     const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      if (!active) return;
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       setAllProducts(data);
+    }, (error) => {
+      if (!active) return;
+      setAllProducts([]);
     });
 
     return () => {
+      active = false;
       unsubscribe();
       unsubscribeProducts();
     };
-  }, []);
+  }, [user]);
 
   // Fetch agent-specific data when an agent is selected
   useEffect(() => {
-    if (!selectedAgent) return;
+    let active = true;
+    if (!selectedAgent || !auth.currentUser) {
+      setAgentOrders([]);
+      setIsLoadingDetails(false);
+      return;
+    }
 
     setIsLoadingDetails(true);
     // Fetch orders linked to this agent (assuming referredBy or a future agentId field)
@@ -97,17 +116,22 @@ export default function AgentDashboard({ isAdminMode = false }: AgentDashboardPr
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!active) return;
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
       setAgentOrders(data);
       setIsLoadingDetails(false);
     }, (err) => {
-      console.error("Error fetching agent orders:", err);
+      if (!active) return;
+      setAgentOrders([]);
       // Fallback: search by referredBy if agentId is missing
       setIsLoadingDetails(false);
     });
 
-    return () => unsubscribe();
-  }, [selectedAgent]);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [selectedAgent, user]);
 
   const handleAddAgentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

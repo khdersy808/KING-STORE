@@ -3,6 +3,7 @@ import { X, Settings, ShieldCheck, Lock, Mail, User, Eye, EyeOff, Save, Sparkles
 import { User as AppUser } from '../types';
 import { auth, db, doc, setDoc, getDoc, deleteDoc, updateDoc, encryptPin } from '../lib/firebase';
 import { EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword, updateProfile } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function SettingsModal({
 
   // Profile Form State
   const [name, setName] = useState(currentUser.name);
+  const [username, setUsername] = useState(currentUser.username || '');
 
   // Email Form State
   const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState('');
@@ -69,8 +71,16 @@ export default function SettingsModal({
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    const cleanUsername = username.trim().replace(/\s+/g, '');
+
+    if (!cleanName) {
       showToast('خطأ في البيانات', 'الرجاء إدخال الاسم الجديد بشكل صحيح.', 'warning');
+      return;
+    }
+
+    if (!cleanUsername) {
+      showToast('خطأ في البيانات', 'الرجاء إدخال اسم المستخدم بشكل صحيح.', 'warning');
       return;
     }
 
@@ -79,22 +89,36 @@ export default function SettingsModal({
       const user = auth.currentUser;
       if (!user) throw new Error('لا يوجد مستخدم نشط حالياً.');
 
-      // 1. Update Profile in Firebase Auth
-      await updateProfile(user, { displayName: name.trim() });
+      // If username has changed, check for uniqueness in Firestore
+      if (cleanUsername.toLowerCase() !== (currentUser.username || '').toLowerCase()) {
+        const uQuery = query(collection(db, 'users'), where('username', '==', cleanUsername));
+        const uSnap = await getDocs(uQuery);
+        const alreadyTaken = uSnap.docs.some(doc => doc.id !== currentUser.id);
+        if (alreadyTaken) {
+          showToast('اسم مستخدم غير متاح ⚠️', 'اسم المستخدم هذا مسجل بالفعل لمستخدم آخر، يرجى اختيار اسم مستخدم فريد.', 'warning');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 1. Update Profile in Firebase Auth with the custom username as displayName
+      await updateProfile(user, { displayName: cleanUsername });
 
       // 2. Update Document in Firestore
-      const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+      const userDocRef = doc(db, 'users', currentUser.id);
       await updateDoc(userDocRef, {
-        name: name.trim()
+        name: cleanName,
+        username: cleanUsername
       });
 
       // 3. Update parent App state
       onUpdateUser({
         ...currentUser,
-        name: name.trim()
+        name: cleanName,
+        username: cleanUsername
       });
 
-      showToast('تم التحديث بنجاح ✨', 'تم تعديل اسم الحساب بنجاح.', 'success');
+      showToast('تم التحديث بنجاح ✨', 'تم تعديل الاسم واسم المستخدم الخاص بك بنجاح.', 'success');
     } catch (err: any) {
       console.error('Error updating name:', err);
       showToast('فشل التحديث ❌', err.message || 'حدث خطأ غير متوقع أثناء تحديث الاسم.', 'warning');
@@ -129,29 +153,12 @@ export default function SettingsModal({
       // 2. Update Email in Firebase Auth
       await updateEmail(user, targetNewEmail);
 
-      // 3. Migrate Firestore Document
-      const oldEmailNormalized = currentUser.email.toLowerCase();
-      const oldDocRef = doc(db, 'users', oldEmailNormalized);
-      const newDocRef = doc(db, 'users', targetNewEmail);
-
-      const oldDoc = await getDoc(oldDocRef);
-      if (oldDoc.exists()) {
-        const docData = oldDoc.data();
-        await setDoc(newDocRef, {
-          ...docData,
-          email: targetNewEmail,
-          updatedAt: new Date().toISOString()
-        });
-        await deleteDoc(oldDocRef);
-      } else {
-        await setDoc(newDocRef, {
-          id: user.uid,
-          name: currentUser.name,
-          email: targetNewEmail,
-          role: currentUser.role,
-          createdAt: new Date().toISOString()
-        });
-      }
+      // 3. Update Firestore Document Email field
+      const userDocRef = doc(db, 'users', currentUser.id);
+      await updateDoc(userDocRef, {
+        email: targetNewEmail,
+        updatedAt: new Date().toISOString()
+      });
 
       // 4. Update parent App state
       onUpdateUser({
@@ -244,7 +251,7 @@ export default function SettingsModal({
     setIsLoading(true);
     try {
       const encrypted = encryptPin(cleanPin);
-      const userDocRef = doc(db, 'users', currentUser.email.toLowerCase());
+      const userDocRef = doc(db, 'users', currentUser.id);
       await updateDoc(userDocRef, {
         paymentPin: encrypted
       });
@@ -367,6 +374,23 @@ export default function SettingsModal({
                     onChange={(e) => setName(e.target.value)}
                     placeholder="أدخل اسمك الكريم"
                     className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-right font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300 block">اسم المستخدم المخصص (Username)</label>
+                <div className="relative">
+                  <span className="absolute right-3 top-3.5 text-zinc-500">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={username || ""}
+                    onChange={(e) => setUsername(e.target.value.replace(/\s+/g, ''))}
+                    placeholder="مثال: khaled_king"
+                    className="w-full rounded-xl bg-slate-950 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 py-3 pr-10 pl-4 text-xs sm:text-sm text-white text-left font-mono"
                     required
                   />
                 </div>
