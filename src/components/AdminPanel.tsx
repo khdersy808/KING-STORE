@@ -653,7 +653,6 @@ export default function AdminPanel({
               await setDoc(docRef, policyData);
             }
           } catch (err) {
-            console.warn("Could not auto-seed default policies:", err);
           }
           return;
         }
@@ -1702,7 +1701,6 @@ export default function AdminPanel({
           throw new Error(imgData.error || 'فشل توليد الصورة بالخادم.');
         }
       } catch (err) {
-        console.warn('Image generation failed, but product details were created.', err);
         setAiProductError('تم توليد تفاصيل المنتج بنجاح، ولكن فشل توليد الصورة الحقيقية تلقائياً. يمكنك توليدها يدوياً.');
       }
 

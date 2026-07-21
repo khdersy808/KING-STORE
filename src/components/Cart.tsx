@@ -8,7 +8,7 @@ import { CartItem, PaymentGateway, Order, OrderItem, Product, User, DeliverySett
 import PaymentReceipt from './PaymentReceipt';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
-import { safeLocalStorageSetItem } from '../lib/safeJson';
+import { safeLocalStorageSetItem, safeJsonStringify } from '../lib/safeJson';
 import { db, collection, query, where, getDocs, doc, updateDoc, encryptPin } from '../lib/firebase';
 import {
   X,
@@ -158,7 +158,6 @@ export default function Cart({
         }
         fetchSuccess = true;
       } catch (err) {
-        console.warn("Could not fetch policies from Firestore, using local fallback...", err);
       }
 
       if (loadedPolicies.length === 0) {
@@ -259,7 +258,6 @@ export default function Cart({
           } as Coupon;
         }
       } catch (firestoreError) {
-        console.warn("Could not fetch coupon from Firestore, checking localStorage...", firestoreError);
       }
 
       // 2. Fallback to localStorage if not found or firestore failed
@@ -596,7 +594,6 @@ export default function Cart({
         }
         await updateDoc(couponRef, updates);
       } catch (err) {
-        console.warn("Could not update coupon usage count in Firestore, trying localStorage...", err);
       }
 
       try {
@@ -607,7 +604,6 @@ export default function Cart({
           safeLocalStorageSetItem('king_store_coupons', updated);
         }
       } catch (e) {
-        console.warn("Could not update local storage coupon:", e);
       }
     }
 
@@ -789,7 +785,7 @@ export default function Cart({
 
                     {cartItems.map((item, index) => {
                       const maxStock = item.product.stock || 99;
-                      const itemUniqueId = `${item.product.id}-${item.selectedSize || 'default'}-${item.selectedColor || 'default'}-${JSON.stringify(item.selectedOptions || {})}-${index}`;
+                      const itemUniqueId = `${item.product.id}-${item.selectedSize || 'default'}-${item.selectedColor || 'default'}-${safeJsonStringify(item.selectedOptions || {})}-${index}`;
                       return (
                         <div
                           key={itemUniqueId}

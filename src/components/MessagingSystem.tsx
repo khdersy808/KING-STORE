@@ -87,7 +87,6 @@ export default function MessagingSystem({ currentUser }: MessagingSystemProps) {
           }
         );
       } catch (err) {
-        console.warn("Failed to setup messages listener:", err);
       }
     };
 

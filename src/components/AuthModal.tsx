@@ -67,7 +67,6 @@ const isDeviceAlreadyUsed = async (deviceId: string): Promise<boolean> => {
     const querySnapshot = await getDocs(deviceQuery);
     return !querySnapshot.empty;
   } catch (err) {
-    console.warn("Quietly skipped deviceId check in Firestore (no permissions or offline):", err);
     return false;
   }
 };
@@ -381,7 +380,6 @@ export default function AuthModal({
               }
             }
           } catch (tempErr) {
-            console.warn("Quietly skipped temporary password fallback check:", tempErr);
           }
           
           // Auto register admin if credentials fail on the designated admin email
@@ -406,7 +404,6 @@ export default function AuthModal({
         try {
           userDoc = await getDoc(userDocRef);
         } catch (err) {
-          console.warn("Failed to get user doc, will create silently:", err);
         }
 
         const mustChangePassword = userDoc && userDoc.exists() && userDoc.data().mustChangePassword;
@@ -441,7 +438,6 @@ export default function AuthModal({
               createdAt: (userDoc && userDoc.exists()) ? (userDoc.data().createdAt || new Date().toISOString()) : new Date().toISOString()
             }, { merge: true });
           } catch (e) {
-            console.warn("Failed to set admin doc:", e);
           }
         } else {
           if (userDoc && userDoc.exists()) {
@@ -453,7 +449,6 @@ export default function AuthModal({
                 currentSessionId: sessionId
               }, { merge: true });
             } catch (e) {
-              console.warn("Failed to update user doc:", e);
             }
           } else {
             // Missing Firestore profile, create it
@@ -469,7 +464,6 @@ export default function AuthModal({
                 createdAt: new Date().toISOString()
               });
             } catch (e) {
-              console.warn("Failed to create missing user doc:", e);
             }
           }
         }
@@ -556,7 +550,6 @@ export default function AuthModal({
         try {
           await sendEmailVerification(fbUser);
         } catch (verErr) {
-          console.warn("Could not send verification email:", verErr);
         }
 
         const generatedReferralCode = 'KING-' + Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -650,7 +643,6 @@ export default function AuthModal({
             }
             localStorage.removeItem('king_store_pending_referral');
           } catch (refError) {
-            console.warn("Could not award referral points to referrer: ", refError);
           }
         }
 
@@ -1027,7 +1019,6 @@ export default function AuthModal({
       try {
         await updateProfile(fbUser, { displayName: cleanUsername });
       } catch (profErr) {
-        console.warn("Failed to update profile displayName in Auth:", profErr);
       }
 
       if (finalReferralApplied && referrerDocData && referrerEmail && !userDoc.exists()) {
@@ -1055,7 +1046,6 @@ export default function AuthModal({
           }
           localStorage.removeItem('king_store_pending_referral');
         } catch (refError) {
-          console.warn("Could not award referral points:", refError);
         }
       }
 

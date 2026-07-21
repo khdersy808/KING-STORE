@@ -82,9 +82,23 @@ export interface FirestoreErrorInfo {
   }
 }
 
+import { safeJsonStringify } from './safeJson';
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isNetworkOrTimeout = 
+    errMsg.includes('Could not reach Cloud Firestore backend') ||
+    errMsg.includes('client is offline') ||
+    errMsg.includes('unavailable') ||
+    errMsg.includes('deadline-exceeded') ||
+    errMsg.includes('network-request-failed') ||
+    errMsg.includes('failed to get document') ||
+    errMsg.includes('Failed to get document') ||
+    errMsg.includes('network error') ||
+    errMsg.includes('backend');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -99,8 +113,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  // For offline/network/timeout issues or read operations, handle quietly and fall back to local data without throwing an uncaught error
+  if (isNetworkOrTimeout || operationType === OperationType.GET || operationType === OperationType.LIST) {
+    console.warn(`[Firestore Offline/Timeout Quiet Fallback] (${operationType} @ ${path}):`, errMsg);
+    return;
+  }
+
+  console.error('Firestore Error: ', safeJsonStringify(errInfo));
+  throw new Error(safeJsonStringify(errInfo));
 }
 
 async function getUserDocRef(emailOrUid: string) {

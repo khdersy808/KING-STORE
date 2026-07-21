@@ -82,8 +82,20 @@ interface FirestoreErrorInfo {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isNetworkOrTimeout = 
+    errMsg.includes('Could not reach Cloud Firestore backend') ||
+    errMsg.includes('client is offline') ||
+    errMsg.includes('unavailable') ||
+    errMsg.includes('deadline-exceeded') ||
+    errMsg.includes('network-request-failed') ||
+    errMsg.includes('failed to get document') ||
+    errMsg.includes('Failed to get document') ||
+    errMsg.includes('network error') ||
+    errMsg.includes('backend');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -97,12 +109,19 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   };
-  console.error('Firestore Error Details:', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  // Handle network/timeout or GET/LIST operations quietly without throwing uncaught errors
+  if (isNetworkOrTimeout || operationType === OperationType.GET || operationType === OperationType.LIST) {
+    console.warn(`[Firestore Quiet Fallback] (${operationType} @ ${path}):`, errMsg);
+    return;
+  }
+
+  console.error('Firestore Error Details:', safeJsonStringify(errInfo));
+  throw new Error(safeJsonStringify(errInfo));
 }
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { CurrencyProvider, useCurrency } from './contexts/CurrencyContext';
-import { safeLocalStorageSetItem } from './lib/safeJson';
+import { safeLocalStorageSetItem, safeJsonStringify } from './lib/safeJson';
 
 export default function App() {
   return (
@@ -330,8 +349,27 @@ function AppContent() {
   const [prevTab, setPrevTab] = useState(currentTab);
   const [direction, setDirection] = useState(0);
 
-  // --- Core App Initialization ---
+  // --- Core App Initialization & Silent Offline Error Handling ---
   useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const reasonStr = typeof reason === 'string' ? reason : (reason?.message || String(reason));
+      if (
+        reasonStr.includes('Could not reach Cloud Firestore backend') ||
+        reasonStr.includes('client is offline') ||
+        reasonStr.includes('unavailable') ||
+        reasonStr.includes('deadline-exceeded') ||
+        reasonStr.includes('network-request-failed') ||
+        reasonStr.includes('Failed to get document because the client is offline') ||
+        reasonStr.includes('Firestore Error')
+      ) {
+        event.preventDefault();
+        console.warn('[Firestore Timeout Handled Quietly]:', reasonStr);
+      }
+    };
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
     const initializeApp = async () => {
       try {
         const { getDoc, doc, getDocs, collection, query, orderBy } = await import('firebase/firestore');
@@ -350,8 +388,6 @@ function AppContent() {
               try {
                 const userDocRef = doc(db, 'users', fbUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
-                // The onAuthStateChanged listener in App.tsx will handle the state setting
-                // We just need to wait for this one-time fetch to complete as a signal
               } catch (e) {
               }
             }
@@ -363,7 +399,6 @@ function AppContent() {
         });
 
         // 2. Fetch all configuration data in parallel
-        // Configuration data is now primarily handled by real-time listeners in useEffect hooks
         await Promise.resolve();
 
         // 3. Final safety buffer
@@ -384,6 +419,10 @@ function AppContent() {
     };
 
     initializeApp();
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, []);
 
   const handleTabChange = (tab: string) => {
@@ -1532,7 +1571,7 @@ function AppContent() {
         (item) => item.product.id === product.id && 
                  item.selectedSize === selectedSize && 
                  item.selectedColor === selectedColor &&
-                 JSON.stringify(item.selectedOptions || {}) === JSON.stringify(selectedOptions || {})
+                 safeJsonStringify(item.selectedOptions || {}) === safeJsonStringify(selectedOptions || {})
       );
 
       if (existing) {
@@ -1549,7 +1588,7 @@ function AppContent() {
           item.product.id === product.id && 
           item.selectedSize === selectedSize && 
           item.selectedColor === selectedColor &&
-          JSON.stringify(item.selectedOptions || {}) === JSON.stringify(selectedOptions || {})
+          safeJsonStringify(item.selectedOptions || {}) === safeJsonStringify(selectedOptions || {})
             ? { ...item, quantity: newQuantity }
             : item
         );

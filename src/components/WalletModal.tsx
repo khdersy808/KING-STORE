@@ -47,7 +47,6 @@ export default function WalletModal({
           rules.sort((a, b) => a.discount - b.discount);
           setCouponRules(rules);
         } catch (e) {
-          console.warn('Failed to fetch coupon rules:', e);
         }
       };
       fetchRules();
